@@ -64,11 +64,8 @@ class HasModulePermission(permissions.BasePermission):
         has_module_access = bool(perms.get(module_name))
 
         if user_role == 'admin':
-            # Adminlar uchun pay_slip alohida boshqariladi
-            if module_name == 'pay_slip':
-                return has_module_access
-            # Boshqa barcha modullarda ruxsat berilgan bo'lsa kiradi
-            return has_module_access
+            # Adminlarga barcha modullar uchun ruxsat beramiz
+            return True
 
         if user_role == 'mentor':
             # Mentorlar 'homework' modulida hamisha ruxsatga ega

@@ -118,10 +118,10 @@ export default function GroupDetailPage() {
     return isPrimary || isAdditional;
   }, [isSuperAdmin, groupinfo, userData, user_info]);
 
-  const canAddStudent = isSuperAdmin || perms.students === true;
-  const canEditGroup = (isSuperAdmin || perms.groups === true) && !isMentor;
-  const canDeleteGroup = (isSuperAdmin || perms.groups === true) && !isMentor;
-  const canAddMentor = (isSuperAdmin || perms.groups === true) && !isMentor;
+  const canAddStudent = isSuperAdmin || isAdmin || perms.students === true;
+  const canEditGroup = (isSuperAdmin || isAdmin || perms.groups === true) && !isMentor;
+  const canDeleteGroup = (isSuperAdmin || isAdmin || perms.groups === true) && !isMentor;
+  const canAddMentor = (isSuperAdmin || isAdmin || perms.groups === true) && !isMentor;
   const canSendMessage = isAdmin || isSuperAdmin || isMentor;
   const canTakeAttendance = isAdmin || isSuperAdmin || isGroupMentor;
   const canSeeHomework = isAdmin || isSuperAdmin || isGroupMentor;
@@ -724,7 +724,7 @@ export default function GroupDetailPage() {
                 <Archive size={16} />
                 <span className="text-[8px] font-black uppercase tracking-widest text-center">Arxiv</span>
               </button>
-              {(isAdmin || isSuperAdmin) && (
+              {(isAdmin || isSuperAdmin || isMentor) && (
                 <button
                   onClick={handleDownloadMonthlyReport}
                   className="flex flex-col sm:flex-row items-center justify-center gap-2 p-2.5 rounded-xl border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500 hover:text-white transition-all"
