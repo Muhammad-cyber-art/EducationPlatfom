@@ -119,9 +119,9 @@ export default function GroupDetailPage() {
   }, [isSuperAdmin, groupinfo, userData, user_info]);
 
   const canAddStudent = isSuperAdmin || perms.students === true;
-  const canEditGroup = isSuperAdmin || perms.groups === true;
-  const canDeleteGroup = isSuperAdmin || perms.groups === true;
-  const canAddMentor = isSuperAdmin || perms.groups === true;
+  const canEditGroup = (isSuperAdmin || perms.groups === true) && !isMentor;
+  const canDeleteGroup = (isSuperAdmin || perms.groups === true) && !isMentor;
+  const canAddMentor = (isSuperAdmin || perms.groups === true) && !isMentor;
   const canSendMessage = isAdmin || isSuperAdmin || isMentor;
   const canTakeAttendance = isAdmin || isSuperAdmin || isGroupMentor;
   const canSeeHomework = isAdmin || isSuperAdmin || isGroupMentor;

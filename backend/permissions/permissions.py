@@ -41,25 +41,45 @@ class HasModulePermission(permissions.BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
 
-        # 2. Super adminlarga doimiy ruxsat (barcha to'siqlardan o'tadi)
-        user_role = getattr(request.user, 'role', None)
-        if user_role == 'super_admin':
+        # 2. Super adminlarga doimiy ruxsat
+        if request.user.role == 'super_admin':
             return True
 
-        # 3. Adminlar uchun modul mavjud bo'lsa barcha metodlarga ruxsat
-        if user_role == 'admin':
-            # Viewda modul nomi bo'lishi shart
-            module_name = getattr(view, 'module_name', None)
-            return bool(module_name)
+        # StaffPermission obyektini olamiz
+        try:
+            staff_perm = request.user.staff_permissions
+            perms = staff_perm.permissions or {}
+        except Exception:
+            perms = {}
 
-        # 4. Mentorlar uchun qoida
+        module_name = getattr(view, 'module_name', None)
+        if not module_name:
+            # Agar modul nomi ko'rsatilmagan bo'lsa, faqat super_admin kira oladi
+            return False
+
+        # Ruxsatlarni tekshirish logikasi
+        user_role = request.user.role
+        
+        # Modul bo'yicha ruxsat bormi?
+        has_module_access = bool(perms.get(module_name))
+
+        if user_role == 'admin':
+            # Adminlar uchun pay_slip alohida boshqariladi
+            if module_name == 'pay_slip':
+                return has_module_access
+            # Boshqa barcha modullarda ruxsat berilgan bo'lsa kiradi
+            return has_module_access
+
         if user_role == 'mentor':
-            module_name = getattr(view, 'module_name', None)
-            # Mentorlar 'homework' modulida to'liq amallarni bajarishi mumkin
+            # Mentorlar 'homework' modulida hamisha ruxsatga ega
             if module_name == 'homework':
                 return True
-            # Boshqa modullarda faqat SAFE_METHODS
+            
+            # Agar boshqa modulga (students, groups) ruxsat berilgan bo'lsa:
+            if has_module_access:
+                return True
+            
+            # Aks holda faqat ko'rish (SAFE_METHODS)
             return request.method in permissions.SAFE_METHODS
 
-        # 5. Boshqa rollar – ruxsat yo'q
         return False

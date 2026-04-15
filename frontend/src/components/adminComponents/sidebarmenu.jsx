@@ -49,7 +49,7 @@ export default function SideBar({ isOpen, onClose }) {
     { name: "O'qituvchilar", path: "/admin/mentors", icon: <UserSquare2 size={20} /> },
     { name: "O'quvchilar", path: "/admin/all_students", icon: <GraduationCap size={20} /> },
     { name: "Arxiv", path: "/admin/archive", icon: <Trash2 size={20} /> },
-    { name: "Moliya", path: "/admin/finance", icon: <DollarSign size={20} /> },
+    ...(userInfo?.permissions?.pay_slip !== false ? [{ name: "Moliya", path: "/admin/finance", icon: <DollarSign size={20} /> }] : []),
     { name: "Profil", path: "/admin/profile", icon: <User size={20} /> },
   ];
 

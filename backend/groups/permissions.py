@@ -46,19 +46,37 @@ class IsStudentGroupOwnerOrSuperAdmin(permissions.BasePermission):
     """
 
     def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+            
+        if user.role == 'super_admin':
+            return True
+            
+        # Admin va Mentor uchun StaffPermission orqali modul ruxsatini tekshiramiz
+        try:
+            perms = user.staff_permissions.permissions or {}
+        except:
+            perms = {}
+            
         if request.method in permissions.SAFE_METHODS:
-            return request.user.is_authenticated
+            return True
+            
+        # Yozish amallari (POST, PUT, PATCH, DELETE) uchun 'students' ruxsati kerak
+        if user.role == 'mentor':
+            return perms.get('students', False)
+            
         return True
 
     def has_object_permission(self, request, view, obj):
         user = request.user
         group = obj.group
-        # Student modelida branch bor, shundan foydalanamiz
         student_branch = obj.branch or (group.branch if group else None)
 
         if user.role == 'super_admin':
             return True
 
+        # Admin o'z filialidagi talabalarni boshqara oladi
         if user.role == 'admin':
             if not student_branch: return False
             if student_branch == user.branch:
@@ -66,13 +84,28 @@ class IsStudentGroupOwnerOrSuperAdmin(permissions.BasePermission):
             return user.branch_accesses.filter(branch=student_branch).exists()
 
         if user.role == 'mentor':
+            # 1. Mentorning StaffPermission'i bormi?
+            try:
+                perms = user.staff_permissions.permissions or {}
+            except:
+                perms = {}
+            
+            if not perms.get('students', False):
+                # Agar ruxsati bo'lmasa, faqat ko'rish (o'z guruhidagilarni)
+                if request.method in permissions.SAFE_METHODS:
+                    if not group: return False
+                    return (
+                        group.mentor == user or
+                        group.additional_mentors.filter(mentor=user).exists()
+                    )
+                return False
+            
+            # 2. Ruxsati bo'lsa, o'z guruhidagi talabalarni boshqara oladi
             if not group: return False
-            if request.method in permissions.SAFE_METHODS:
-                return (
-                    group.mentor == user or
-                    MentorGroupAssignment.objects.filter(mentor=user, group=group).exists()
-                )
-            return False
+            return (
+                group.mentor == user or
+                group.additional_mentors.filter(mentor=user).exists()
+            )
 
         return False
     

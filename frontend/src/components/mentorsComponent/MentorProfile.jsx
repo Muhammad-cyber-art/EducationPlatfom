@@ -1,7 +1,7 @@
 import { useEffect, useReducer } from "react";
 import React from "react";
 import toast from "react-hot-toast";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { get_user_info } from "../Authorized/getRole";
 import { useNavigate, useParams, useOutletContext } from "react-router-dom";
 import api from "../../tokenUpdater/updater";
@@ -15,7 +15,7 @@ import {
   Check, X, Mail, Key,
   Loader2, ArrowRightLeft,
   Building2, Layers, CreditCard, ChevronRight,
-  Target, Zap, Activity, Eye, EyeOff
+  Target, Zap, Activity, Eye, EyeOff, Shield, Save
 } from "lucide-react";
 import { useCurrentBranch } from "../Authorized/useBranchId";
 
@@ -24,9 +24,11 @@ const initialState = {
   mentorsGroup: [],
   isEditing: false,
   editData: {},
-  isTransferModalOpen: false,
   selectedBranch: { name: "", id: null },
   showPassword: false,
+  isPermModalOpen: false,
+  isTransferModalOpen: false,
+  permissions: {},
 };
 
 function reducer(state, action) {
@@ -48,10 +50,24 @@ function reducer(state, action) {
       return { ...state, isEditing: true, editData: { ...state.mentor } };
     case "TOGGLE_SHOW_PASSWORD":
       return { ...state, showPassword: !state.showPassword };
+    case 'TOGGLE_PERM_MODAL':
+      return { ...state, isPermModalOpen: action.payload };
+    case 'SET_PERMISSIONS':
+      return { ...state, permissions: action.payload };
+    case 'TOGGLE_PERMISSION_KEY':
+      return {
+        ...state,
+        permissions: { ...state.permissions, [action.key]: !state.permissions[action.key] }
+      };
     default:
       return state;
   }
 }
+
+const PERMISSION_LABELS = {
+  "students": "O'quvchi qo'shish va boshqarish",
+  "pay_slip": "Moliya daftarini ko'rish",
+};
 
 export default function MentorProfilePage({ viewMode = "all" }) {
   const user_info = get_user_info();
@@ -89,6 +105,35 @@ export default function MentorProfilePage({ viewMode = "all" }) {
     }
   }, [mentorData]);
 
+  const { data: staffPermissions } = useQuery({
+    queryKey: ['staffPermissions', realMentorId],
+    queryFn: async () => {
+      if (!realMentorId || user_info.role !== "super_admin") return null;
+      try {
+        const res = await api.get(`/permissions/staff/${realMentorId}/`);
+        return res.data;
+      } catch (err) {
+        return null;
+      }
+    },
+    enabled: !!realMentorId && user_info.role === "super_admin"
+  });
+
+  useEffect(() => {
+    const source = staffPermissions?.permissions || staffPermissions || mentorData?.permissions;
+    if (source) {
+      const backendPerms = {};
+      Object.keys(PERMISSION_LABELS).forEach(key => {
+        if (typeof source === 'object' && source !== null) {
+          backendPerms[key] = !!source[key];
+        } else {
+          backendPerms[key] = false;
+        }
+      });
+      dispatch({ type: 'SET_PERMISSIONS', payload: backendPerms });
+    }
+  }, [mentorData, staffPermissions]);
+
   const handleUpdate = async () => {
     try {
       const payload = {
@@ -115,6 +160,17 @@ export default function MentorProfilePage({ viewMode = "all" }) {
       toast.error("Xatolik yuz berdi!");
     }
   };
+
+  const permMutation = useMutation({
+    mutationFn: async (perms) => {
+      return await api.put(`/permissions/staff/${realMentorId}/`, perms);
+    },
+    onSuccess: () => {
+      dispatch({ type: 'TOGGLE_PERM_MODAL', payload: false });
+      toast.success("Huquqlar yangilandi.");
+      queryClient.invalidateQueries(['staffPermissions', realMentorId]);
+    }
+  });
 
   const handleDelete = async () => {
     const reason = window.prompt("O'chirish uchun sababni kiriting:");
@@ -255,6 +311,15 @@ export default function MentorProfilePage({ viewMode = "all" }) {
               <Edit3 size={14} />
               <span>Tahrirlash</span>
             </button>
+            {isSuperAdmin && (
+              <button
+                onClick={() => dispatch({ type: 'TOGGLE_PERM_MODAL', payload: true })}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl bg-[var(--bg-panel)] border border-[var(--gold)]/30 text-[var(--gold)] font-bold text-[10px] uppercase tracking-wide hover:bg-[var(--gold)]/10 active:scale-[0.97] transition-all"
+              >
+                <Shield size={14} />
+                <span>Ruxsatlar</span>
+              </button>
+            )}
             <button
               onClick={handleDelete}
               className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl bg-[var(--bg-panel)] border border-red-500/30 text-red-400 font-bold text-[10px] uppercase tracking-wide hover:bg-red-500/10 active:scale-[0.97] transition-all"
@@ -582,9 +647,41 @@ export default function MentorProfilePage({ viewMode = "all" }) {
           staffMember={mentor}
           onTransferSuccess={() => {
             queryClient.invalidateQueries(['mentor-details']);
-            toast.success("Muvaffaqiyatli ko'chirildi.");
+            toast.success("Muvaffaqiyatli o'chirildi.");
           }}
         />
+      )}
+
+      {/* PERMISSIONS MODAL */}
+      {state.isPermModalOpen && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/90 backdrop-blur-3xl animate-in fade-in duration-300">
+          <div className="w-full max-w-[340px] lux-card !bg-[var(--bg-panel)]/95 shadow-2xl !p-6 md:!p-8 border border-[var(--border-glass)]">
+            <div className="flex justify-between items-center mb-6 md:mb-8 border-b border-[var(--border-glass)] pb-4">
+              <h3 className="text-[10px] font-black text-[var(--gold)] uppercase tracking-[0.3em]">USTOZ HUQUQLARI</h3>
+              <button onClick={() => dispatch({ type: 'TOGGLE_PERM_MODAL', payload: false })} className="text-[var(--text-muted)] hover:text-white transition-all p-1 hover:bg-white/10 rounded-lg"><X size={18} /></button>
+            </div>
+            <div className="space-y-3">
+              {Object.keys(PERMISSION_LABELS).map((key) => (
+                <div key={key} className="flex justify-between items-center p-3 rounded-xl bg-[var(--bg-void)]/40 border border-[var(--border-glass)] hover:bg-[var(--bg-void)]/80 transition-colors">
+                  <span className="text-[10px] font-black text-[var(--text-primary)] uppercase tracking-widest">{PERMISSION_LABELS[key]}</span>
+                  <button
+                    onClick={() => dispatch({ type: 'TOGGLE_PERMISSION_KEY', key })}
+                    className={`w-10 h-5 rounded-full relative flex items-center transition-all duration-300 ${state.permissions[key] ? 'bg-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.4)]' : 'bg-white/10'}`}
+                  >
+                    <div className={`absolute w-3.5 h-3.5 bg-white rounded-full transition-all duration-300 ${state.permissions[key] ? 'left-5.5' : 'left-1'}`} />
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={() => permMutation.mutate(state.permissions)}
+                disabled={permMutation.isPending}
+                className="w-full mt-6 py-3 bg-[var(--gold)] hover:bg-[var(--gold)]/90 text-black font-black text-[10px] uppercase tracking-widest rounded-xl transition-all shadow-[0_0_20px_rgba(184,134,11,0.3)] active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {permMutation.isPending ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />} SAQLASH
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -222,7 +222,8 @@ class CurrentUserSerializer(serializers.ModelSerializer):
                     'teachers': True,
                     'branches': True,
                     'reports': True,
-                    'homework': True
+                    'homework': True,
+                    'pay_slip': True
                 }
             
             perms = sp.permissions or {}
@@ -235,7 +236,8 @@ class CurrentUserSerializer(serializers.ModelSerializer):
                 'teachers': bool(perms.get('teachers')),
                 'branches': bool(perms.get('branches')),
                 'reports': bool(perms.get('reports')),
-                'homework': bool(perms.get('homework'))
+                'homework': bool(perms.get('homework')),
+                'pay_slip': bool(perms.get('pay_slip'))
             }
         except Exception:
             return {
@@ -245,7 +247,8 @@ class CurrentUserSerializer(serializers.ModelSerializer):
                 'teachers': False,
                 'branches': False,
                 'reports': False,
-                'homework': False
+                'homework': False,
+                'pay_slip': False
             }
 
 # authentication/serializers.py

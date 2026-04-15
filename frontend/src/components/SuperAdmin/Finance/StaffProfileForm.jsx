@@ -19,6 +19,7 @@ const StaffProfileForm = ({ isOpen, onClose, onSuccess, branch }) => {
     salary_type: 'fixed',
     fixed_salary: '',
     commission_percentage: '',
+    per_student_amount: '',
     karta: ''
   });
 
@@ -43,8 +44,10 @@ const StaffProfileForm = ({ isOpen, onClose, onSuccess, branch }) => {
     setFormData(prev => ({
       ...prev,
       salary_type: salaryType,
-      // Agar fixed bo'lsa commission ni 0 qilish, aks holda fixed ni 0 qilish
-      ...(salaryType === 'fixed' ? { commission_percentage: '0' } : { fixed_salary: '0' })
+      // Reset other salary fields based on type
+      ...(salaryType === 'fixed' ? { commission_percentage: '0', per_student_amount: '0' } : 
+         salaryType === 'percentage' ? { fixed_salary: '0', per_student_amount: '0' } :
+         { fixed_salary: '0', commission_percentage: '0' })
     }));
   }, [salaryType]);
 
@@ -100,12 +103,19 @@ const StaffProfileForm = ({ isOpen, onClose, onSuccess, branch }) => {
       return;
     }
 
+    if (salaryType === 'student_count' && !formData.per_student_amount) {
+      setError('Har bir o\'quvchi uchun summani kiriting');
+      setLoading(false);
+      return;
+    }
+
     try {
       const submitData = {
         user: formData.user,
         salary_type: salaryType,
         fixed_salary: salaryType === 'fixed' ? formData.fixed_salary : 0,
         commission_percentage: salaryType === 'percentage' ? formData.commission_percentage : 0,
+        per_student_amount: salaryType === 'student_count' ? formData.per_student_amount : 0,
         karta: formData.karta
       };
 
@@ -130,6 +140,7 @@ const StaffProfileForm = ({ isOpen, onClose, onSuccess, branch }) => {
       salary_type: 'fixed',
       fixed_salary: '',
       commission_percentage: '',
+      per_student_amount: '',
       karta: ''
     });
     setSelectedRole('admin');
@@ -294,6 +305,23 @@ const StaffProfileForm = ({ isOpen, onClose, onSuccess, branch }) => {
                       <span>Foiz Asosida</span>
                     </div>
                   </button>
+
+                  {selectedRole === 'mentor' && (
+                    <button
+                      type="button"
+                      onClick={() => setSalaryType('student_count')}
+                      disabled={loading}
+                      className={`relative overflow-hidden rounded-xl px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${salaryType === 'student_count'
+                        ? 'bg-[var(--bg-panel)] text-[var(--gold)] border border-[var(--gold)] shadow-[inset_0_0_20px_rgba(184,134,11,0.1)]'
+                        : 'bg-[var(--bg-panel)] border border-[var(--border-glass)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                        }`}
+                    >
+                      <div className="relative z-10 flex items-center justify-center gap-2">
+                        <Users size={14} />
+                        <span>O'quvchi Boshi</span>
+                      </div>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -316,7 +344,7 @@ const StaffProfileForm = ({ isOpen, onClose, onSuccess, branch }) => {
                       💡 Har oylik bir xil summa to'lanadi
                     </p>
                   </div>
-                ) : (
+                ) : salaryType === 'percentage' ? (
                   <div>
                     <label className="flex items-center gap-2 text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-2 px-1">
                       <Percent size={12} className="text-[var(--gold)]" />
@@ -336,6 +364,23 @@ const StaffProfileForm = ({ isOpen, onClose, onSuccess, branch }) => {
                     />
                     <p className="text-[9px] text-[var(--text-muted)] mt-2 font-bold uppercase tracking-wide opacity-60">
                       💡 Guruh daromadidan foiz hisoblanadi (0-100%)
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="flex items-center gap-2 text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-2 px-1">
+                      <Users size={12} className="text-[var(--gold)]" />
+                      Har bir o'quvchi uchun (UZS)
+                    </label>
+                    <AmountInput
+                      value={formData.per_student_amount}
+                      onChange={(e) => setFormData({ ...formData, per_student_amount: e.target.value })}
+                      placeholder="Masalan: 50 000"
+                      required
+                      className="w-full bg-[var(--bg-panel)] border border-[var(--border-glass)] text-[var(--text-primary)] rounded-xl px-4 py-3.5 text-xs font-black focus:outline-none focus:border-[var(--gold)]/50 transition-all placeholder:[var(--text-muted)]/50 disabled:opacity-50 shadow-inner uppercase tracking-wide italic"
+                    />
+                    <p className="text-[9px] text-[var(--text-muted)] mt-2 font-bold uppercase tracking-wide opacity-60">
+                      💡 Guruhdagi har bir o'quvchi uchun summa to'lanadi
                     </p>
                   </div>
                 )}

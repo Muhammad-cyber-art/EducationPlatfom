@@ -13,6 +13,8 @@ def generate_monthly_student_payments(month_date=None):
     if month_date is None:
         month_date = timezone.localdate().replace(day=1)
 
+    from finance.utils import floor_amount
+
     with transaction.atomic():
         # User talabi: Boshlanish sanasi kelmaguncha to'lovlar yaratilmasligi kerak
         active_groups = [g for g in Group.objects.filter(is_faol=True) if g.is_logic_enabled()]
@@ -24,7 +26,7 @@ def generate_monthly_student_payments(month_date=None):
                     group=group,
                     month=month_date,
                     defaults={
-                        'amount': group.monthly_price,
+                        'amount': floor_amount(group.monthly_price),
                         'is_paid': False
                     }
                 )
@@ -142,6 +144,27 @@ def calculate_employee_salary(profile, month_date):
         
         commission = total_income * (Decimal(str(profile.commission_percentage)) / Decimal('100'))
         return floor_amount(commission)
+    elif profile.salary_type == 'student_count':
+        # Mentorning barcha guruhlaridagi faol o'quvchilar sonini hisoblash
+        from groups.models import GroupEnrollment
+        import calendar
+        
+        last_day_num = calendar.monthrange(month_date.year, month_date.month)[1]
+        last_day = month_date.replace(day=last_day_num)
+        
+        # Mentor guruhlari
+        mentor_groups = Group.objects.filter(mentor=profile.user)
+        
+        # O'quvchilar soni (Duplikatsiz)
+        total_students = GroupEnrollment.objects.filter(
+            group__in=mentor_groups,
+            joined_at__date__lte=last_day,
+            is_active=True
+        ).values('student_id').distinct().count()
+        
+        salary = Decimal(str(total_students)) * Decimal(str(profile.per_student_amount))
+        return floor_amount(salary)
+    
     return Decimal('0')
 
 def process_absence_refunds(month_date=None):

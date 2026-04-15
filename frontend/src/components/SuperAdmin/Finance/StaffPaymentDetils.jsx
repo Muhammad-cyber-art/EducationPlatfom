@@ -67,6 +67,7 @@ const StaffPaymentDetails = () => {
       dispatch(setEditForm({
         fixed_salary: paymentInfo.fixed_salary || "0.00",
         commission_percentage: paymentInfo.commission_percentage || "0.00",
+        per_student_amount: paymentInfo.per_student_amount || "0.00",
         salary_type: paymentInfo.salary_type || "fixed",
         karta: paymentInfo.karta || ""
       }));
@@ -159,6 +160,34 @@ const StaffPaymentDetails = () => {
   }
 
   const isPercentageType = data.salary_type === 'percentage';
+  const isStudentCountType = data.salary_type === 'student_count';
+  const displayCurrentAmount = !data.is_paid
+    ? (isPercentageType
+      ? (data.calculated_commission || 0)
+      : (isStudentCountType ? (data.calculated_per_student || data.salary_base || 0) : (data.salary_base || 0)))
+    : (data.total_amount || data.salary_base || 0);
+
+  const studentCountSummary = (() => {
+    const groups = data?.mentor_groups || [];
+    return groups.reduce((acc, group) => {
+      acc.groups += 1;
+      acc.totalStudents += Number(group.students_count || 0);
+      acc.paidStudents += Number(group.paid_students_count || 0);
+      acc.paidIncome += Number(group.monthly_income || 0);
+      acc.expectedIncome += Number(group.expected_income || 0);
+      acc.mentorSharePaid += Number(group.mentor_share_paid || 0);
+      acc.mentorShareExpected += Number(group.mentor_share_expected || 0);
+      return acc;
+    }, {
+      groups: 0,
+      totalStudents: 0,
+      paidStudents: 0,
+      paidIncome: 0,
+      expectedIncome: 0,
+      mentorSharePaid: 0,
+      mentorShareExpected: 0
+    });
+  })();
 
   return (
     <div className="min-h-screen bg-[var(--bg-void)] text-[var(--text-secondary)] font-sans selection:bg-[var(--gold)]/30 overflow-x-hidden">
@@ -172,8 +201,10 @@ const StaffPaymentDetails = () => {
             ? (selectedHistoryItem.salary_type === 'percentage' && !selectedHistoryItem.is_paid
               ? (selectedHistoryItem.calculated_commission || 0)
               : selectedHistoryItem.salary_base)
-            : (isPercentageType && !data.is_paid
-              ? (data.calculated_commission || 0)
+            : (!data.is_paid
+              ? (isPercentageType
+                ? (data.calculated_commission || 0)
+                : (isStudentCountType ? (data.calculated_per_student || data.salary_base || 0) : (data.salary_base || 0)))
               : (data.total_amount || data.salary_base))
         }
         onConfirm={async (bonus, deduction) => {
@@ -210,7 +241,7 @@ const StaffPaymentDetails = () => {
               <div className="space-y-4">
                 <div>
                   <label className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-1 mb-1.5 block">Maosh turi</label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
                       onClick={() => dispatch(updateEditForm({ salary_type: 'fixed' }))}
@@ -225,6 +256,13 @@ const StaffPaymentDetails = () => {
                     >
                       <span className="text-[10px] font-black uppercase">Foiz</span>
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => dispatch(updateEditForm({ salary_type: 'student_count' }))}
+                      className={`py-2.5 px-3 rounded-xl transition-all ${editForm.salary_type === 'student_count' ? 'bg-[var(--gold)] text-black shadow-[0_0_15px_rgba(184,134,11,0.3)]' : 'bg-[var(--bg-panel)] text-[var(--text-muted)] border border-[var(--border-glass)]'}`}
+                    >
+                      <span className="text-[10px] font-black uppercase">Student</span>
+                    </button>
                   </div>
                 </div>
 
@@ -238,7 +276,7 @@ const StaffPaymentDetails = () => {
                       className="w-full bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-xl py-2.5 px-4 text-[var(--text-primary)] focus:outline-none focus:border-[var(--gold)]/50 transition-all font-black text-sm shadow-inner italic"
                     />
                   </div>
-                ) : (
+                ) : editForm.salary_type === 'percentage' ? (
                   <div>
                     <label className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-1 mb-1.5 block">Foiz (%)</label>
                     <input
@@ -246,6 +284,16 @@ const StaffPaymentDetails = () => {
                       value={editForm.commission_percentage}
                       onChange={(e) => dispatch(updateEditForm({ commission_percentage: e.target.value }))}
                       className="w-full bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-xl py-2.5 px-4 text-[var(--text-primary)] focus:outline-none focus:border-[var(--gold)]/50 transition-all font-bold text-sm shadow-inner"
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-1 mb-1.5 block">Har bir o'quvchi uchun (UZS)</label>
+                    <AmountInput
+                      value={editForm.per_student_amount}
+                      onChange={(e) => dispatch(updateEditForm({ per_student_amount: e.target.value }))}
+                      placeholder="0"
+                      className="w-full bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-xl py-2.5 px-4 text-[var(--text-primary)] focus:outline-none focus:border-[var(--gold)]/50 transition-all font-black text-sm shadow-inner italic"
                     />
                   </div>
                 )}
@@ -291,7 +339,7 @@ const StaffPaymentDetails = () => {
               <div>
                 <h3 className="text-[10px] font-black text-[var(--text-primary)] uppercase tracking-widest leading-none mb-1">Xodim Sozlamalari</h3>
                 <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-tighter">
-                  {isPercentageType ? "Foiz asosida" : "Belgilangan maosh"}
+                  {isPercentageType ? "Foiz asosida" : isStudentCountType ? "O'quvchi boshiga" : "Belgilangan maosh"}
                 </p>
               </div>
             </div>
@@ -299,7 +347,7 @@ const StaffPaymentDetails = () => {
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <ThemeToggle />
 
-              {isPercentageType && !data.is_paid && (
+              {(isPercentageType || isStudentCountType) && !data.is_paid && (
                 <button
                   onClick={handleRecalculate}
                   disabled={recalculating}
@@ -364,19 +412,23 @@ const StaffPaymentDetails = () => {
               </div>
             </div>
 
-            <div className={`p-4 rounded-xl border ${isPercentageType ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-[var(--gold)]/20 bg-[var(--gold)]/5'}`}>
+            <div className={`p-4 rounded-xl border ${isPercentageType ? 'border-emerald-500/20 bg-emerald-500/5' : isStudentCountType ? 'border-blue-500/20 bg-blue-500/5' : 'border-[var(--gold)]/20 bg-[var(--gold)]/5'}`}>
               <p className="text-[8px] font-black text-[var(--text-muted)] uppercase mb-1">Maosh Turi</p>
               <div className="flex items-baseline gap-2">
                 <p className="text-xl font-black text-[var(--text-primary)] tabular-nums">
-                  {isPercentageType ? formatPercentage(data.commission_percentage) : formatCurrency(data.salary_base)}
+                  {isPercentageType
+                    ? formatPercentage(data.commission_percentage)
+                    : isStudentCountType
+                      ? `${formatCurrency(data.per_student_amount || 0)} / o'quvchi`
+                      : formatCurrency(data.salary_base)}
                 </p>
-                <span className="text-[9px] font-black text-[var(--text-muted)] uppercase">{isPercentageType ? "KPI" : "Belgilangan"}</span>
+                <span className="text-[9px] font-black text-[var(--text-muted)] uppercase">{isPercentageType ? "KPI" : isStudentCountType ? "Student Count" : "Belgilangan"}</span>
               </div>
             </div>
           </div>
 
           <div className="lg:col-span-8 space-y-4">
-            <div className={`grid gap-4 ${isPercentageType ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2'}`}>
+            <div className={`grid gap-4 ${isPercentageType || isStudentCountType ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2'}`}>
 
               {/* 1. ASOSIY MAOSH KARTASI */}
               {isPercentageType ? (
@@ -387,6 +439,15 @@ const StaffPaymentDetails = () => {
                   </p>
                   <h3 className="text-lg font-black text-[var(--text-primary)] tabular-nums">
                     {formatCurrency(data.calculated_commission || 0)}
+                  </h3>
+                </div>
+              ) : isStudentCountType ? (
+                <div className="p-4 rounded-xl bg-[var(--bg-panel)] border border-blue-500/20 shadow-lg shadow-blue-900/10">
+                  <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1">
+                    Asosiy (O'quvchi boshi)
+                  </p>
+                  <h3 className="text-lg font-black text-[var(--text-primary)] tabular-nums">
+                    {formatCurrency(data.calculated_per_student || data.salary_base || 0)}
                   </h3>
                 </div>
               ) : (
@@ -423,6 +484,26 @@ const StaffPaymentDetails = () => {
                   </div>
                 </>
               )}
+              {isStudentCountType && (
+                <>
+                  <div className="p-4 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-glass)]">
+                    <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-1">
+                      To'lagan o'quvchilar
+                    </p>
+                    <h3 className="text-lg font-black text-[var(--text-primary)] tabular-nums">
+                      {studentCountSummary.paidStudents} / {studentCountSummary.totalStudents}
+                    </h3>
+                  </div>
+                  <div className="p-4 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-glass)]">
+                    <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-1">
+                      Guruhlardan tushum
+                    </p>
+                    <h3 className="text-lg font-black text-[var(--text-primary)] tabular-nums">
+                      {formatCurrency(studentCountSummary.paidIncome)}
+                    </h3>
+                  </div>
+                </>
+              )}
 
               {/* 3. JAMI TO'LOV */}
               <div className="p-4 rounded-xl bg-[var(--gold)]/10 border border-[var(--gold)]/20">
@@ -430,7 +511,7 @@ const StaffPaymentDetails = () => {
                   Jami To'lov
                 </p>
                 <h3 className="text-lg font-black text-[var(--text-primary)] tabular-nums">
-                  {formatCurrency(data.total_amount)}
+                  {formatCurrency(displayCurrentAmount)}
                 </h3>
               </div>
             </div>
@@ -518,6 +599,81 @@ const StaffPaymentDetails = () => {
               </div>
             )}
 
+            {isStudentCountType && data.mentor_groups && data.mentor_groups.length > 0 && (
+              <div className="bg-[var(--bg-panel)] border border-blue-500/20 rounded-xl overflow-hidden">
+                <div className="px-5 py-3 border-b border-[var(--border-glass)] flex items-center justify-between bg-blue-500/5">
+                  <div className="flex items-center gap-2 text-blue-400">
+                    <Users size={14} />
+                    <span className="text-[11px] font-black uppercase tracking-widest">Student Count Tafsiloti</span>
+                  </div>
+                  <span className="text-[9px] font-black text-blue-400/70 uppercase">
+                    To'langan: {formatCurrency(studentCountSummary.mentorSharePaid)} | Kutilayotgan: {formatCurrency(studentCountSummary.mentorShareExpected)}
+                  </span>
+                </div>
+                <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 border-b border-[var(--border-glass)]">
+                  <div className="p-3 rounded-lg bg-[var(--bg-void)] border border-[var(--border-glass)]">
+                    <p className="text-[8px] font-black text-[var(--text-muted)] uppercase">Jami guruh</p>
+                    <p className="text-[13px] font-black text-[var(--text-primary)]">{studentCountSummary.groups}</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-[var(--bg-void)] border border-[var(--border-glass)]">
+                    <p className="text-[8px] font-black text-[var(--text-muted)] uppercase">To'lagan / jami student</p>
+                    <p className="text-[13px] font-black text-[var(--text-primary)]">{studentCountSummary.paidStudents} / {studentCountSummary.totalStudents}</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-[var(--bg-void)] border border-[var(--border-glass)]">
+                    <p className="text-[8px] font-black text-[var(--text-muted)] uppercase">Aniq tushum</p>
+                    <p className="text-[13px] font-black text-emerald-400">{formatCurrency(studentCountSummary.paidIncome)}</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-[var(--bg-void)] border border-[var(--border-glass)]">
+                    <p className="text-[8px] font-black text-[var(--text-muted)] uppercase">Kutilayotgan tushum</p>
+                    <p className="text-[13px] font-black text-amber-400">{formatCurrency(studentCountSummary.expectedIncome)}</p>
+                  </div>
+                </div>
+                <div className="p-3 overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="border-b border-[var(--border-glass)]">
+                        <th className="px-3 py-2 text-[8px] font-black text-[var(--text-muted)] uppercase">Guruh</th>
+                        <th className="px-3 py-2 text-[8px] font-black text-[var(--text-muted)] uppercase text-center">Student</th>
+                        <th className="px-3 py-2 text-[8px] font-black text-[var(--text-muted)] uppercase text-right">Narx</th>
+                        <th className="px-3 py-2 text-[8px] font-black text-[var(--text-muted)] uppercase text-right">Aniq tushum</th>
+                        <th className="px-3 py-2 text-[8px] font-black text-[var(--text-muted)] uppercase text-right">Kutilayotgan tushum</th>
+                        <th className="px-3 py-2 text-[8px] font-black text-[var(--text-muted)] uppercase text-right">Mentor ulushi (aniq)</th>
+                        <th className="px-3 py-2 text-[8px] font-black text-[var(--text-muted)] uppercase text-right">Mentor ulushi (kutil.)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--border-glass)]">
+                      {data.mentor_groups.map((group) => (
+                        <tr key={group.id} className="hover:bg-[var(--gold-dim)] transition-colors">
+                          <td className="px-3 py-2.5">
+                            <p className="text-[10px] font-black text-[var(--text-primary)] leading-tight uppercase italic">{group.name}</p>
+                            <p className="text-[8px] text-[var(--text-muted)] font-bold uppercase">{group.branch_name || "Asosiy"}</p>
+                          </td>
+                          <td className="px-3 py-2.5 text-center font-bold text-[10px] text-[var(--text-secondary)]">
+                            {group.paid_students_count || 0} / {group.students_count || 0}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-bold text-[10px] text-[var(--text-secondary)] tabular-nums">
+                            {formatCurrency(group.monthly_price || 0)}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-bold text-[10px] text-emerald-400 tabular-nums">
+                            {formatCurrency(group.monthly_income || 0)}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-bold text-[10px] text-amber-400 tabular-nums">
+                            {formatCurrency(group.expected_income || 0)}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-black text-[10px] text-blue-400 tabular-nums">
+                            {formatCurrency(group.mentor_share_paid || 0)}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-black text-[10px] text-blue-300 tabular-nums">
+                            {formatCurrency(group.mentor_share_expected || 0)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             <div className="bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-xl overflow-hidden">
               <div className="px-5 py-3 border-b border-[var(--border-glass)] flex items-center gap-2 bg-[var(--bg-void)]/50">
                 <History size={14} className="text-[var(--gold)]" />
@@ -545,7 +701,9 @@ const StaffPaymentDetails = () => {
                               ? (item.total_amount || item.amount || item.salary_base)
                               : (item.salary_type === 'percentage'
                                 ? (item.calculated_commission || item.salary_base)
-                                : item.salary_base)
+                                : (item.salary_type === 'student_count'
+                                  ? (item.calculated_per_student || item.salary_base)
+                                  : item.salary_base))
                           )}
                         </td>
                         <td className="px-5 py-3 text-right">

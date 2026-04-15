@@ -141,12 +141,17 @@ class StudentSerializer(serializers.ModelSerializer):
         group = validated_data.get('group')
         create_payment = validated_data.pop('create_payment', True)
         
-        # Branch aniqlash
+        # 1. Branch aniqlash
         branch = validated_data.get('branch')
-        if not branch and request and hasattr(request.user, 'branch'):
+        if not branch:
+            if group:
+                branch = group.branch
+            elif request and hasattr(request.user, 'branch'):
+                branch = request.user.branch
+        
+        # Branch baribir topilmadi? 
+        if not branch and request and request.user.role == 'mentor':
             branch = request.user.branch
-        if not branch and group:
-            branch = group.branch
 
         with transaction.atomic():
             # 1. Studentni yaratish
@@ -155,40 +160,26 @@ class StudentSerializer(serializers.ModelSerializer):
             # 2. Agar guruh tanlangan bo'lsa, M2M bog'liqlikni yaratish
             if group:
                 from .models import GroupEnrollment
-                from .utils import get_lessons_in_month
-                from decimal import Decimal
+                from finance.utils import floor_amount
 
                 GroupEnrollment.objects.get_or_create(
                     student=student,
                     group=group
                 )
 
-                # 3. Pro-rated to'lov varaqasini yaratish (SHARTLI)
+                # 3. Oylik to'lov varaqasini yaratish (har doim to'liq kurs narxi)
                 if create_payment:
                     today = timezone.now().date()
                     month_start = today.replace(day=1)
-                    
-                    # Oydagi barcha va qolgan darslarni hisoblash
-                    all_lessons = get_lessons_in_month(group.days, today.year, today.month)
-                    remaining_lessons = [l for l in all_lessons if l >= today]
-                    
-                    # Asosiy narxni aniqlash
-                    base_price = Decimal(str(student.custom_fee if student.custom_fee else group.monthly_price))
-                    
-                    if all_lessons:
-                        # Bir dars narxi = Oylik to'lov / Jami darslar
-                        price_per_lesson = base_price / Decimal(len(all_lessons))
-                        # To'lov summasi = Bir dars narxi * Qolgan darslar
-                        pro_rated_amount = price_per_lesson * Decimal(len(remaining_lessons))
-                    else:
-                        pro_rated_amount = base_price
+                    base_price = student.custom_fee if student.custom_fee is not None else group.monthly_price
+                    final_amount = floor_amount(base_price)
 
                     Payment.objects.get_or_create(
                         student=student,
                         group=group,
                         month=month_start,
                         defaults={
-                            'amount': pro_rated_amount.quantize(Decimal('0.01')),
+                            'amount': final_amount,
                             'is_paid': False
                         }
                     )
@@ -464,13 +455,15 @@ class MentorSerializer(serializers.ModelSerializer):
     accessible_branches = serializers.SerializerMethodField()
     # Guruhlar metod orqali olinadi
     mentor_groups = serializers.SerializerMethodField()
+    groups_count = serializers.SerializerMethodField()
+    students_count = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = (
             'id', 'username', 'first_name','color','image','last_name','subject', 
             'phone_number', 'is_active', 'role', 'branch', 'branch_id', 
-            'accessible_branches', 'mentor_groups'
+            'accessible_branches', 'mentor_groups', 'groups_count', 'students_count'
         )
 
     def get_accessible_branches(self, obj):
@@ -509,6 +502,34 @@ class MentorSerializer(serializers.ModelSerializer):
             all_groups = all_groups.filter(branch_id=obj.branch_id)
 
         return GroupSimpleSerializer(all_groups, many=True, context=self.context).data
+
+    def _get_filtered_groups(self, obj):
+        request = self.context.get('request')
+        active_branch_id = request.query_params.get('branch_id') if request else None
+
+        main_groups = obj.mentor_groups.all()
+        additional_groups = Group.objects.filter(additional_mentors__mentor=obj)
+        all_groups = (main_groups | additional_groups).distinct()
+
+        if active_branch_id:
+            try:
+                all_groups = all_groups.filter(branch_id=int(active_branch_id))
+            except (ValueError, TypeError):
+                all_groups = all_groups.none()
+        else:
+            all_groups = all_groups.filter(branch_id=obj.branch_id)
+
+        return all_groups
+
+    def get_groups_count(self, obj):
+        return self._get_filtered_groups(obj).count()
+
+    def get_students_count(self, obj):
+        groups_qs = self._get_filtered_groups(obj)
+        return Student.objects.filter(
+            enrollments__group__in=groups_qs,
+            enrollments__is_active=True
+        ).distinct().count()
     
 class AdminUserSerializers(serializers.ModelSerializer):
     branch = BranchSerializer(read_only=True)

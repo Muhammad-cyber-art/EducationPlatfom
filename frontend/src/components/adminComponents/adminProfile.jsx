@@ -54,7 +54,8 @@ const PERMISSION_LABELS = {
   "students": "O'quvchilar",
   "teachers": "Mentorlar",
   "branches": "Filiallar",
-  "reports": "Hisobotlar"
+  "reports": "Hisobotlar",
+  "pay_slip": "Oylik kvitansiya"
 };
 
 const AdminProfile = () => {
@@ -93,7 +94,7 @@ const AdminProfile = () => {
   });
 
   useEffect(() => {
-    const source = staffPermissions || admin?.permissions;
+    const source = staffPermissions?.permissions || staffPermissions || admin?.permissions;
     if (source) {
       const backendPerms = {};
       Object.keys(PERMISSION_LABELS).forEach(key => {
@@ -456,7 +457,7 @@ const AdminProfile = () => {
             </div>
 
             {/* MOLIYA DAFTARI LINK (Only for self profile or appropriate role) */}
-            {!admin_id && user_info?.role === "admin" && (
+            {!admin_id && user_info?.role === "admin" && state.permissions?.pay_slip !== false && (
               <div className="pt-2">
                 <button
                   onClick={() => navigate('/admin/finance')}

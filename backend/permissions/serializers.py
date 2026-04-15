@@ -62,10 +62,14 @@ class StaffPermissionSerializer(serializers.ModelSerializer):
     branches = serializers.BooleanField(default=False, label="Filiallar (Branches)")
     reports = serializers.BooleanField(default=False, label="Hisobotlar (Reports)")
     homework = serializers.BooleanField(default=False, label="Vazifalar va Davomat (Homework)")
+    pay_slip = serializers.BooleanField(default=False, label="Oylik maosh kvitansiyasi (Pay Slip)")
 
     class Meta:
         model = StaffPermission
-        fields = ['id', 'user', 'username', 'finance', 'groups', 'students', 'teachers', 'branches', 'reports', 'homework']
+        fields = [
+            'id', 'user', 'username', 'finance', 'groups', 'students', 
+            'teachers', 'branches', 'reports', 'homework', 'pay_slip'
+        ]
         read_only_fields = ['id', 'user'] 
 
     def to_representation(self, instance):
@@ -79,7 +83,7 @@ class StaffPermissionSerializer(serializers.ModelSerializer):
         
         # Super admin hamma narsaga ruxsatga ega
         if instance.user.role == 'super_admin':
-            for module in ['finance', 'groups', 'students', 'teachers', 'branches', 'reports', 'homework']:
+            for module in ['finance', 'groups', 'students', 'teachers', 'branches', 'reports', 'homework', 'pay_slip']:
                 ret[module] = True
             return ret
 
@@ -93,6 +97,7 @@ class StaffPermissionSerializer(serializers.ModelSerializer):
         ret['branches'] = bool(perms.get('branches'))
         ret['reports'] = bool(perms.get('reports'))
         ret['homework'] = bool(perms.get('homework'))
+        ret['pay_slip'] = bool(perms.get('pay_slip'))
         
         return ret
 
@@ -105,7 +110,7 @@ class StaffPermissionSerializer(serializers.ModelSerializer):
         permissions_json = {}
         all_actions = ["view", "create", "edit", "delete"]
         
-        modules = ['finance', 'groups', 'students', 'teachers', 'branches', 'reports', 'homework']
+        modules = ['finance', 'groups', 'students', 'teachers', 'branches', 'reports', 'homework', 'pay_slip']
         for module in modules:
             # Agar True bo'lsa, full access beramiz
             if attrs.get(module):

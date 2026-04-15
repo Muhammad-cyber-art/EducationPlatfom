@@ -62,10 +62,15 @@ const GroupCard = React.memo(({ group, readOnly, currentBranchId }) => {
           boxShadow: `0 4px 15px ${selectedColor}40`
         }}
       />
-      {group.today_attendance_confirmed && (
+      {group.today_attendance_confirmed ? (
         <div className="absolute top-4 right-4 z-10 px-2.5 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/20 shadow-sm flex items-center gap-1" title="Bugungi davomat tasdiqlangan">
           <Check size={10} className="text-emerald-500" strokeWidth={3} />
           <span className="text-[8px] font-black text-emerald-500 uppercase tracking-widest">Qilindi</span>
+        </div>
+      ) : (
+        <div className="absolute top-4 right-4 z-10 px-2.5 py-1 rounded-md bg-red-500/10 border border-red-500/20 shadow-sm flex items-center gap-1" title="Bugungi davomat olinmagan">
+          <X size={10} className="text-red-500" strokeWidth={3} />
+          <span className="text-[8px] font-black text-red-500 uppercase tracking-widest">Olinmagan</span>
         </div>
       )}
       <div className="p-4 sm:p-6">
@@ -211,7 +216,8 @@ export default function GroupsListPage() {
 
   const perms = userData.permissions || {};
   const isSuperAdmin = user_info?.role === "super_admin";
-  const canCreateGroup = isSuperAdmin || perms.groups === true;
+  const isMentor = user_info?.role === "mentor" || userData?.role === "mentor";
+  const canCreateGroup = (isSuperAdmin || perms.groups === true) && !isMentor;
 
   useEffect(() => {
     const searchTimer = setTimeout(() => {

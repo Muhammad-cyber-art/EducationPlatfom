@@ -58,10 +58,12 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
     salary_type = serializers.SerializerMethodField()  # ✅ TUZATILDI
     fixed_salary = serializers.SerializerMethodField()  # ✅ TUZATILDI
     commission_percentage = serializers.SerializerMethodField()  # ✅ TUZATILDI
+    per_student_amount = serializers.SerializerMethodField()
     
     # ✅ QO'SHIMCHA FIELD: Mentor guruhlari daromadi
     groups_income = serializers.SerializerMethodField()
     calculated_commission = serializers.SerializerMethodField()
+    calculated_per_student = serializers.SerializerMethodField()
     mentor_groups = serializers.SerializerMethodField() # ✅ QO'SHILDI
     
     class Meta:
@@ -82,8 +84,10 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             'salary_type',
             'fixed_salary',
             'commission_percentage',
+            'per_student_amount',
             'groups_income',           # ✅ QO'SHILDI
             'calculated_commission',    # ✅ QO'SHILDI
+            'calculated_per_student',   # ✅ QO'SHILDI
             'mentor_groups',            # ✅ QO'SHILDI (Guruhlar tafsiloti)
             'is_paid', 
             'paid_at', 
@@ -132,6 +136,15 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
         try:
             if hasattr(obj.employee, 'staff_profile'):
                 return float(obj.employee.staff_profile.commission_percentage)
+            return None
+        except:
+            return None
+
+    def get_per_student_amount(self, obj):
+        """Per student amount ni xavfsiz olish"""
+        try:
+            if hasattr(obj.employee, 'staff_profile'):
+                return float(obj.employee.staff_profile.per_student_amount)
             return None
         except:
             return None
@@ -210,6 +223,35 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
         except Exception as e:
             print(f"calculated_commission hisoblashda xato: {e}")
             return None
+
+    def get_calculated_per_student(self, obj):
+        """Hisoblangan o'quvchilar soni bo'yicha maosh"""
+        try:
+            from finance.utils import floor_amount
+            if not hasattr(obj.employee, 'staff_profile'):
+                return None
+            profile = obj.employee.staff_profile
+            if profile.salary_type != 'student_count':
+                return None
+            
+            from groups.models import Group, GroupEnrollment
+            import calendar
+            # Biz payment.month dan foydalanamiz
+            last_day_num = calendar.monthrange(obj.month.year, obj.month.month)[1]
+            last_day = obj.month.replace(day=last_day_num)
+            
+            mentor_groups = Group.objects.filter(mentor=obj.employee)
+            total_students = GroupEnrollment.objects.filter(
+                group__in=mentor_groups,
+                joined_at__date__lte=last_day,
+                is_active=True
+            ).values('student_id').distinct().count()
+            
+            calculated = float(total_students) * float(profile.per_student_amount)
+            return int(floor_amount(calculated))
+        except Exception as e:
+            print(f"calculated_per_student hisoblashda xato: {e}")
+            return None
     
     def get_mentor_groups(self, obj):
         """Mentorning guruhlari ro'yxati (floor qilingan summalar)"""
@@ -217,18 +259,38 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             if obj.employee.role != 'mentor':
                 return None
             from finance.utils import floor_amount
+            from decimal import Decimal
             mentor_groups = Group.objects.filter(
                 mentor=obj.employee,
                 is_faol=True
             ).select_related('branch')
             
             groups_data = []
+            per_student_amount = Decimal('0')
+            if hasattr(obj.employee, 'staff_profile'):
+                per_student_amount = Decimal(str(obj.employee.staff_profile.per_student_amount or 0))
+
             for group in mentor_groups:
                 group_revenue = 0
                 group_refunds = 0
                 group_extra = 0
+                expected_income = 0
+                expected_students_count = group.students.count()
+                paid_students_count = 0
                 
                 for student in group.students.all():
+                    month_payment = Payment.objects.filter(
+                        student=student,
+                        group=group,
+                        month__year=obj.month.year,
+                        month__month=obj.month.month
+                    ).first()
+                    if month_payment:
+                        expected_income += float(month_payment.amount or 0)
+                    else:
+                        fallback_amount = student.custom_fee if student.custom_fee is not None else group.monthly_price
+                        expected_income += float(floor_amount(fallback_amount))
+
                     payment = Payment.objects.filter(
                         student=student, 
                         group=group, 
@@ -238,6 +300,7 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                     ).first()
                     if payment:
                         group_revenue += float(payment.amount)
+                        paid_students_count += 1
                     
                     if getattr(payment, 'refund_ignored', False):
                         refund = 0
@@ -259,16 +322,22 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                             group_extra -= float(tx.amount)
 
                 net = group_revenue - group_refunds + group_extra
+                mentor_share_paid = int(floor_amount(Decimal(str(paid_students_count)) * per_student_amount))
+                mentor_share_expected = int(floor_amount(Decimal(str(expected_students_count)) * per_student_amount))
                 groups_data.append({
                     'id': group.id,
                     'name': group.name,
                     'monthly_price': int(floor_amount(group.monthly_price or 0)),
                     'branch_name': group.branch.name if group.branch else None,
                     'students_count': group.students.count(),
+                    'paid_students_count': paid_students_count,
                     'monthly_income': int(floor_amount(group_revenue)),
+                    'expected_income': int(floor_amount(expected_income)),
                     'refund_amount': int(floor_amount(group_refunds)),
                     'extra_income': int(floor_amount(group_extra)),
                     'real_income': int(floor_amount(net)),
+                    'mentor_share_paid': mentor_share_paid,
+                    'mentor_share_expected': mentor_share_expected,
                     'is_faol': group.is_faol
                 })
             
@@ -302,6 +371,7 @@ class StaffProfileSerializer(serializers.ModelSerializer):
             'salary_type',
             'fixed_salary',
             'commission_percentage',
+            'per_student_amount',
             'salary_display',
             'karta'
         ]

@@ -18,6 +18,14 @@ const SuperAdminDashboard = () => {
     enabled: !!branchId,
   });
 
+  const { data: branchFinance, isLoading: financeLoading } = useQuery({
+    queryKey: ['branch-finance', branchId],
+    queryFn: () => api.get(`/finance/statistics/branch-finance/${branchId}/`).then(res => res.data),
+    enabled: !!branchId,
+  });
+
+  const stats = branchFinance?.stats;
+
   const handleSendMessage = async () => {
     if (!message.trim()) {
       toast.error("Xabar matnini kiriting.");
@@ -63,17 +71,45 @@ const SuperAdminDashboard = () => {
 
       {/* STATS MATRIX */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard onClick={() => navigate('admins')} title="Adminstrator" icon={<ShieldCheck size={20} />} trend="+2.4" delay="0" />
-        <StatCard onClick={() => navigate('mentors')} title="Mentorlar" icon={<UserCheck size={20} />} trend="+5.1" delay="100" />
-        <StatCard onClick={() => navigate('all_students')} title="O'quvchilar" icon={<Users size={20} />} trend="+12.8" delay="200" />
-        <StatCard onClick={() => navigate('groups')} title="Guruhlar" icon={<Building2 size={20} />} trend="+8.2" delay="300" />
+        <StatCard onClick={() => navigate('admins')} title="Adminstratorlar" value={stats?.admins || 0} icon={<ShieldCheck size={20} />} trend="STAFF" delay="0" />
+        <StatCard onClick={() => navigate('mentors')} title="Mentorlar" value={stats?.mentors || 0} icon={<UserCheck size={20} />} trend="STAFF" delay="100" />
+        <StatCard onClick={() => navigate('all_students')} title="O'quvchilar" value={stats?.students || 0} icon={<Users size={20} />} trend="STUDENTS" delay="200" />
+        <StatCard onClick={() => navigate('groups')} title="Guruhlar" value={stats?.groups || 0} icon={<Building2 size={20} />} trend="GROUPS" delay="300" />
       </div>
 
-      {/* BOT STATS MATRIX */}
+      {/* ATTENDANCE & BOT STATS MATRIX */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="lux-card p-6 flex flex-col justify-between border-emerald-500/20 col-span-2 lg:col-span-1">
+           <div className="flex items-center justify-between mb-6">
+              <div className="p-3 bg-emerald-500/10 rounded-xl border border-emerald-500/20 text-emerald-500">
+                 <Activity size={20} />
+              </div>
+              <div className="px-2 py-1 rounded-full text-[8px] font-black tracking-widest bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 uppercase">
+                Bugun
+              </div>
+           </div>
+           <div>
+              <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-[0.4em] mb-2">Davomat Ko'rsatkichi</p>
+              <div className="flex items-end justify-between">
+                 <div>
+                    <h3 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-widest">Bugungi Kelmaganlar</h3>
+                    <p className="text-[10px] font-bold text-[var(--gold)] mt-1">Jami o'quvchi: {stats?.attendance_today?.total || 0}</p>
+                 </div>
+                 <div className="text-right">
+                    <p className="text-4xl font-black text-red-500 italic font-mono drop-shadow-[0_0_15px_rgba(239,68,68,0.3)]">{stats?.attendance_today?.absent || 0}</p>
+                    <p className="text-[7px] font-black text-red-500/60 uppercase tracking-widest mt-1">Kelmaganlar soni</p>
+                 </div>
+              </div>
+              {/* Progress bar showing absence ratio */}
+              <div className="w-full h-1.5 bg-[var(--bg-void)] rounded-full mt-4 overflow-hidden border border-[var(--border-glass)]">
+                  <div 
+                    className="h-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)] transition-all duration-1000" 
+                    style={{ width: `${stats?.attendance_today?.total > 0 ? (stats?.attendance_today?.absent / stats?.attendance_today?.total) * 100 : 0}%` }}
+                  />
+              </div>
+           </div>
+        </div>
         <StatCard title="Bot Jami" value={botStats?.total_bot_users} icon={<MessageSquare size={20} />} trend="BOT" delay="400" variant="gold" />
-        {/* <StatCard title="Bot O'quvchi" value={botStats?.students_bot_count} icon={<UserPlusIcon size={20} />} trend="BOT" delay="500" variant="gold" />
-        <StatCard title="Bot Ota-ona" value={botStats?.parents_bot_count} icon={<Heart size={20} />} trend="BOT" delay="600" variant="gold" /> */}
       </div>
 
       {/* BROADCAST CENTER */}
@@ -151,7 +187,7 @@ const StatCard = ({ onClick, title, value, icon, trend, delay, variant = "defaul
           {icon}
         </div>
         <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-[8px] font-black tracking-widest border ${variant === "gold" ? "bg-[var(--gold-dim)] text-[var(--gold)] border-[var(--gold)]/20" : "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"}`}>
-          <ArrowUpRight size={10} /> {trend}{trend === "BOT" ? "" : "%"}
+          <ArrowUpRight size={10} /> {trend}{!isNaN(trend) ? "%" : ""}
         </div>
       </div>
       <div>

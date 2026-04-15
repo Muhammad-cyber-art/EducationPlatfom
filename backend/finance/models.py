@@ -233,6 +233,7 @@ class StaffProfile(models.Model):
     SALARY_TYPE_CHOICES = [
         ('fixed', 'Belgilangan oylik (so\'m)'),
         ('percentage', 'Foiz asosida (%)'),
+        ('student_count', 'O\'quvchilar soni bo\'yicha (so\'m/o\'quvchi)'),
     ]
     
     user = models.OneToOneField(
@@ -265,6 +266,14 @@ class StaffProfile(models.Model):
         verbose_name="Komissiya foizi (%)",
         help_text="Faqat 'Foiz asosida' turida ishlatiladi"
     )
+
+    per_student_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        verbose_name="Har bir o'quvchi uchun (so'm)",
+        help_text="Faqat 'O'quvchilar soni bo'yicha' turida ishlatiladi"
+    )
     
     karta = models.CharField(
         max_length=20,
@@ -276,6 +285,10 @@ class StaffProfile(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Yaratilgan")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Yangilangan")
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._old_per_student = self.per_student_amount
+
     class Meta:
         verbose_name = "Xodim profili"
         verbose_name_plural = "Xodimlar profillari"
@@ -283,15 +296,19 @@ class StaffProfile(models.Model):
     def __str__(self):
         if self.salary_type == 'fixed':
             return f"{self.user.get_full_name() or self.user.username} - {self.fixed_salary:,.0f} so'm"
-        else:
+        elif self.salary_type == 'percentage':
             return f"{self.user.get_full_name() or self.user.username} - {self.commission_percentage}%"
+        else:
+            return f"{self.user.get_full_name() or self.user.username} - {self.per_student_amount:,.0f} so'm/o'quvchi"
 
     def get_salary_display(self):
         """Maoshni chiroyli formatda ko'rsatish"""
         if self.salary_type == 'fixed':
             return f"{int(self.fixed_salary):,} so'm".replace(',', '.')
-        else:
+        elif self.salary_type == 'percentage':
             return f"{self.commission_percentage}% (foizdan)"
+        else:
+            return f"{int(self.per_student_amount):,} so'm (har bir o'quvchi uchun)".replace(',', '.')
     
     def calculate_monthly_income(self, month):
         """
@@ -368,6 +385,33 @@ class StaffProfile(models.Model):
             commission = total_income * commission_pct
             return floor_amount(commission)
         
+        elif self.salary_type == 'student_count':
+            # ✅ O'quvchilar soni bo'yicha
+            from groups.models import GroupEnrollment
+            import calendar
+            from datetime import date
+            
+            # Oyni boshlanishi va oxiri
+            first_day = month.replace(day=1)
+            last_day_num = calendar.monthrange(month.year, month.month)[1]
+            last_day = month.replace(day=last_day_num)
+            
+            # Mentorning barcha guruhlarini topish
+            from groups.models import Group
+            mentor_groups = Group.objects.filter(mentor=self.user)
+            
+            # Shu oydagi o'quvchilar sonini hisoblash
+            # Talab: O'sha oyda guruhda faol bo'lgan (yoki darsga qatnashgan) o'quvchilar
+            # Biz GroupEnrollment orqali hisoblaymiz: joined_at <= last_day va is_active=True
+            total_students = GroupEnrollment.objects.filter(
+                group__in=mentor_groups,
+                joined_at__date__lte=last_day,
+                is_active=True
+            ).values('student_id').distinct().count()
+            
+            salary = Decimal(str(total_students)) * Decimal(str(self.per_student_amount))
+            return floor_amount(salary)
+        
         return Decimal('0')
     
     def save(self, *args, **kwargs):
@@ -388,7 +432,14 @@ class StaffProfile(models.Model):
         super().save(*args, **kwargs)
         
         # Agar maosh o'zgargan bo'lsa, to'lanmagan paymentlarni yangilash
-        if old_fixed is not None and (old_fixed != self.fixed_salary or old_percentage != self.commission_percentage):
+        salary_fields_changed = any([
+            old_fixed is not None and old_fixed != self.fixed_salary,
+            old_percentage is not None and old_percentage != self.commission_percentage,
+            # Yangi fieldni ham tekshiramiz (agar pk bo'lsa)
+            hasattr(self, '_old_per_student') and self._old_per_student != self.per_student_amount
+        ])
+        
+        if salary_fields_changed:
             self._update_unpaid_payments()
     
     def _update_unpaid_payments(self):

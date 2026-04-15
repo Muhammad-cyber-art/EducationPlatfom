@@ -36,7 +36,7 @@ export default function MentorSidebar() {
 
     const menuItems = [
         { name: "Guruhlar", path: "/mentor", icon: <LayoutDashboard size={18} /> },
-        { name: "Moliya", path: "/mentor/finance", icon: <DollarSign size={18} /> }
+        ...(userMe?.permissions?.pay_slip !== false ? [{ name: "Moliya", path: "/mentor/finance", icon: <DollarSign size={18} /> }] : [])
     ];
 
     return (

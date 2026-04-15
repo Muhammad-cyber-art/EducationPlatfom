@@ -118,7 +118,7 @@ export default function StudentProfilePage() {
 
   const perms = userData.permissions || {};
   const userRole = (userData.role || user_info?.role || "").toLowerCase();
-  const canEditStudent = userRole === "admin" || userRole === "super_admin" || perms.students === true;
+  const canEditStudent = userRole === "admin" || userRole === "super_admin" || (userRole === "mentor" && perms.students === true);
   const canConfirmPayment = userRole === "admin" || userRole === "super_admin";
 
   const { data: studentData = {}, isLoading: studentLoading } = useQuery({

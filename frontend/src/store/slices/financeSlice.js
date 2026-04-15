@@ -12,6 +12,7 @@ const initialState = {
     editForm: {
         fixed_salary: "",
         commission_percentage: "",
+        per_student_amount: "",
         salary_type: "fixed",
         karta: ""
     },

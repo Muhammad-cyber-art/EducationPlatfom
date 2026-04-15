@@ -196,6 +196,7 @@ export default function PreApp() {
               <Route path="finance" element={<ProtectedPage allowed={ROLES.ALL_ACCESS}><MentorFinance /></ProtectedPage>} />
               <Route path="groups/:group_id" element={<ProtectedPage allowed={ROLES.ALL_ACCESS}><GroupDetailLayout /></ProtectedPage>}>
                 <Route index element={<ProtectedPage allowed={ROLES.ALL_ACCESS}><GroupDetailPage /></ProtectedPage>} />
+                <Route path="add_student" element={<ProtectedPage allowed={ROLES.ALL_ACCESS}><StudentAdd /></ProtectedPage>} />
                 <Route path="students/:student_id" element={<ProtectedPage allowed={ROLES.ALL_ACCESS}><StudentProfilePage /></ProtectedPage>} />
                 <Route path="homeworks/:mission_id" element={<ProtectedPage allowed={ROLES.ALL_ACCESS}><HomeworkSubmission /></ProtectedPage>} />
                 <Route path="mock-tests/:test_id" element={<ProtectedPage allowed={ROLES.ALL_ACCESS}><MockTestDetails /></ProtectedPage>} />

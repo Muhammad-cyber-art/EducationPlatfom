@@ -37,6 +37,7 @@ class GroupViewSet(viewsets.ModelViewSet):
     serializer_class = GroupSerializer
     permission_classes = [IsGroupOwnerOrSuperAdmin]
     authentication_classes = [JWTAuthentication, SessionAuthentication]
+    module_name = 'groups'
 
     # --- QIDIRUV VA FILTR BACKENDLARI QO'SHILDI ---
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
@@ -172,30 +173,22 @@ class GroupViewSet(viewsets.ModelViewSet):
                     student.group = group
                     student.save()
                 
-                # Pro-rated to'lov varaqasini yaratish (SHARTLI)
+                # Oylik to'lov varaqasini yaratish (har doim to'liq kurs narxi)
                 if create_payment:
-                    from .utils import get_lessons_in_month
                     from finance.models import Payment
-                    from decimal import Decimal
+                    from finance.utils import floor_amount
                     
                     today = timezone.now().date()
                     month_start = today.replace(day=1)
-                    all_lessons = get_lessons_in_month(group.days, today.year, today.month)
-                    remaining_lessons = [l for l in all_lessons if l >= today]
-                    base_price = Decimal(str(student.custom_fee if student.custom_fee else group.monthly_price))
-                    
-                    if all_lessons:
-                        price_per_lesson = base_price / Decimal(len(all_lessons))
-                        pro_rated_amount = price_per_lesson * Decimal(len(remaining_lessons))
-                    else:
-                        pro_rated_amount = base_price
+                    base_price = student.custom_fee if student.custom_fee is not None else group.monthly_price
+                    final_amount = floor_amount(base_price)
 
                     Payment.objects.get_or_create(
                         student=student,
                         group=group,
                         month=month_start,
                         defaults={
-                            'amount': pro_rated_amount.quantize(Decimal('0.01')),
+                            'amount': final_amount,
                             'is_paid': False
                         }
                     )
@@ -349,6 +342,7 @@ class GroupViewSet(viewsets.ModelViewSet):
 class StudentViewSet(viewsets.ModelViewSet):
     serializer_class = StudentSerializer
     permission_classes = [IsStudentGroupOwnerOrSuperAdmin] 
+    module_name = 'students'
 
     # --- QIDIRUV VA FILTR QO'SHILDI ---
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
@@ -398,8 +392,6 @@ class StudentViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     def get_permissions(self):
-        if self.action == 'create':
-            return [IsAdminOnly()]
         return super().get_permissions()
 
     # --- TO'LOV FUNKSIYASI (O'zgarishsiz qoldi) ---
@@ -407,11 +399,12 @@ class StudentViewSet(viewsets.ModelViewSet):
     def pay(self, request, pk=None):
         student = self.get_object()
         group = student.group
+        from finance.utils import floor_amount
         
         payment = Payment.objects.create(
             student=student,
             group=group,
-            amount=group.monthly_price,
+            amount=floor_amount(group.monthly_price),
             month=timezone.now().date().replace(day=1),
             marked_by=request.user,
             is_paid=True,
@@ -525,6 +518,8 @@ class StudentViewSet(viewsets.ModelViewSet):
                     student.custom_fee if student.custom_fee is not None
                     else new_group.monthly_price
                 )
+                from finance.utils import floor_amount
+                new_monthly_amount = floor_amount(new_monthly_amount)
 
                 if old_payment:
                     existing_new = Payment.objects.filter(

@@ -13,6 +13,7 @@ from .serializers import (
 from django.contrib.auth import get_user_model
 from django.db.models import Sum, Q, F, Count ,OuterRef, Subquery
 from groups.models import Group, Branch ,Student
+from homework_attends.models import Attendance
 from rest_framework.permissions import IsAuthenticated
 from .services import generate_monthly_payments
 from permissions.permissions import HasModulePermission
@@ -685,7 +686,7 @@ class StaffProfileViewSet(viewsets.ModelViewSet):
                 'id': group.id,
                 'name': group.name,
                 'monthly_price': float(group.monthly_price or 0),
-                'branch_name': group.branch.name if g.branch else None,
+                'branch_name': group.branch.name if group.branch else None,
                 'students_count': students_count,
                 'expected_income': expected,
                 'paid_income': float(paid)
@@ -1070,7 +1071,12 @@ class BranchFinanceDetailView(APIView):
                 "mentors": mentors_count,
                 "admins": admins_count,
                 "groups": groups_count,
-                "students": students_count
+                "students": students_count,
+                "attendance_today": {
+                    "present": Attendance.objects.filter(group__branch=branch, date=today, is_present=True).count(),
+                    "absent": Attendance.objects.filter(group__branch=branch, date=today, is_present=False).count(),
+                    "total": Attendance.objects.filter(group__branch=branch, date=today).count()
+                }
             },
             "finance": {
                 "expected_income": float(expected_income),
