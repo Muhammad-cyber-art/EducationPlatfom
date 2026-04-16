@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Group, Student ,MentorGroupAssignment
+from .models import Group, Student ,MentorGroupAssignment, WaitingStudent
 from django.contrib.auth import get_user_model
 from branches.serializers import BranchSerializer
 from branches.models import Branch
@@ -578,3 +578,9 @@ class GroupTransferSerializer(serializers.ModelSerializer):
         if obj.marked_by:
             return obj.marked_by.get_full_name() or obj.marked_by.username
         return "Tizim"
+
+class WaitingStudentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WaitingStudent
+        fields = '__all__'
+        read_only_fields = ('created_at',)

@@ -210,6 +210,18 @@ export default function StudentProfilePage() {
     }
   });
 
+  const handleDeleteHistory = async (paymentId) => {
+    if (userRole !== 'super_admin') return toast.error("Faqat SuperAdmin o'chira oladi");
+    if (!window.confirm("Ushbu oy uchun to'lov ma'lumotlarini o'chirmoqchimisiz?")) return;
+    try {
+      await api.delete(`/finance/student-payments/${paymentId}/`);
+      toast.success("Muvaffaqiyatli o'chirildi");
+      queryClient.invalidateQueries(['payments-all']);
+    } catch (err) {
+      toast.error("O'chirishda xatolik");
+    }
+  };
+
   const customPaymentMutation = useMutation({
     mutationFn: async (data) => {
       return await api.post(`/finance/student-payments/custom-payment/`, {
@@ -840,6 +852,16 @@ export default function StudentProfilePage() {
                                 title="Summani tahrirlash"
                               >
                                 <Edit3 size={18} />
+                              </button>
+                            )}
+
+                            {userRole === 'super_admin' && (
+                              <button
+                                onClick={() => handleDeleteHistory(p.id)}
+                                className="p-3 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-all"
+                                title="O'chirish"
+                              >
+                                <Trash2 size={18} />
                               </button>
                             )}
                           </div>

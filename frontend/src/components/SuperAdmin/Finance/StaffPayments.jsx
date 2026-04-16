@@ -50,9 +50,9 @@ const StaffManagementPro = () => {
     try {
       let url;
       if (activeTab === "admin") {
-        url = `/finance/employee-payments/?employee__role=admin&employee__branch=${Number(activeBranch)}`;
+        url = `/finance/staff-profiles/?user__role=admin&user__branch=${Number(activeBranch)}`;
       } else if (activeTab === "mentor") {
-        url = `/finance/employee-payments/?employee__role=mentor&employee__branch=${Number(activeBranch)}`;
+        url = `/finance/staff-profiles/?user__role=mentor&user__branch=${Number(activeBranch)}`;
       }
       const res = await api.get(url);
       dispatch(setStaffData(res.data));
@@ -106,8 +106,8 @@ const StaffManagementPro = () => {
   const filteredStaffData = staffData.filter((person) => {
     const searchLower = staffSearchQuery.toLowerCase().trim();
     if (!searchLower) return true;
-    const fullName = `${person.employee_first_name} ${person.employee_last_name}`.toLowerCase();
-    return fullName.includes(searchLower) || (person.performance || '').toString().toLowerCase().includes(searchLower);
+    const fullName = (person.full_name || person.username || '').toLowerCase();
+    return fullName.includes(searchLower);
   });
 
   return (
@@ -242,32 +242,40 @@ const StaffManagementPro = () => {
             ) : filteredStaffData.length > 0 ? (
               filteredStaffData.map((person) => (
                 <div
-                  onClick={() => navigate(`staff/${person.id}`)}
+                  onClick={() => {
+                    if (person.current_payment_id) {
+                      navigate(`staff/${person.current_payment_id}`);
+                    } else {
+                      toast.error("Ushbu oy uchun maosh hisoblanmagan. 'Oylik Ochish' tugmasini bosing.");
+                    }
+                  }}
                   key={person.id}
                   className="lux-card !p-4 group/row cursor-pointer hover:border-[var(--gold)]/40 transition-all flex flex-col md:flex-row items-center justify-between gap-6"
                 >
                   <div className="flex items-center gap-4 sm:gap-5 w-full md:w-auto">
                     <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-[var(--bg-void)] border border-[var(--border-glass)] flex items-center justify-center text-[var(--gold)] shadow-inner group-hover/row:scale-110 transition-transform duration-500 shrink-0">
                       <span className="text-xs sm:text-sm font-black italic uppercase">
-                        {person.employee_first_name?.charAt(0)}{person.employee_last_name?.charAt(0)}
+                        {person.full_name?.charAt(0) || person.username?.charAt(0)}
                       </span>
                     </div>
                     <div className="min-w-0">
                       <h4 className="text-base sm:text-lg font-black text-white uppercase tracking-tight group-hover/row:text-[var(--gold)] transition-colors italic truncate">
-                        {person.employee_last_name} {person.employee_first_name}
+                        {person.full_name || person.username}
                       </h4>
                       <div className="flex items-center gap-2 sm:gap-3 mt-1 sm:mt-1.5">
-                        <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                        <span className="text-[7px] sm:text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest">Daraja: {activeTab === 'admin' ? 'Alpha' : 'Beta'}</span>
+                        <div className={`w-1 h-1 sm:w-1.5 sm:h-1.5 ${person.current_payment_id ? 'bg-emerald-500' : 'bg-rose-500'} rounded-full animate-pulse`} />
+                        <span className="text-[7px] sm:text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest">
+                          {person.current_payment_id ? "Hisob-kitob mavjud" : "Hisoblanmagan"}
+                        </span>
                       </div>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-6 sm:gap-8 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 border-[var(--border-glass)] pt-3 sm:pt-4 md:pt-0">
                     <div className="hidden sm:block text-right">
-                      <p className="text-[7px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-1.5 italic">Tajriba / KPI</p>
+                      <p className="text-[7px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-1.5 italic">Maosh Turi / Karta</p>
                       <p className="text-[10px] sm:text-xs font-black text-white uppercase tracking-tighter">
-                        {activeTab === "admin" ? person.performance : person.experience}
+                        {person.salary_display || person.salary_type} {person.karta ? `(${person.karta})` : ''}
                       </p>
                     </div>
 

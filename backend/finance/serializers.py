@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Payment ,EmployeePayment,StaffProfile
+from .models import Payment ,EmployeePayment, StaffProfile, EmployeeAdvance
 
 class PaymentSerializer(serializers.ModelSerializer):
     student_name = serializers.ReadOnlyField(source='student.full_name')
@@ -65,6 +65,8 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
     calculated_commission = serializers.SerializerMethodField()
     calculated_per_student = serializers.SerializerMethodField()
     mentor_groups = serializers.SerializerMethodField() # ✅ QO'SHILDI
+    total_advances = serializers.DecimalField(max_digits=20, decimal_places=2, read_only=True)
+    advances_history = serializers.SerializerMethodField()
     
     class Meta:
         model = EmployeePayment
@@ -89,6 +91,8 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             'calculated_commission',    # ✅ QO'SHILDI
             'calculated_per_student',   # ✅ QO'SHILDI
             'mentor_groups',            # ✅ QO'SHILDI (Guruhlar tafsiloti)
+            'total_advances',           # ✅ QO'SHILDI
+            'advances_history',         # ✅ QO'SHILDI
             'is_paid', 
             'paid_at', 
             'marked_by'
@@ -241,13 +245,21 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             last_day = obj.month.replace(day=last_day_num)
             
             mentor_groups = Group.objects.filter(mentor=obj.employee)
-            total_students = GroupEnrollment.objects.filter(
-                group__in=mentor_groups,
-                joined_at__date__lte=last_day,
-                is_active=True
-            ).values('student_id').distinct().count()
             
-            calculated = float(total_students) * float(profile.per_student_amount)
+            from .models import Payment
+            paid_payments = Payment.objects.filter(
+                group__in=mentor_groups,
+                month=obj.month.replace(day=1),
+                is_paid=True
+            )
+            
+            per_student = float(profile.per_student_amount)
+            calculated = 0
+            for p in paid_payments:
+                # Yangi logika: Agar to'langan pul mentor ulushidan kam bo'lsa, hammasi mentorga
+                p_amount = float(p.amount)
+                calculated += min(p_amount, per_student)
+                
             return int(floor_amount(calculated))
         except Exception as e:
             print(f"calculated_per_student hisoblashda xato: {e}")
@@ -278,6 +290,7 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                 expected_students_count = group.students.count()
                 paid_students_count = 0
                 
+                unpaid_students = []
                 for student in group.students.all():
                     month_payment = Payment.objects.filter(
                         student=student,
@@ -285,24 +298,34 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                         month__year=obj.month.year,
                         month__month=obj.month.month
                     ).first()
+                    
+                    expected_payment = student.custom_fee if student.custom_fee is not None else group.monthly_price
+                    actual_payment = float(month_payment.amount) if month_payment and month_payment.is_paid else 0
+                    
                     if month_payment:
                         expected_income += float(month_payment.amount or 0)
+                        if month_payment.is_paid:
+                            group_revenue += float(month_payment.amount)
+                            paid_students_count += 1
+                        else:
+                            unpaid_students.append({
+                                'id': student.id,
+                                'name': student.full_name,
+                                'expected': int(floor_amount(month_payment.amount or 0)),
+                                'actual': 0,
+                                'status': 'To\'lanmagan'
+                            })
                     else:
-                        fallback_amount = student.custom_fee if student.custom_fee is not None else group.monthly_price
-                        expected_income += float(floor_amount(fallback_amount))
+                        expected_income += float(floor_amount(expected_payment))
+                        unpaid_students.append({
+                            'id': student.id,
+                            'name': student.full_name,
+                            'expected': int(floor_amount(expected_payment)),
+                            'actual': 0,
+                            'status': 'Kutilmoqda'
+                        })
 
-                    payment = Payment.objects.filter(
-                        student=student, 
-                        group=group, 
-                        month__year=obj.month.year, 
-                        month__month=obj.month.month,
-                        is_paid=True
-                    ).first()
-                    if payment:
-                        group_revenue += float(payment.amount)
-                        paid_students_count += 1
-                    
-                    if getattr(payment, 'refund_ignored', False):
+                    if getattr(month_payment, 'refund_ignored', False):
                         refund = 0
                     else:
                         refund = float(student.calculate_refund_amount(obj.month.year, obj.month.month))
@@ -322,8 +345,25 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                             group_extra -= float(tx.amount)
 
                 net = group_revenue - group_refunds + group_extra
-                mentor_share_paid = int(floor_amount(Decimal(str(paid_students_count)) * per_student_amount))
-                mentor_share_expected = int(floor_amount(Decimal(str(expected_students_count)) * per_student_amount))
+                
+                # Yangi logika: har bir o'quvchi uchun alohida min(to'lov, ulush) ni hisoblaymiz
+                mentor_share_paid_total = Decimal('0')
+                mentor_share_expected_total = Decimal('0')
+                
+                for student in group.students.all():
+                    # Expected share
+                    st_expected_price = student.custom_fee if student.custom_fee is not None else group.monthly_price
+                    mentor_share_expected_total += min(Decimal(str(st_expected_price)), per_student_amount)
+                    
+                    # Paid share
+                    payment = Payment.objects.filter(
+                        student=student, group=group, 
+                        month__year=obj.month.year, month__month=obj.month.month,
+                        is_paid=True
+                    ).first()
+                    if payment:
+                        mentor_share_paid_total += min(Decimal(str(payment.amount)), per_student_amount)
+
                 groups_data.append({
                     'id': group.id,
                     'name': group.name,
@@ -336,8 +376,9 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                     'refund_amount': int(floor_amount(group_refunds)),
                     'extra_income': int(floor_amount(group_extra)),
                     'real_income': int(floor_amount(net)),
-                    'mentor_share_paid': mentor_share_paid,
-                    'mentor_share_expected': mentor_share_expected,
+                    'mentor_share_paid': int(floor_amount(mentor_share_paid_total)),
+                    'mentor_share_expected': int(floor_amount(mentor_share_expected_total)),
+                    'unpaid_students': unpaid_students[:15], # Limit to avoid bloat
                     'is_faol': group.is_faol
                 })
             
@@ -346,10 +387,27 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
         except Exception as e:
             print(f"mentor_groups olishda xato: {e}")
             return None
+
+    def get_advances_history(self, obj):
+        """Ushbu oy uchun berilgan avanslar tarixi"""
+        from .models import EmployeeAdvance
+        advances = EmployeeAdvance.objects.filter(
+            employee=obj.employee,
+            month=obj.month
+        )
+        return EmployeeAdvanceSerializer(advances, many=True).data
+
+class EmployeeAdvanceSerializer(serializers.ModelSerializer):
+    marked_by_name = serializers.CharField(source='marked_by.get_full_name', read_only=True)
+    
+    class Meta:
+        model = EmployeeAdvance
+        fields = ['id', 'amount', 'description', 'date', 'marked_by', 'marked_by_name', 'created_at']
+        read_only_fields = ['id', 'marked_by', 'created_at']
         
 class StaffProfileSerializer(serializers.ModelSerializer):
     # Foydalanuvchi ma'lumotlari (read-only)
-    full_name = serializers.CharField(source='user.first_name', read_only=True)
+    full_name = serializers.CharField(source='user.get_full_name', read_only=True)
     username = serializers.CharField(source='user.username', read_only=True)
     role = serializers.CharField(source='user.role', read_only=True)
     branch_name = serializers.CharField(source='user.branch.name', read_only=True)
@@ -357,7 +415,8 @@ class StaffProfileSerializer(serializers.ModelSerializer):
     
     # Maosh ma'lumotini chiroyli ko'rsatish
     salary_display = serializers.CharField(source='get_salary_display', read_only=True)
-    
+    current_payment_id = serializers.SerializerMethodField()
+
     class Meta:
         model = StaffProfile
         fields = [
@@ -373,8 +432,16 @@ class StaffProfileSerializer(serializers.ModelSerializer):
             'commission_percentage',
             'per_student_amount',
             'salary_display',
-            'karta'
+            'karta',
+            'current_payment_id'
         ]
+
+    def get_current_payment_id(self, obj):
+        from .models import EmployeePayment
+        from django.utils import timezone
+        current_month = timezone.now().date().replace(day=1)
+        payment = EmployeePayment.objects.filter(employee=obj.user, month=current_month).first()
+        return payment.id if payment else None
         # user va salary_type o'zgartirilmasligi kerak bo'lsa
         # read_only_fields = ['user']
 
@@ -444,3 +511,12 @@ class CustomPaymentSerializer(serializers.Serializer):
     payer_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
     description = serializers.CharField(max_length=500, required=False, allow_blank=True)
     date = serializers.DateField(required=False)
+
+class EmployeeAdvanceSerializer(serializers.ModelSerializer):
+    employee_name = serializers.ReadOnlyField(source='employee.full_name')
+    marked_by_name = serializers.ReadOnlyField(source='marked_by.full_name')
+    
+    class Meta:
+        model = EmployeeAdvance
+        fields = ['id', 'employee', 'employee_name', 'month', 'amount', 'description', 'date', 'marked_by', 'marked_by_name', 'created_at']
+        read_only_fields = ['id', 'created_at', 'marked_by']

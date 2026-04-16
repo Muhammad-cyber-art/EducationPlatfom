@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import api from '../../tokenUpdater/updater';
 import toast from 'react-hot-toast';
+import AbsentStudentsModal from '../Common/AbsentStudentsModal';
 
 const SuperAdminDashboard = () => {
   const navigate = useNavigate();
@@ -11,6 +12,7 @@ const SuperAdminDashboard = () => {
   const [message, setMessage] = useState("");
   const [isGlobal, setIsGlobal] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showAbsentModal, setShowAbsentModal] = useState(false);
 
   const { data: botStats, isLoading: botStatsLoading } = useQuery({
     queryKey: ['bot-stats', branchId],
@@ -79,35 +81,40 @@ const SuperAdminDashboard = () => {
 
       {/* ATTENDANCE & BOT STATS MATRIX */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
-        <div className="lux-card p-6 flex flex-col justify-between border-emerald-500/20 col-span-2 lg:col-span-1">
-           <div className="flex items-center justify-between mb-6">
-              <div className="p-3 bg-emerald-500/10 rounded-xl border border-emerald-500/20 text-emerald-500">
-                 <Activity size={20} />
+        <div
+          className="lux-card p-6 flex flex-col justify-between border-emerald-500/20 col-span-2 lg:col-span-1 cursor-pointer hover:border-red-500/50 hover:scale-[1.02] transition-all"
+          onClick={() => setShowAbsentModal(true)}
+          title="Kelmaganlar ro'yxatini ko'rish"
+        >
+          <div className="flex items-center justify-between mb-6">
+            <div className="p-3 bg-emerald-500/10 rounded-xl border border-emerald-500/20 text-emerald-500">
+              <Activity size={20} />
+            </div>
+            <div className="px-2 py-1 rounded-full text-[8px] font-black tracking-widest bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 uppercase">
+              Bugun
+            </div>
+          </div>
+          <div>
+            <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-[0.4em] mb-2">Davomat Ko'rsatkichi</p>
+            <div className="flex items-end justify-between">
+              <div>
+                <h3 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-widest">Bugungi Kelmaganlar</h3>
               </div>
-              <div className="px-2 py-1 rounded-full text-[8px] font-black tracking-widest bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 uppercase">
-                Bugun
+              <div className="text-right">
+                <p className="text-4xl font-black text-red-500 italic font-mono drop-shadow-[0_0_15px_rgba(239,68,68,0.3)]">
+                  {stats?.attendance_today?.absent || 0}
+                </p>
+                <p className="text-[7px] font-black text-red-500/60 uppercase tracking-widest mt-1">Kelmaganlar soni</p>
               </div>
-           </div>
-           <div>
-              <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-[0.4em] mb-2">Davomat Ko'rsatkichi</p>
-              <div className="flex items-end justify-between">
-                 <div>
-                    <h3 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-widest">Bugungi Kelmaganlar</h3>
-                    <p className="text-[10px] font-bold text-[var(--gold)] mt-1">Jami o'quvchi: {stats?.attendance_today?.total || 0}</p>
-                 </div>
-                 <div className="text-right">
-                    <p className="text-4xl font-black text-red-500 italic font-mono drop-shadow-[0_0_15px_rgba(239,68,68,0.3)]">{stats?.attendance_today?.absent || 0}</p>
-                    <p className="text-[7px] font-black text-red-500/60 uppercase tracking-widest mt-1">Kelmaganlar soni</p>
-                 </div>
-              </div>
-              {/* Progress bar showing absence ratio */}
-              <div className="w-full h-1.5 bg-[var(--bg-void)] rounded-full mt-4 overflow-hidden border border-[var(--border-glass)]">
-                  <div 
-                    className="h-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)] transition-all duration-1000" 
-                    style={{ width: `${stats?.attendance_today?.total > 0 ? (stats?.attendance_today?.absent / stats?.attendance_today?.total) * 100 : 0}%` }}
-                  />
-              </div>
-           </div>
+            </div>
+            {/* Progress bar showing absence ratio */}
+            <div className="w-full h-1.5 bg-[var(--bg-void)] rounded-full mt-4 overflow-hidden border border-[var(--border-glass)]">
+              <div
+                className="h-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)] transition-all duration-1000"
+                style={{ width: `${stats?.attendance_today?.total > 0 ? (stats?.attendance_today?.absent / stats?.attendance_today?.total) * 100 : 0}%` }}
+              />
+            </div>
+          </div>
         </div>
         <StatCard title="Bot Jami" value={botStats?.total_bot_users} icon={<MessageSquare size={20} />} trend="BOT" delay="400" variant="gold" />
       </div>
@@ -170,6 +177,13 @@ const SuperAdminDashboard = () => {
         </div>
         <Activity size={24} className="text-[var(--gold)] opacity-20" />
       </div> */}
+
+      {/* ABSENT STUDENTS MODAL */}
+      <AbsentStudentsModal
+        isOpen={showAbsentModal}
+        onClose={() => setShowAbsentModal(false)}
+        branchId={branchId}
+      />
     </div>
   );
 };

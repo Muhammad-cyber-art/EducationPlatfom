@@ -9,13 +9,13 @@ from django.contrib.auth import get_user_model
 from django.db import transaction, IntegrityError
 from django.utils import timezone 
 from rest_framework.exceptions import PermissionDenied
-from .models import Group, Student ,MentorGroupAssignment, GroupEnrollment, GroupTransfer
+from .models import Group, Student ,MentorGroupAssignment, GroupEnrollment, GroupTransfer, WaitingStudent
 from homework_attends.models import Attendance, HomeworkSubmission, MockTestResult
 from finance.models import Payment, FinanceTransaction
 from .serializers import ( RemoveMentorSerializer,
     GroupSerializer, StudentSerializer, StudentNestedSerializer,AssignAdditionalMentorSerializer,
     MentorSerializer, GroupSimpleSerializer ,AdminUserSerializers ,MentorAssignmentSerializer,
-    MentorListSerializer  # Yangi serializer
+    MentorListSerializer, WaitingStudentSerializer
 )
 from django.db import models
 from rest_framework import filters # Qidiruv uchun
@@ -692,9 +692,8 @@ class MentorViewSet(viewsets.ReadOnlyModelViewSet):
         branch_id = self.request.query_params.get("branch_id")
         queryset = User.objects.filter(role="mentor")
 
-        # LOGIKANI BUZMASDAN KENGAYTIRAMIZ
-        # LOGIKANI BUZMASDAN KENGAYTIRAMIZ
-        if branch_id:
+        # branch_id filtri faqat 'list' (ro'yxat) uchun ishlatilishi kerak
+        if branch_id and self.action == 'list':
             try:
                 branch_id = int(branch_id)
                 queryset = queryset.filter(
@@ -856,3 +855,56 @@ class MentorListViewSet(viewsets.ReadOnlyModelViewSet):
             return queryset.filter(id=user.id)
         
         return queryset.none()
+
+class WaitingStudentViewSet(viewsets.ModelViewSet):
+    """Kutishlar zali o'quvchilarini boshqarish"""
+    queryset = WaitingStudent.objects.all()
+    serializer_class = WaitingStudentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    search_fields = ['full_name', 'phone', 'subject']
+    filterset_fields = ['branch']
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'super_admin':
+            return self.queryset
+        return self.queryset.filter(branch=user.branch)
+
+    def perform_create(self, serializer):
+        if not serializer.validated_data.get('branch'):
+            serializer.save(branch=self.request.user.branch)
+        else:
+            serializer.save()
+
+    @action(detail=True, methods=['post'], url_path='assign-to-group')
+    def assign_to_group(self, request, pk=None):
+        """Kutayotgan o'quvchini haqiqiy guruhga biriktirish va Studentga aylantirish"""
+        waiting_student = self.get_object()
+        group_id = request.data.get('group_id')
+        
+        if not group_id:
+            return Response({"error": "Guruh tanlanishi shart"}, status=400)
+        
+        group = get_object_or_404(Group, id=group_id)
+        
+        try:
+            with transaction.atomic():
+                # 1. Haqiqiy student yaratish
+                student = Student.objects.create(
+                    branch=group.branch,
+                    group=group, # Bu Student.save() dagi Enrollment logikasini triggery qiladi
+                    full_name=waiting_student.full_name,
+                    phone=waiting_student.phone,
+                    notes=waiting_student.notes
+                )
+                
+                # 2. Kutish zalidan o'chirish
+                waiting_student.delete()
+                
+                return Response({
+                    "message": f"{student.full_name} muvaffaqiyatli {group.name} guruhiga qo'shildi",
+                    "student_id": student.id
+                }, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)

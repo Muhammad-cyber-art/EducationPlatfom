@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useOutletContext, useLocation } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useNavigate, useOutletContext, useLocation, useParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { get_user_info } from '../Authorized/getRole';
 import { useCurrentBranch } from '../Authorized/useBranchId';
 import {
@@ -24,10 +24,13 @@ import toast from 'react-hot-toast';
 const StudentAdd = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { branchId } = useOutletContext();
+  const queryClient = useQueryClient();
+  const outletCtx = useOutletContext() || {};
+  const { branchId } = outletCtx;
   const { currentBranchId } = useCurrentBranch();
-
-  const paramGroupId = Number(location.pathname.split('/')[3]);
+  // useParams orqali group_id ni to'g'ri olamiz (split xato berishi mumkin)
+  const params = useParams();
+  const paramGroupId = Number(params.group_id);
   const hasGroupId = !isNaN(paramGroupId) && paramGroupId > 0;
 
   const [formData, setFormData] = useState({
@@ -135,7 +138,7 @@ const StudentAdd = () => {
   const handleEnrollExisting = async (studentId) => {
     if (!hasGroupId && !formData.group) return toast.error("Guruhni tanlang!");
     const groupId = hasGroupId ? paramGroupId : formData.group;
-    const shouldCreatePayment = enrollmentToggles[studentId] !== false; // Default true
+    const shouldCreatePayment = enrollmentToggles[studentId] !== false;
 
     setLoading(true);
     try {
@@ -145,10 +148,16 @@ const StudentAdd = () => {
       });
       if (response.status === 201 || response.status === 200) {
         toast.success("O'quvchi guruhga biriktirildi!");
+        // ✅ Guruh keshini to'liq o'chirib, sahifaga qaytganda fresh data yuklansin
+        queryClient.removeQueries({ queryKey: ['group-detail', String(groupId)] });
+        queryClient.removeQueries({ queryKey: ['group-detail', groupId] });
         navigate(-1);
+      } else {
+        toast.error(response.data?.detail || "Noma'lum xatolik");
       }
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Xatolik yuz berdi");
+      const errMsg = error.response?.data?.detail || "Biriktirishda xatolik yuz berdi";
+      toast.error(errMsg);
     } finally {
       setLoading(false);
     }
@@ -186,10 +195,22 @@ const StudentAdd = () => {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       if (response.status === 201 || response.status === 200) {
-        toast.success("O'quvchi qo'shildi!");
+        toast.success("O'quvchi muvaffaqiyatli qo'shildi!");
+        // ✅ Guruh keshini to'liq o'chirib, sahifaga qaytganda fresh data yuklansin
+        if (paramGroupId) {
+          queryClient.removeQueries({ queryKey: ['group-detail', String(paramGroupId)] });
+          queryClient.removeQueries({ queryKey: ['group-detail', paramGroupId] });
+        }
         navigate(-1);
       }
-    } catch {
+    } catch (err) {
+      console.error('Student qo\'shishda xato:', err);
+      const errMsg = err?.response?.data?.detail
+        || err?.response?.data?.phone?.[0]
+        || err?.response?.data?.full_name?.[0]
+        || JSON.stringify(err?.response?.data || '')
+        || 'Xatolik yuz berdi!';
+      toast.error(errMsg);
       setLoading(false);
     }
   };

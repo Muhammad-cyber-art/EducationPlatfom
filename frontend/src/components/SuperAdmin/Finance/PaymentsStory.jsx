@@ -108,6 +108,19 @@ const PaymentsStory = () => {
     setFilters({ search: "", type: "", category: "", branch: "", startDate: "", endDate: "" });
   };
 
+  const handleDeleteTransaction = async (id) => {
+    if (user.role !== 'super_admin') return toast.error("Ruxsat yo'q");
+    if (!window.confirm("Ushbu tranzaksiyani butkul o'chirmoqchimisiz?")) return;
+
+    try {
+      await api.delete(`/finance/transactions/${id}/`);
+      toast.success("Tranzaksiya o'chirildi");
+      refetch();
+    } catch (error) {
+      toast.error("O'chirishda xatolik");
+    }
+  };
+
   return (
     <div className="space-y-10 pb-20">
       {/* Atmosphere Background */}
@@ -261,6 +274,8 @@ const PaymentsStory = () => {
                 key={trx.id || index}
                 trx={trx}
                 formatCurrency={formatCurrency}
+                onDelete={() => handleDeleteTransaction(trx.id)}
+                isSuperAdmin={user.role === 'super_admin'}
               />
             ))}
           </div>
@@ -312,7 +327,7 @@ const FinanceStat = ({ label, value, color, icon, trend, isMain }) => {
   );
 };
 
-const TransactionRow = React.memo(({ trx, formatCurrency }) => {
+const TransactionRow = React.memo(({ trx, formatCurrency, onDelete, isSuperAdmin }) => {
   const isIncome = trx.transaction_type === 'income';
 
   return (
@@ -357,8 +372,20 @@ const TransactionRow = React.memo(({ trx, formatCurrency }) => {
               VAQT: {new Date(trx.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
             </p>
           </div>
-          <div className="p-2.5 bg-[var(--bg-void)]/40 border border-[var(--border-glass)] rounded-xl text-[var(--text-muted)] hover:text-[var(--gold)] hover:border-[var(--gold)]/30 transition-all shadow-inner group-hover/row:bg-[var(--gold-dim)] group-hover/row:text-[var(--gold)]">
-            <ChevronRight size={18} />
+
+          <div className="flex items-center gap-2">
+            {isSuperAdmin && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                className="p-3 bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white border border-rose-500/10 rounded-xl transition-all"
+                title="O'chirish"
+              >
+                <Trash2 size={18} />
+              </button>
+            )}
+            <div className="p-2.5 bg-[var(--bg-void)]/40 border border-[var(--border-glass)] rounded-xl text-[var(--text-muted)] hover:text-[var(--gold)] hover:border-[var(--gold)]/30 transition-all shadow-inner group-hover/row:bg-[var(--gold-dim)] group-hover/row:text-[var(--gold)]">
+              <ChevronRight size={18} />
+            </div>
           </div>
         </div>
       </div>

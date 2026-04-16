@@ -181,7 +181,18 @@ class Student(models.Model):
         # branchni guruhdan olamiz
         if self.group and not self.branch:
             self.branch = self.group.branch
+        
+        is_new = self.pk is None
         super(Student, self).save(*args, **kwargs)
+
+        # ✅ Task 1: M2M va Enrollment synchronization
+        # Agar ForeignKey 'group' o'rnatilgan bo'lsa, Enrollment ham mavjudligiga ishonch hosil qilamiz
+        if self.group:
+            GroupEnrollment.objects.get_or_create(
+                student=self,
+                group=self.group,
+                defaults={'is_active': True}
+            )
 
     def get_absences_count(self, year, month, group=None):
         """O'quvchining berilgan oydagi qoldirgan darslari sonini qaytaradi"""
@@ -301,3 +312,24 @@ class MentorGroupAssignment(models.Model):
     def __str__(self):
         return f"{self.mentor.get_full_name() or self.mentor.username} → {self.group.name} (qo‘shimcha)"
     
+
+class WaitingStudent(models.Model):
+    """Kutishlar zali - guruhga birikmagan, rejalashtirilgan o'quvchilar"""
+    branch = models.ForeignKey(
+        Branch, 
+        on_delete=models.CASCADE, 
+        related_name='waiting_students'
+    )
+    full_name = models.CharField(max_length=200, verbose_name="Ism Familiya")
+    phone = models.CharField(max_length=20, verbose_name="Telefon")
+    subject = models.CharField(max_length=100, blank=True, null=True, verbose_name="Qiziqqan fan")
+    notes = models.TextField(blank=True, verbose_name="Izoh")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Kutayotgan o'quvchi"
+        verbose_name_plural = "Kutayotgan o'quvchilar"
+
+    def __str__(self):
+        return f"{self.full_name} ({self.subject or 'Umumiy'})"

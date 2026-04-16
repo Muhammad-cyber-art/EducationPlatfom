@@ -113,15 +113,25 @@ class EmployeePayment(models.Model):
     )
     
     @property
+    def total_advances(self):
+        """Ushbu oy uchun berilgan barcha avanslar yig'indisi"""
+        return EmployeeAdvance.objects.filter(
+            employee=self.employee, 
+            month=self.month
+        ).aggregate(total=models.Sum('amount'))['total'] or 0
+
+    @property
     def total_amount(self):
-        """Jami to'lov miqdori (floor)"""
+        """Jami to'lov miqdori (floor) - Endi Avanslar ham ayriladi"""
         from decimal import Decimal
         from finance.utils import floor_amount
         # ✅ Barcha qiymatlarni Decimal ga o'girish
         salary = Decimal(str(self.salary_base)) if self.salary_base else Decimal('0')
         bonus = Decimal(str(self.bonus)) if self.bonus else Decimal('0')
         deductions = Decimal(str(self.deductions)) if self.deductions else Decimal('0')
-        return floor_amount(salary + bonus - deductions)
+        total_advances = Decimal(str(self.total_advances))
+        
+        return floor_amount(salary + bonus - deductions - total_advances)
     
     is_paid = models.BooleanField(default=False, verbose_name="To'landi")
     paid_at = models.DateTimeField(null=True, blank=True, verbose_name="To'langan vaqt")
@@ -153,7 +163,7 @@ class EmployeePayment(models.Model):
             # To'lanayotgan paytda oxirgi marta qayta hisoblab olish (ixtiyoriy, lekin aniqlik uchun yaxshi)
             try:
                 if self.employee.role == 'mentor' and hasattr(self.employee, 'staff_profile'):
-                    if self.employee.staff_profile.salary_type == 'percentage':
+                    if self.employee.staff_profile.salary_type in ['percentage', 'student_count']:
                         self.recalculate_salary()
             except Exception as e:
                 # Agar qayta hisoblashda xatolik bo'lsa, davom etamiz
@@ -386,30 +396,30 @@ class StaffProfile(models.Model):
             return floor_amount(commission)
         
         elif self.salary_type == 'student_count':
-            # ✅ O'quvchilar soni bo'yicha
-            from groups.models import GroupEnrollment
-            import calendar
-            from datetime import date
-            
-            # Oyni boshlanishi va oxiri
-            first_day = month.replace(day=1)
-            last_day_num = calendar.monthrange(month.year, month.month)[1]
-            last_day = month.replace(day=last_day_num)
+            # ✅ O'quvchilar soni bo'yicha - FAQAT TO'LAGANLARNI HISIBLAYMIZ
+            from .models import Payment
             
             # Mentorning barcha guruhlarini topish
             from groups.models import Group
             mentor_groups = Group.objects.filter(mentor=self.user)
             
-            # Shu oydagi o'quvchilar sonini hisoblash
-            # Talab: O'sha oyda guruhda faol bo'lgan (yoki darsga qatnashgan) o'quvchilar
-            # Biz GroupEnrollment orqali hisoblaymiz: joined_at <= last_day va is_active=True
-            total_students = GroupEnrollment.objects.filter(
+            # Shu oydagi TO'LANGAN to'lovlarni olish
+            paid_payments = Payment.objects.filter(
                 group__in=mentor_groups,
-                joined_at__date__lte=last_day,
-                is_active=True
-            ).values('student_id').distinct().count()
+                month=month.replace(day=1),
+                is_paid=True
+            )
             
-            salary = Decimal(str(total_students)) * Decimal(str(self.per_student_amount))
+            per_student = Decimal(str(self.per_student_amount))
+            salary = Decimal('0')
+            
+            for p in paid_payments:
+                # Yangi logika: Agar o'quvchi mentor ulushidan kamroq to'lagan bo'lsa, 
+                # o'sha to'langan pulning hammasi mentorga o'tadi.
+                # Aks holda mentor o'zining belgilangan fixed ulushini oladi.
+                p_amount = Decimal(str(p.amount))
+                salary += min(p_amount, per_student)
+            
             return floor_amount(salary)
         
         return Decimal('0')
@@ -541,3 +551,64 @@ class FinanceTransaction(models.Model):
 
     def __str__(self):
         return f"{self.date} | {self.transaction_type} | {self.amount}"
+
+
+class EmployeeAdvance(models.Model):
+    """Xodimga oylik maoshidan tashqari berilgan avans (oldindan to'lov)"""
+    employee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='staff_advances',
+        verbose_name="Xodim"
+    )
+    month = models.DateField(verbose_name="Qaysi oy maoshidan ayriladi")
+    amount = models.DecimalField(max_digits=20, decimal_places=2, verbose_name="Avans summasi")
+    description = models.TextField(blank=True, null=True, verbose_name="Izoh")
+    date = models.DateField(default=timezone.now, verbose_name="Berilgan sana")
+    marked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        verbose_name="Kim berdi"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date']
+        verbose_name = "Xodim avansi"
+        verbose_name_plural = "Xodimlar avanslari"
+
+    def __str__(self):
+        return f"{self.employee.get_full_name()} - {self.amount} ({self.date})"
+
+    @property
+    def payment_record(self):
+        """Ushbu avans tegishli bo'lgan payment rekordini topish"""
+        return EmployeePayment.objects.filter(employee=self.employee, month=self.month).first()
+
+    def save(self, *args, **kwargs):
+        # Oy normalizatsiyasi
+        if self.month:
+            from finance.utils import normalize_month
+            self.month = normalize_month(self.month)
+        
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+
+        if is_new:
+            # ✅ Centralized Finance Ledger ga Chiqim sifatida yozish
+            from .models import FinanceTransaction
+            FinanceTransaction.objects.create(
+                related_id=f"ADV-{self.id}",
+                transaction_type='expense',
+                category='salary', # Avans maoshning bir qismi
+                amount=self.amount,
+                date=self.date,
+                marked_by=self.marked_by,
+                branch=self.employee.branch,
+                title=f"Avans: {self.employee.get_full_name() or self.employee.username}",
+                description=f"{self.month.strftime('%Y-%m')} oyi maoshi hisobidan avans. {self.description or ''}"
+            )
+            
+            # Agar shu oy uchun payment mavjud bo'lsa, uni bog'liqlik sifatida saqlash ixtiyoiy,
+            # chunki biz total_advances ni dinamik hisoblaymiz.

@@ -5,10 +5,11 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.response import Response
 from django.utils import timezone
 from rest_framework.views import APIView
-from .models import Payment, EmployeePayment ,StaffProfile, FinanceTransaction
+from .models import Payment, EmployeePayment ,StaffProfile, FinanceTransaction, EmployeeAdvance
 from .serializers import (
     PaymentSerializer, EmployeePaymentSerializer, 
-    StaffProfileSerializer, FinanceTransactionSerializer
+    StaffProfileSerializer, FinanceTransactionSerializer,
+    EmployeeAdvanceSerializer
 )
 from django.contrib.auth import get_user_model
 from django.db.models import Sum, Q, F, Count ,OuterRef, Subquery
@@ -163,7 +164,7 @@ class StudentPaymentViewSet(viewsets.ModelViewSet):
                     mentor = group.mentor
                     if mentor and hasattr(mentor, 'staff_profile'):
                         profile = mentor.staff_profile
-                        if profile.salary_type == 'percentage':
+                        if profile.salary_type in ['percentage', 'student_count']:
                             # O'sha oydagi to'lanmagan EmployeePayment ni topib yangilash
                             import calendar
                             from datetime import date
@@ -268,7 +269,7 @@ class StudentPaymentViewSet(viewsets.ModelViewSet):
             mentor = payment.group.mentor
             if mentor and hasattr(mentor, 'staff_profile'):
                 profile = mentor.staff_profile
-                if profile.salary_type == 'percentage':
+                if profile.salary_type in ['percentage', 'student_count']:
                     payment_month = payment.month.replace(day=1) if payment.month else None
                     if payment_month:
                         emp_payment = EmployeePayment.objects.filter(
@@ -462,6 +463,43 @@ class EmployeePaymentViewSet(viewsets.ModelViewSet):
             serializer.save(marked_by=self.request.user, paid_at=timezone.now())
         else:
             serializer.save()
+
+    @action(detail=True, methods=['post'], url_path='add-advance')
+    def add_advance(self, request, pk=None):
+        """Xodimga avans qo'shish"""
+        payment = self.get_object()
+        
+        # Faqat super_admin avans bera olsin
+        if request.user.role != 'super_admin':
+            return Response({"detail": "Faqat super_admin avans bera oladi"}, status=403)
+            
+        amount = request.data.get('amount')
+        description = request.data.get('description', '')
+        date_val = request.data.get('date', timezone.now().date())
+        
+        if not amount or float(amount) <= 0:
+            return Response({"detail": "Avans summasi noto'g'ri"}, status=400)
+            
+        try:
+            from .models import EmployeeAdvance
+            advance = EmployeeAdvance.objects.create(
+                employee=payment.employee,
+                month=payment.month, # Avans shu oy uchun
+                amount=amount,
+                description=description,
+                date=date_val,
+                marked_by=request.user
+            )
+            
+            return Response({
+                "success": True,
+                "message": "Avans muvaffaqiyatli qo'shildi",
+                "id": advance.id,
+                "amount": float(advance.amount),
+                "total_advances": float(payment.total_advances)
+            })
+        except Exception as e:
+            return Response({"detail": f"Avans qo'shishda xatolik: {str(e)}"}, status=400)
 
     @action(detail=True, methods=['post'], url_path='recalculate')
     def recalculate(self, request, pk=None):
@@ -1177,7 +1215,6 @@ class FinanceTransactionViewSet(viewsets.ModelViewSet):
     
     ordering_fields = ['date', 'amount', 'created_at']
     ordering = ['-date', '-id']
-
     def get_queryset(self):
         user = self.request.user
         qs = super().get_queryset()
@@ -1190,3 +1227,90 @@ class FinanceTransactionViewSet(viewsets.ModelViewSet):
             return FinanceTransaction.objects.none()
             
         return qs
+
+class EmployeeAdvanceViewSet(viewsets.ModelViewSet):
+    """Xodimlar avanslarini boshqarish"""
+    queryset = EmployeeAdvance.objects.select_related('employee', 'marked_by').all()
+    serializer_class = EmployeeAdvanceSerializer
+    permission_classes = [permissions.IsAuthenticated, HasModulePermission]
+    module_name = 'finance'
+    
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'super_admin':
+            return self.queryset
+        elif user.role == 'admin':
+            return self.queryset.filter(employee__branch=user.branch)
+        return self.queryset.filter(employee=user)
+
+    def perform_destroy(self, instance):
+        # Ledgerdan ham o'chirish (ixtiyoriy, lekin yaxshi)
+        try:
+            from .models import FinanceTransaction
+            FinanceTransaction.objects.filter(related_id=f"ADV-{instance.id}").delete()
+        except:
+            pass
+        instance.delete()
+
+from rest_framework.pagination import PageNumberPagination
+
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+class AbsentTodayStudentsView(APIView):
+    """
+    Bugun kelmagan o'quvchilarni qidirish va paginatsiya bilan qaytaradi.
+    GET /finance/statistics/absent-students/<branch_id>/?search=...&page=...
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, branch_id):
+        user = request.user
+        
+        # Ruxsat tekshirish
+        if user.role == 'admin':
+            has_access = False
+            if user.branch_id == branch_id:
+                has_access = True
+            elif hasattr(user, 'branch_accesses') and user.branch_accesses.filter(branch_id=branch_id).exists():
+                has_access = True
+            
+            if not has_access:
+                return Response({"error": "Ruxsat yo'q"}, status=403)
+        elif user.role != 'super_admin':
+            return Response({"error": "Ruxsat yo'q"}, status=403)
+
+        today = timezone.localdate()
+        search = request.query_params.get('search', '').strip()
+        
+        queryset = Attendance.objects.filter(
+            group__branch_id=branch_id, 
+            date=today, 
+            is_present=False
+        ).select_related('student', 'group')
+
+        if search:
+            queryset = queryset.filter(
+                Q(student__full_name__icontains=search) |
+                Q(student__phone__icontains=search) |
+                Q(group__name__icontains=search)
+            )
+
+        queryset = queryset.order_by('student__full_name')
+
+        paginator = StandardResultsSetPagination()
+        paginated_queryset = paginator.paginate_queryset(queryset, request, view=self)
+
+        results = [
+            {
+                "id": att.student.id if att.student else None,
+                "name": att.student.full_name if att.student else "Noma'lum",
+                "phone": att.student.phone if att.student else "",
+                "group": att.group.name if att.group else ""
+            }
+            for att in paginated_queryset
+        ]
+
+        return paginator.get_paginated_response(results)

@@ -16,7 +16,8 @@ import {
   SearchCode,
   UserPlus,
   ArrowUpRight,
-  Filter
+  Filter,
+  Clock
 } from "lucide-react";
 import { get_user_info } from "../Authorized/getRole";
 
@@ -89,6 +90,13 @@ export default function GlobalStudentComponent() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '12px' }}>
+          <button
+            className="lux-btn"
+            onClick={() => navigate(user_info?.role === "super_admin" ? `/super_admin/branch/${branchId}/waiting-hall` : "/admin/waiting-hall")}
+            style={{ padding: '12px 24px', background: 'var(--bg-panel)', border: '1px solid var(--border-glass)', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}
+          >
+            <Clock size={16} /> Kutishlar Zali
+          </button>
           {!isExtraBranch && canCreateStudent && (
             <button
               className="lux-btn lux-btn-primary"

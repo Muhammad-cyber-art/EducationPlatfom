@@ -33,6 +33,7 @@ import StudentAdd from "./components/StudentComponents/AddStudent";
 import GlobalStudentLayout from "./components/StudentComponents/GlobalStudentLayout";
 import GlobalStudentComponent from "./components/StudentComponents/GlobalStudents";
 import StudentPayments from "./components/homework/StudentPayments";
+import WaitingHall from "./components/StudentComponents/WaitingHall";
 
 // Super Admin Components
 import SuperAdminLayout from "./components/SuperAdmin/SuperAdminLayout";
@@ -123,6 +124,7 @@ export default function PreApp() {
                 <Route path=":student_id" element={<ProtectedPage allowed={ROLES.ADMIN_ACCESS}><StudentProfilePage /></ProtectedPage>} />
                 <Route path="add_to_global" element={<ProtectedPage allowed={ROLES.ADMIN_ACCESS}><StudentAdd /></ProtectedPage>} />
               </Route>
+              <Route path="waiting-hall" element={<ProtectedPage allowed={ROLES.ADMIN_ACCESS}><WaitingHall /></ProtectedPage>} />
 
               <Route path="finance" element={<ProtectedPage allowed={ROLES.ADMIN_ACCESS}><MentorFinance /></ProtectedPage>} />
               <Route path="profile" element={<ProtectedPage allowed={ROLES.ADMIN_ACCESS}><AdminProfile /></ProtectedPage>} />
@@ -185,6 +187,8 @@ export default function PreApp() {
                     <Route path=":student_id" element={<StudentProfilePage />} />
                     <Route path="add_to_global" element={<StudentAdd />} />
                   </Route>
+
+                  <Route path="waiting-hall" element={<ProtectedPage allowed={ROLES.SUPER_ONLY}><WaitingHall /></ProtectedPage>} />
                 </Route>
               </Route>
             </Route>

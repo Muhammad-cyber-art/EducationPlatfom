@@ -11,15 +11,21 @@ import {
 import { NavLink } from "react-router-dom";
 import { useCurrentBranch } from "../Authorized/useBranchId";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { Globe } from "lucide-react";
+import AbsentStudentsModal from "../Common/AbsentStudentsModal";
 
 /* 1:1 Design Folder StatBox */
-const StatBox = ({ label, value, icon: Icon }) => (
-  <div className="lux-card" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '120px' }}>
+const StatBox = ({ label, value, icon: Icon, onClick, isClickable }) => (
+  <div
+    className={`lux-card ${isClickable ? 'cursor-pointer hover:border-red-500/50 hover:scale-[1.02] transition-all' : ''}`}
+    style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '120px' }}
+    onClick={onClick}
+  >
     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-      <Icon size={20} color="var(--gold)" strokeWidth={2} />
+      <Icon size={20} color={isClickable ? "var(--red-500, #ef4444)" : "var(--gold)"} strokeWidth={2} />
     </div>
     <div className="flex flex-col justify-end flex-1">
-      <div className="lux-value" style={{ color: 'var(--text-primary)', fontSize: '24px', lineHeight: '1' }}>{value}</div>
+      <div className="lux-value" style={{ color: isClickable ? '#ef4444' : 'var(--text-primary)', fontSize: '24px', lineHeight: '1' }}>{value}</div>
       <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '8px', letterSpacing: '1px', fontWeight: '800', textTransform: 'uppercase' }}>{label}</div>
     </div>
   </div>
@@ -53,6 +59,7 @@ export default function AdminPageFirst() {
   });
 
   const [selectedGroup, setSelectedGroup] = useState(null);
+  const [showAbsentModal, setShowAbsentModal] = useState(false);
 
   useEffect(() => {
     if (isFinanceError && hasFinancePerm) {
@@ -80,7 +87,13 @@ export default function AdminPageFirst() {
         <StatBox label="FAOAL O'QUVCHILAR" value={stats?.students || 0} icon={Users} />
         <StatBox label="STRATEGIK GURUHLAR" value={stats?.groups || 0} icon={Layers} />
         <StatBox label="ELITA O'QITUVCHILAR" value={stats?.mentors || 0} icon={Briefcase} />
-        <StatBox label="TIZIM HOLATI" value="Faol" icon={Activity} />
+        <StatBox
+          label="BUGUNGI KELMAGANLAR"
+          value={stats?.attendance_today?.absent || 0}
+          icon={Activity}
+          isClickable={true}
+          onClick={() => setShowAbsentModal(true)}
+        />
       </div>
 
       {/* Bot Stats Grid */}
@@ -179,6 +192,13 @@ export default function AdminPageFirst() {
           </div>
         </div>
       )}
+
+      {/* ABSENT STUDENTS MODAL */}
+      <AbsentStudentsModal
+        isOpen={showAbsentModal}
+        onClose={() => setShowAbsentModal(false)}
+        branchId={currentBranchId}
+      />
     </div>
   );
 }
