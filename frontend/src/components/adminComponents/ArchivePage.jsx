@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useOutletContext } from "react-router-dom";
 import api from "../../tokenUpdater/updater";
@@ -9,7 +9,7 @@ import { get_user_info } from "../Authorized/getRole";
 import {
     Trash2, RotateCcw, User, Users, GraduationCap,
     Loader2, AlertCircle, CheckCircle2, Calendar, Hash,
-    ArrowUpRight, Circle, Layers
+    ArrowUpRight, Circle, Layers, Search
 } from "lucide-react";
 
 export default function ArchivePage() {
@@ -25,19 +25,28 @@ export default function ArchivePage() {
         ? superAdminBranchId
         : currentBranchId;
 
+    const [searchTerm, setSearchTerm] = useState("");
+    const [debouncedSearch, setDebouncedSearch] = useState("");
+
+    // Debounce effects
+    useEffect(() => {
+        const timer = setTimeout(() => setDebouncedSearch(searchTerm), 500);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
+
     const { data: archivedStudents = [], isLoading: studentsLoading } = useQuery({
-        queryKey: ["archived-students"],
-        queryFn: () => api.get("/archive/students/").then((res) => res.data),
+        queryKey: ["archived-students", debouncedSearch],
+        queryFn: () => api.get(`/archive/students/?search=${debouncedSearch}`).then((res) => res.data),
     });
 
     const { data: archivedStaff = [], isLoading: staffLoading } = useQuery({
-        queryKey: ["archived-staff"],
-        queryFn: () => api.get("/archive/staff/").then((res) => res.data),
+        queryKey: ["archived-staff", debouncedSearch],
+        queryFn: () => api.get(`/archive/staff/?search=${debouncedSearch}`).then((res) => res.data),
     });
 
     const { data: archivedGroups = [], isLoading: groupsLoading } = useQuery({
-        queryKey: ["archived-groups"],
-        queryFn: () => api.get("/archive/groups/").then((res) => res.data),
+        queryKey: ["archived-groups", debouncedSearch],
+        queryFn: () => api.get(`/archive/groups/?search=${debouncedSearch}`).then((res) => res.data),
     });
 
     const restoreStudentMutation = useMutation({
@@ -154,6 +163,18 @@ export default function ArchivePage() {
                             <Hash size={12} className="text-[var(--gold)]" /> O'chirilgan Va Tasdiqlangan Ma'lumotlar
                         </p>
                     </div>
+                </div>
+
+                {/* SEARCH BAR */}
+                <div className="flex-1 max-w-md relative group">
+                    <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--gold)]" />
+                    <input
+                        type="text"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        placeholder="Arxivdan qidirish..."
+                        className="lux-input !pl-12 !py-4 w-full"
+                    />
                 </div>
             </div>
 

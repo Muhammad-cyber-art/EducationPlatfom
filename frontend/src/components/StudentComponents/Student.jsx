@@ -239,9 +239,13 @@ export default function StudentProfilePage() {
 
   const unenrollMutation = useMutation({
     mutationFn: async (groupId) => await api.post(`groups/groups/${groupId}/unenroll-student/`, { student_id }),
-    onSuccess: () => {
+    onSuccess: (res) => {
       queryClient.invalidateQueries(['student']);
-      toast.success("O'quvchi guruhdan chiqarildi.");
+      toast.success(res.data.status || "O'quvchi guruhdan chiqarildi.");
+      // Agar oxirgi guruh bo'lsa va talaba arxivlangan bo'lsa, orqaga qaytamiz
+      if (res.data.status?.includes("oxirgi guruh") || res.data.status?.includes("kutish zaliga")) {
+        navigate(-1);
+      }
     }
   });
 

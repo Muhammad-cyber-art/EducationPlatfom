@@ -26,8 +26,7 @@ from .permissions import (
 ) 
 from django.db.models import Prefetch, Q
 from rest_framework.renderers import JSONRenderer
-from archivebase.services import move_student_to_archive, send_to_archive
-from archivebase.services import move_group_to_archive 
+# archivebase servislar metodlar ichida lokal import qilinadi
 # from django_filters.rest_framework import DjangoFilterBackend
 
 User = get_user_model()
@@ -213,14 +212,27 @@ class GroupViewSet(viewsets.ModelViewSet):
         ).first()
         
         if enrollment:
-            enrollment.delete()
-            # If the student.group (Legacy FK) was pointing to this group, 
-            # we should update it to another group they are in, or set to null.
-            if student.group == group:
-                next_group = student.groups.exclude(id=group.id).first()
-                student.group = next_group
-                student.save()
-            return Response({"status": "O'quvchi guruhdan chiqarildi"}, status=200)
+            try:
+                with transaction.atomic():
+                    enrollment.delete()
+                    
+                    # Qolgan guruhlar sonini tekshiramiz
+                    remaining_groups_count = student.groups.count()
+                    
+                    if remaining_groups_count == 0:
+                        # Oxirgi guruhidan chiqdi -> Kutish zaliga o'tkazish
+                        from archivebase.services import move_student_to_waiting_hall
+                        move_student_to_waiting_hall(student, request.user, reason=f"{group.name} guruhidan chiqarildi")
+                        return Response({"status": "O'quvchi oxirgi guruhidan chiqarildi va kutish zaliga o'tkazildi"}, status=200)
+                    else:
+                        # Boshqa guruhlarda hali bor -> Faqat joriy guruhdan chiqaramiz
+                        if student.group == group:
+                            next_group = student.groups.exclude(id=group.id).first()
+                            student.group = next_group
+                            student.save()
+                        return Response({"status": f"O'quvchi {group.name} guruhidan chiqarildi, boshqa guruhlarda faol"}, status=200)
+            except Exception as e:
+                return Response({"error": str(e)}, status=400)
         else:
             return Response({"detail": "Ushbu o'quvchi bu guruhda emas"}, status=404)
 
@@ -328,6 +340,7 @@ class GroupViewSet(viewsets.ModelViewSet):
         
         try:
             # Guruhni arxivga ko'chirish funksiyasini chaqiramiz
+            from archivebase.services import move_group_to_archive
             move_group_to_archive(group, request.user, reason=reason)
             return Response(
                 {"detail": "Guruh va uning barcha o'quvchilari arxivga ko'chirildi."}, 
@@ -420,6 +433,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         
     @action(detail=True, methods=['post'], permission_classes=[IsAdminOrSuperAdmin])
     def archive(self, request, pk=None):
+        from archivebase.services import send_to_archive
         student = self.get_object()
         reason = request.data.get('reason', "Sabab ko'rsatilmadi")
         
@@ -434,6 +448,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         """O'quvchini butunlay o'chirish (Archive qilish)"""
         
         try:
+            from archivebase.services import move_student_to_archive
             student = self.get_object()
             reason = request.data.get("reason", "Tizimdan o'chirildi")
             
@@ -448,17 +463,34 @@ class StudentViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='remove-from-group')
     def remove_from_group(self, request, pk=None):
-        """Guruhdan chiqarish amali - bu ham arxivga tushishi kerak"""
+        """Guruhdan chiqarish amali - Aqlli logika"""
+        from archivebase.services import move_student_to_archive, move_student_to_waiting_hall
         student = self.get_object()
         reason = request.data.get("reason", "Guruhdan chiqarildi")
+        group = student.group # Hozirgi asosiy guruh
         
-        # Agar shunchaki guruhdan chiqib, bazada qolishi kerak bo'lsa:
-        # student.group = None; student.save()
-        
-        # Lekin siz arxivga saqlansin deganingiz uchun:
-        try:
+        if not group:
+            # Agar talaba allaqachon guruhsiz bo'lsa, uni arxivga yuboramiz
             move_student_to_archive(student, request.user, reason=reason)
-            return Response({"detail": "O'quvchi guruhdan olindi va arxivlandi."}, status=200)
+            return Response({"detail": "Guruhsiz o'quvchi arxivlandi."}, status=200)
+
+        try:
+            with transaction.atomic():
+                # 1. Guruhdan chiqarish (Enrollmentni o'chirish)
+                from .models import GroupEnrollment
+                GroupEnrollment.objects.filter(student=student, group=group).delete()
+                
+                # 2. Qolgan guruhlarni tekshirish
+                remaining_groups = student.groups.all()
+                if remaining_groups.count() == 0:
+                    # Oxirgi guruh ekan -> Kutish zaliga
+                    move_student_to_waiting_hall(student, request.user, reason=reason)
+                    return Response({"detail": "O'quvchi oxirgi guruhidan olindi va kutish zaliga o'tkazildi."}, status=200)
+                else:
+                    # Boshqa guruhlari bor -> Studentni bazada qoldiramiz, faqat group FK ni yangilaymiz
+                    student.group = remaining_groups.first()
+                    student.save()
+                    return Response({"detail": f"O'quvchi {group.name} dan chiqarildi, lekin {student.group.name} da faol qoldi."}, status=200)
         except Exception as e:
             return Response({"error": str(e)}, status=400)
     
@@ -737,7 +769,7 @@ class StudentNestedView(viewsets.ReadOnlyModelViewSet):
         if branch_id:
             try:
                 branch_id = int(branch_id)
-                qs = qs.filter(group__branch_id=branch_id)
+                qs = qs.filter(branch_id=branch_id)
             except ValueError:
                 qs = qs.none()
 

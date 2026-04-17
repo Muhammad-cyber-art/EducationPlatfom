@@ -132,7 +132,7 @@ class Student(models.Model):
     )
     group = models.ForeignKey(
         Group,
-        on_delete=models.CASCADE,null=True,blank=True,
+        on_delete=models.SET_NULL,null=True,blank=True,
         related_name='old_students_fk'
     )
     color = models.CharField(max_length=7, default="#ffffff", validators=[color_validator])

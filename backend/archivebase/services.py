@@ -42,7 +42,12 @@ def move_student_to_archive(student, archived_by, reason: str = "") -> ArchivedS
     from groups.models import Student 
     
     # 1. Bog'liq ma'lumotlarni yig'ish
+    from homework_attends.models import Attendance, HomeworkSubmission, MockTestResult
+    
     payments = Payment.objects.filter(student=student)
+    attendances = Attendance.objects.filter(student=student)
+    submissions = HomeworkSubmission.objects.filter(student=student)
+    mock_results = MockTestResult.objects.filter(student=student)
     
     # 2. Student ma'lumotlarini dict qilish va sanalarni tozalash
     student_data = model_to_dict(student)
@@ -52,8 +57,11 @@ def move_student_to_archive(student, archived_by, reason: str = "") -> ArchivedS
     cleaned_student_data["branch_id"] = student.branch_id
     cleaned_student_data["group_id"] = student.group_id
     
-    # 3. Bog'langan ma'lumotlarni tozalab qo'shish
+    # 3. Bog'langan barcha o'quv ma'lumotlarini arxivga yig'amiz
     cleaned_student_data["payments"] = serialize_related(payments)
+    cleaned_student_data["attendances"] = serialize_related(attendances)
+    cleaned_student_data["submissions"] = serialize_related(submissions)
+    cleaned_student_data["mock_results"] = serialize_related(mock_results)
 
     # 4. Arxiv yaratish
     archived = ArchivedStudent.objects.create(
@@ -63,14 +71,30 @@ def move_student_to_archive(student, archived_by, reason: str = "") -> ArchivedS
         last_group_name=getattr(student.group, "name", "Guruhsiz"),
         archived_by=archived_by,
         reason=reason,
-        metadata=cleaned_student_data, # Endi bu yerda date ob'ektlari yo'q, faqat stringlar
+        metadata=cleaned_student_data,
     )
 
-    # 5. O'chirish
-    payments.delete()
+    # 5. O'chirish (Zanjirli o'chirish hamma bog'liqlarni tozalaydi)
     student.delete()
 
     return archived
+
+@transaction.atomic
+def move_student_to_waiting_hall(student, archived_by, reason: str = ""):
+    """O'quvchini oxirgi guruhidan chiqarganda kutish zaliga o'tkazish"""
+    from groups.models import WaitingStudent
+    
+    # 1. Arxivga saqlaymiz (Tarix yo'qolmasligi uchun)
+    archived = move_student_to_archive(student, archived_by, reason)
+    
+    # 2. Kutish zalida yangi record ochamiz
+    waiting = WaitingStudent.objects.create(
+        full_name=student.full_name,
+        phone=student.phone,
+        branch=student.branch,
+        notes=f"{reason} | Oldingi ID: {student.id}"
+    )
+    return waiting, archived
 
 # move_staff_to_archive funksiyasida ham xuddi shunday cleaned_data ishlating
 @transaction.atomic
@@ -146,11 +170,24 @@ def move_group_to_archive(group, archived_by, reason: str = "") -> ArchivedGroup
     from groups.models import Group
     from finance.models import Payment
     
-    # 1. Guruhdagi barcha o'quvchilarni arxivlaymiz
+    # 1. Guruhdagi barcha o'quvchilarni tekshiramiz
     students = list(group.students.all())
     for student in students:
-        # Bu funksiya studentga bog'liq to'lovlarni o'chiradi
-        move_student_to_archive(student, archived_by, f"Guruh arxivlangani uchun: {reason}")
+        # BIZNES LOGIKA: Agar talaba bir nechta guruhda o'qisa, bittasi o'chsa ham talaba qolishi kerak
+        if student.groups.count() > 1:
+            # Talabani shunchaki guruhdan chiqaramiz (Unenroll)
+            from groups.models import GroupEnrollment
+            GroupEnrollment.objects.filter(student=student, group=group).delete()
+            
+            # Agar legacy 'group' fieldi shu guruhga bog'langan bo'lsa, boshqasiga o'tkazamiz
+            if student.group_id == group.id:
+                next_group = student.groups.exclude(id=group.id).first()
+                student.group = next_group
+                student.save()
+        else:
+            # Talaba faqat shu guruhda bo'lsa, uni kutish zaliga o'tkazamiz
+            # Bu funksiya ham arxivlaydi, ham kutish zaliga qo'shadi
+            move_student_to_waiting_hall(student, archived_by, f"Guruh arxivlangani uchun: {reason}")
 
     # 2. DIQQAT: O'quvchilar arxivlangandan keyin ham guruhga bog'langan 
     # qandaydir to'lovlar qolgan bo'lsa (masalan, tizimda adashib qolganlari),
@@ -175,9 +212,10 @@ def move_group_to_archive(group, archived_by, reason: str = "") -> ArchivedGroup
         metadata=group_data,
     )
 
-    # 5. MUHIM: Guruhni o'chirishdan oldin unga bog'langan hamma to'lovlarni o'chirib tashlaymiz
-    # Chunki biz ularni metadata ichiga saqlab bo'ldik.
-    remaining_payments.delete()
+    # 5. Guruhni o'chirganimizda moliya ma'lumotlari (Payment) bazada qoladi (SET_NULL),
+    # chunki guruh o'chirilishi haqiqiy to'lovlar tarixini yo'qotmasligi kerak.
+    # Ular metadata ichida ham zaxira sifatida bor.
+    pass 
 
     # 6. Endi guruhni o'chirsak, ProtectedError bermaydi
     group.delete()
@@ -192,22 +230,22 @@ def restore_student_from_archive(archived_student_id, restored_by):
     Arxivlangan studentni qayta tiklash.
     Metadata dan barcha ma'lumotlarni olib, yangi Student obyekti yaratadi.
     """
-    from groups.models import Student, Group
+    from groups.models import Student, Group, GroupEnrollment
     from branches.models import Branch
+    from finance.models import Payment
+    from homework_attends.models import Attendance, HomeworkSubmission, MockTestResult
     
     archived = ArchivedStudent.objects.get(id=archived_student_id)
     metadata = archived.metadata
     
-    # Branch va Group ni topish (agar mavjud bo'lsa)
-    branch = None
-    if metadata.get('branch'):
-        branch = Branch.objects.filter(id=metadata['branch']).first()
+    # 1. Branch va Group ni topish (ID kalitlari metadata ichida _id bilan saqlangan)
+    branch_id = metadata.get('branch_id') or metadata.get('branch')
+    branch = Branch.objects.filter(id=branch_id).first() if branch_id else None
     
-    group = None
-    if metadata.get('group'):
-        group = Group.objects.filter(id=metadata['group']).first()
+    group_id = metadata.get('group_id') or metadata.get('group')
+    group = Group.objects.filter(id=group_id).first() if group_id else None
     
-    # Studentni qayta yaratish
+    # 2. Studentni qayta yaratish
     student = Student.objects.create(
         full_name=archived.full_name,
         branch=branch,
@@ -221,11 +259,37 @@ def restore_student_from_archive(archived_student_id, restored_by):
         color=metadata.get('color', '#ffffff'),
     )
 
-    # Many-to-Many bog'liqlikni ham tiklaymiz
+    # 3. Many-to-Many bog'liqlikni tiklash (Guruhga a'zolik)
     if group:
-        from groups.models import GroupEnrollment
         GroupEnrollment.objects.get_or_create(student=student, group=group)
+        
+    # 4. Bog'langan ma'lumotlarni tiklash (Agar metadata ichida bo'lsa)
+    # Eslatma: ID lar yangi yaratiladi, shuning uchun **data usulidan foydalanamiz
     
+    # To'lovlar
+    for pay_data in metadata.get('payments', []):
+        if 'id' in pay_data: del pay_data['id']
+        if 'student' in pay_data: del pay_data['student']
+        Payment.objects.create(student=student, **pay_data)
+        
+    # Davomat
+    for att_data in metadata.get('attendances', []):
+        if 'id' in att_data: del att_data['id']
+        if 'student' in att_data: del att_data['student']
+        Attendance.objects.create(student=student, **att_data)
+
+    # Uy vazifalari
+    for sub_data in metadata.get('submissions', []):
+        if 'id' in sub_data: del sub_data['id']
+        if 'student' in sub_data: del sub_data['student']
+        HomeworkSubmission.objects.create(student=student, **sub_data)
+
+    # Mock testlar
+    for mock_data in metadata.get('mock_results', []):
+        if 'id' in mock_data: del mock_data['id']
+        if 'student' in mock_data: del mock_data['student']
+        MockTestResult.objects.create(student=student, **mock_data)
+
     return student
 
 @transaction.atomic

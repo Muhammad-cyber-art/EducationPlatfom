@@ -12,11 +12,17 @@ from .services import (
     restore_staff_from_archive,
     restore_group_from_archive
 )
+from rest_framework import filters # Qidiruv uchun
+from django_filters.rest_framework import DjangoFilterBackend # Filtr uchun
+
 class ArchivedStudentViewSet(mixins.DestroyModelMixin, viewsets.ReadOnlyModelViewSet):
     """Faqat ko'rish va o'chirish (Arxivdan butunlay)"""
-    queryset = ArchivedStudent.objects.all()
+    queryset = ArchivedStudent.objects.all().order_by('-archived_at')
     serializer_class = ArchivedStudentSerializer
     permission_classes = [IsArchiveAdmin] # Faqat adminlar uchun
+    
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    search_fields = ['full_name', 'branch_name', 'last_group_name']
     
     def destroy(self, request, *args, **kwargs):
         """
@@ -63,9 +69,12 @@ class ArchivedStudentViewSet(mixins.DestroyModelMixin, viewsets.ReadOnlyModelVie
             )
 
 class ArchivedStaffViewSet(mixins.DestroyModelMixin, viewsets.ReadOnlyModelViewSet):
-    queryset = ArchivedStaff.objects.all()
+    queryset = ArchivedStaff.objects.all().order_by('-archived_at')
     serializer_class = ArchivedStaffSerializer
     permission_classes = [IsArchiveAdmin]
+    
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    search_fields = ['full_name', 'role', 'phone']
     
     def destroy(self, request, *args, **kwargs):
         """
@@ -119,9 +128,12 @@ class ArchivedStaffViewSet(mixins.DestroyModelMixin, viewsets.ReadOnlyModelViewS
 
 class ArchivedGroupViewSet(mixins.DestroyModelMixin, viewsets.ReadOnlyModelViewSet):
     """Arxivlangan guruhlar"""
-    queryset = ArchivedGroup.objects.all()
+    queryset = ArchivedGroup.objects.all().order_by('-archived_at')
     serializer_class = ArchivedGroupSerializer
     permission_classes = [IsArchiveAdmin]
+
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    search_fields = ['full_name', 'branch_name', 'mentor_name', 'subject']
 
     def destroy(self, request, *args, **kwargs):
         """

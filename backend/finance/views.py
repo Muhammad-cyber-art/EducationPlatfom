@@ -13,7 +13,7 @@ from .serializers import (
 )
 from django.contrib.auth import get_user_model
 from django.db.models import Sum, Q, F, Count ,OuterRef, Subquery
-from groups.models import Group, Branch ,Student
+from groups.models import Group, Student
 from homework_attends.models import Attendance
 from rest_framework.permissions import IsAuthenticated
 from .services import generate_monthly_payments
@@ -955,6 +955,10 @@ class BranchFinanceDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, branch_id):
+        from groups.models import Student, Group, WaitingStudent
+        from branches.models import Branch
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
         user = request.user
         
         # Ruxsat tekshirish
@@ -993,11 +997,10 @@ class BranchFinanceDetailView(APIView):
         # Guruhlar soni (faol guruhlar)
         groups_count = Group.objects.filter(branch=branch, is_faol=True).count()
         
-        # O'quvchilar soni (faol guruhlardagi)
-        students_count = Student.objects.filter(
-            group__branch=branch,
-            group__is_faol=True
-        ).distinct().count()
+        # O'quvchilar soni (Talabalar + Kutish zalidagilar)
+        actual_students = Student.objects.filter(branch=branch).count()
+        waiting_students = WaitingStudent.objects.filter(branch=branch).count()
+        students_count = actual_students + waiting_students
 
         # 2. Kutilayotgan daromad (Expected Income)
         # Har bir faol guruhning (monthly_price * o'quvchilar soni)
