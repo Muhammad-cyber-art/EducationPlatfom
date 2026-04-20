@@ -448,21 +448,25 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
             center_align = Alignment(horizontal='center', vertical='center')
             
-            # Title row
-            ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(date_list) + 2)
-            ws.cell(row=1, column=1).value = f"Oylik Davomat Hisoboti: {group.name} | Davr: {year}-{month:02d}"
-            ws.cell(row=1, column=1).font = Font(bold=True, size=14)
-            ws.cell(row=1, column=1).alignment = center_align
-            
             # Header row
             headers = ["№", "O'quvchi ismi-familiyasi"] + [d.day for d in date_list]
             for col_num, header in enumerate(headers, 1):
                 cell = ws.cell(row=2, column=col_num)
                 cell.value = header
+
+            # Column widths
+            ws.column_dimensions['A'].width = 5
+            ws.column_dimensions['B'].width = 35
+            for col_num in range(3, len(headers) + 1):
+                ws.column_dimensions[get_column_letter(col_num)].width = 4
+                
+            # Header Row Styling
+            header_row = ws[2]
+            for cell in header_row:
                 cell.font = header_font
                 cell.fill = header_fill
                 cell.alignment = center_align
-            
+
             # Data rows
             for row_num, student in enumerate(students, 3):
                 ws.cell(row=row_num, column=1).value = row_num - 2
@@ -476,25 +480,20 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                     if joined_at and d < joined_at:
                         cell.value = "-"
                     elif not group.is_lesson_day(d):
-                        cell.value = "X" # Na dars, na dam
-                        cell.font = Font(color="CCCCCC")
+                        cell.value = "X" 
+                        cell.font = Font(color="808080")
                     else:
                         is_present = att_data.get(student.id, {}).get(str(d))
                         if is_present is True:
                             cell.value = "+"
-                            cell.font = Font(color="00B050", bold=True)
+                            cell.font = Font(color="008000", bold=True)
                         elif is_present is False:
-                            cell.value = "K" # Kelmagan
+                            cell.value = "K" 
                             cell.font = Font(color="FF0000", bold=True)
                         else:
                             cell.value = "?" 
                     cell.alignment = center_align
 
-            # Auto-column width for name
-            ws.column_dimensions['B'].width = 35
-            for col_num in range(3, len(headers) + 1):
-                ws.column_dimensions[get_column_letter(col_num)].width = 4
-                
             response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
             response['Content-Disposition'] = f'attachment; filename="davomat_{group.name}_{year}_{month}.xlsx"'
             wb.save(response)

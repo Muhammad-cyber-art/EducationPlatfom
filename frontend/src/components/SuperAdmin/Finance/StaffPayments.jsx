@@ -34,7 +34,8 @@ const StaffManagementPro = () => {
   const fetchBranch = async () => {
     try {
       const res = await api.get(`/add_branch/branches/`);
-      dispatch(setBranches(res.data));
+      const data = res.data.results || res.data;
+      dispatch(setBranches(data));
       // Agar activeBranch tanlanmagan bo'lsa va filiallar bo'lsa, birinchisini tanlash
       if (!activeBranch && res.data.length > 0) {
         dispatch(setActiveBranch(res.data[0].id));
@@ -55,8 +56,10 @@ const StaffManagementPro = () => {
         url = `/finance/staff-profiles/?user__role=mentor&user__branch=${Number(activeBranch)}`;
       }
       const res = await api.get(url);
-      dispatch(setStaffData(res.data));
+      const data = res.data.results || res.data;
+      dispatch(setStaffData(data));
     } catch (err) {
+      console.error("Fetch Staff Error:", err);
       toast.error("Xodimlar ma'lumotlarini yuklashda xatolik.");
     } finally {
       dispatch(setStaffLoading(false));

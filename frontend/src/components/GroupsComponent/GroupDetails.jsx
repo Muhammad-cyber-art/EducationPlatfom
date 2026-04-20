@@ -97,8 +97,15 @@ export default function GroupDetailPage() {
 
   const { data: groupinfo = {}, isError: isGroupError } = useQuery({
     queryKey: ['group-detail', group_id],
-    queryFn: () => api.get(`/groups/groups/${group_id}`).then(res => res.data),
-    staleTime: 1000 * 60 * 5,
+    queryFn: () => api.get(`/groups/groups/${group_id}/?exclude_students=true`).then(res => res.data),
+    staleTime: 1000 * 60 * 10,
+    enabled: !!group_id,
+  });
+
+  const { data: groupStudents = [] } = useQuery({
+    queryKey: ['group-students', group_id],
+    queryFn: () => api.get(`/groups/groups/${group_id}/students/`).then(res => res.data),
+    staleTime: 1000 * 60 * 10,
     enabled: !!group_id,
   });
 
@@ -106,7 +113,7 @@ export default function GroupDetailPage() {
     queryKey: ['bot-stats-group', group_id],
     queryFn: () => api.get(`/bot/statistics/?group_id=${group_id}`).then(res => res.data),
     enabled: !!group_id && !!groupinfo.id,
-    staleTime: 1000 * 60 * 5,
+    staleTime: 1000 * 60 * 10,
   });
 
   const isGroupMentor = useMemo(() => {
@@ -141,21 +148,21 @@ export default function GroupDetailPage() {
     queryKey: ['homeworks', group_id],
     queryFn: () => api.get(`/homework_attends/homeworks/?group_id=${group_id}`).then(res => res.data),
     enabled: !!group_id && !!userData.id && canSeeHomework,
-    staleTime: 1000 * 60 * 3,
+    staleTime: 1000 * 60 * 10,
   });
 
   const { data: mockTests = [] } = useQuery({
     queryKey: ['mock-tests', group_id],
     queryFn: () => api.get(`/homework_attends/mock-tests/?group_id=${group_id}`).then(res => res.data),
     enabled: !!group_id && !!userData.id && canSeeHomework,
-    staleTime: 1000 * 60 * 3,
+    staleTime: 1000 * 60 * 10,
   });
 
   const { data: attendanceData = [], refetch: refetchAttends } = useQuery({
     queryKey: ['attendance', group_id, selectedDate],
     queryFn: () => api.get(`/homework_attends/attendances/?group_id=${group_id}&date=${selectedDate}`).then(res => res.data),
     enabled: !!group_id && !!selectedDate && !!userData.id,
-    staleTime: 1000 * 30,
+    staleTime: 1000 * 60 * 5,
   });
 
   useEffect(() => {
@@ -232,7 +239,7 @@ export default function GroupDetailPage() {
   }, [attendanceData]);
 
   const handleConfirmAttendance = async () => {
-    const students = groupinfo.students || [];
+    const students = groupStudents || [];
     const attendances = students.map((s) => {
       const is_present = mergedAttendanceForDate[s.id] !== undefined
         ? mergedAttendanceForDate[s.id]
@@ -287,7 +294,7 @@ export default function GroupDetailPage() {
   };
 
   const filteredStudents = useMemo(() => {
-    const students = groupinfo.students || [];
+    const students = groupStudents || [];
     const searchLower = (studentSearch || "").trim().toLowerCase();
 
     const sortedStudents = [...students].sort((a, b) => {
@@ -303,7 +310,7 @@ export default function GroupDetailPage() {
       const phone = s.phone || "";
       return fullName.includes(searchLower) || phone.includes(studentSearch);
     });
-  }, [groupinfo.students, studentSearch]);
+  }, [groupStudents, studentSearch]);
 
   const primaryColor = groupinfo.color || '#b8860b';
 
@@ -775,6 +782,7 @@ export default function GroupDetailPage() {
                   <button
                     onClick={() => {
                       queryClient.refetchQueries(['group-detail', group_id]);
+                      queryClient.refetchQueries(['group-students', group_id]);
                       refetchAttends();
                       queryClient.refetchQueries(['homeworks', group_id]);
                       queryClient.refetchQueries(['mock-tests', group_id]);

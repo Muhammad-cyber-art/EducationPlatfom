@@ -346,6 +346,10 @@ class GroupSerializer(serializers.ModelSerializer):
         """
         N+1 muammosini bartaraf etish: barcha to'lov ma'lumotlarini bitta so'rovda olamiz.
         """
+        request = self.context.get('request')
+        if request and request.query_params.get('exclude_students') == 'true':
+            return []
+
         from django.utils import timezone
         from finance.models import Payment
         from django.db.models import Q

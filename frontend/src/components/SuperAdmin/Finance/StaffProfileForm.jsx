@@ -45,16 +45,17 @@ const StaffProfileForm = ({ isOpen, onClose, onSuccess, branch }) => {
       ...prev,
       salary_type: salaryType,
       // Reset other salary fields based on type
-      ...(salaryType === 'fixed' ? { commission_percentage: '0', per_student_amount: '0' } : 
-         salaryType === 'percentage' ? { fixed_salary: '0', per_student_amount: '0' } :
-         { fixed_salary: '0', commission_percentage: '0' })
+      ...(salaryType === 'fixed' ? { commission_percentage: '0', per_student_amount: '0' } :
+        salaryType === 'percentage' ? { fixed_salary: '0', per_student_amount: '0' } :
+          { fixed_salary: '0', commission_percentage: '0' })
     }));
   }, [salaryType]);
 
   const fetchExistingProfiles = async () => {
     try {
       const response = await api.get('/finance/staff-profiles/');
-      setExistingProfiles(response.data);
+      const data = response.data.results || response.data;
+      setExistingProfiles(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Profillarni yuklashda xatolik:', err);
     }
@@ -65,7 +66,8 @@ const StaffProfileForm = ({ isOpen, onClose, onSuccess, branch }) => {
     setError('');
     try {
       const response = await api.get(`/register/users/?branch=${branch}&role=${selectedRole}`);
-      setUsers(response.data);
+      const data = response.data.results || response.data;
+      setUsers(Array.isArray(data) ? data : []);
     } catch (err) {
       setError('Xodimlarni yuklashda xatolik');
       console.error(err);

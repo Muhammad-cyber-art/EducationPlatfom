@@ -3,7 +3,8 @@ import React from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import { setSearchQuery, setTab } from "../../store/slices/mentorSlice";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
+import { useInView } from "react-intersection-observer";
 import api from "../../tokenUpdater/updater";
 import toast from "react-hot-toast";
 import {
@@ -16,12 +17,14 @@ import { useCurrentBranch } from "../Authorized/useBranchId";
 import { get_user_info } from "../Authorized/getRole";
 
 // Fetcher function
-const fetchGroupsData = async (branchId, search) => {
+const fetchGroupsData = async ({ pageParam = 1, queryKey }) => {
+  const [_key, branchId, search] = queryKey;
   let url = `/groups/groups/`;
-  let params = [];
+  let params = [`page=${pageParam}`, `page_size=5`];
   if (branchId) params.push(`branch_id=${branchId}`);
   if (search) params.push(`search=${search}`);
-  const finalUrl = params.length > 0 ? `${url}?${params.join("&")}` : url;
+
+  const finalUrl = `${url}?${params.join("&")}`;
   const res = await api.get(finalUrl);
   return res.data;
 };
@@ -207,6 +210,7 @@ export default function GroupsListPage() {
   const searchTerm = useSelector(state => state.mentor.searchQuery);
   const activeTab = useSelector(state => state.mentor.activeTab);
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const { ref, inView } = useInView();
 
   const { data: userData = {} } = useQuery({
     queryKey: ['user-me'],
@@ -229,13 +233,36 @@ export default function GroupsListPage() {
   const effectiveBranchId = user_info?.role === "super_admin" ? superAdminBranchId : currentBranchId;
   const canFetch = user_info?.role === "super_admin" ? !!superAdminBranchId : (!branchLoading && hasAccess);
 
-  const { data: groups = [], isLoading, isFetching, isError, error } = useQuery({
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+    isFetching,
+    isError,
+    error
+  } = useInfiniteQuery({
     queryKey: ['groups', effectiveBranchId, debouncedSearch],
-    queryFn: () => fetchGroupsData(effectiveBranchId, debouncedSearch),
+    queryFn: fetchGroupsData,
     enabled: canFetch,
     staleTime: 1000 * 60 * 5,
     refetchOnWindowFocus: false,
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => {
+      if (lastPage.next) {
+        const url = new URL(lastPage.next);
+        return url.searchParams.get('page');
+      }
+      return undefined;
+    },
   });
+
+  useEffect(() => {
+    if (inView && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [inView, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   useEffect(() => {
     if (isError) {
@@ -243,12 +270,17 @@ export default function GroupsListPage() {
     }
   }, [isError, error]);
 
+  const groupsArr = useMemo(() => {
+    if (!data) return [];
+    return data.pages.flatMap(page => page.results || []);
+  }, [data]);
+
   const filteredData = useMemo(() => {
-    return groups.filter((group) => {
+    return groupsArr.filter((group) => {
       if (activeTab === "all") return true;
       return group.days === activeTab;
     });
-  }, [groups, activeTab]);
+  }, [groupsArr, activeTab]);
 
   return (
     <div className="p-3 sm:p-6 space-y-10">
@@ -338,6 +370,16 @@ export default function GroupsListPage() {
             </p>
           </div>
         )}
+
+        {/* INFINITE SCROLL SENSOR */}
+        <div ref={ref} className="py-10 flex justify-center">
+          {isFetchingNextPage && (
+            <div className="flex items-center gap-2 text-[var(--gold)]">
+              <Loader2 size={24} className="animate-spin" />
+              <span className="text-[10px] font-black uppercase tracking-widest">Yana yuklanmoqda...</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Mobile FAB */}

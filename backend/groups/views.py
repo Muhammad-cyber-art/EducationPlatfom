@@ -31,9 +31,17 @@ from rest_framework.renderers import JSONRenderer
 
 User = get_user_model()
 
+from rest_framework.pagination import PageNumberPagination
+
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 15
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
 class GroupViewSet(viewsets.ModelViewSet):
     queryset = Group.objects.select_related('mentor', 'admin').prefetch_related('students')
     serializer_class = GroupSerializer
+    pagination_class = StandardResultsSetPagination
     permission_classes = [IsGroupOwnerOrSuperAdmin]
     authentication_classes = [JWTAuthentication, SessionAuthentication]
     module_name = 'groups'
@@ -43,7 +51,11 @@ class GroupViewSet(viewsets.ModelViewSet):
     # Guruh nomi va fan nomi bo'yicha qidirish imkoniyati
     search_fields = ['name', 'subject', 'mentor__first_name', 'mentor__last_name','mentor__username']
 
-    from django.db.models import Q
+    def get_serializer_class(self):
+        from .serializers import GroupSerializer, GroupSimpleSerializer
+        if self.action == 'list':
+            return GroupSimpleSerializer
+        return GroupSerializer
 
     def get_queryset(self):
         user = self.request.user
@@ -354,6 +366,7 @@ class GroupViewSet(viewsets.ModelViewSet):
         
 class StudentViewSet(viewsets.ModelViewSet):
     serializer_class = StudentSerializer
+    pagination_class = StandardResultsSetPagination
     permission_classes = [IsStudentGroupOwnerOrSuperAdmin] 
     module_name = 'students'
 
@@ -713,8 +726,9 @@ from rest_framework import viewsets, filters
 from django_filters.rest_framework import DjangoFilterBackend
 # ... boshqa importlar ...
 
-class MentorViewSet(viewsets.ReadOnlyModelViewSet):
+class MentorViewSet(viewsets.ModelViewSet):
     serializer_class = MentorSerializer
+    pagination_class = StandardResultsSetPagination
     permission_classes = [IsAuthenticated | IsMentorBranchAccessible]
     
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
@@ -753,6 +767,7 @@ class MentorViewSet(viewsets.ReadOnlyModelViewSet):
         )
 class StudentNestedView(viewsets.ReadOnlyModelViewSet):
     serializer_class = StudentNestedSerializer
+    pagination_class = StandardResultsSetPagination
     permission_classes = [IsAuthenticated]
     
     # --- QIDIRUV VA FILTR BACKENDLARINI YOQAMIZ ---

@@ -49,7 +49,7 @@ export default function GlobalStudentComponent() {
     }
     setLoading(true);
     try {
-      const res = await api.get(`/groups/nested_students/?branch_id=${activeBranchId}&search=${search}`);
+      const res = await api.get(`/groups/nested_students/?branch_id=${activeBranchId}&search=${search}&page_size=200`);
       setStudents(res.data.results || res.data);
     } catch {
       toast.error("Ma'lumotlarni yuklashda xatolik.");

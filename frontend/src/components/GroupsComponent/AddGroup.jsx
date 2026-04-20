@@ -69,8 +69,8 @@ const AddGroup = () => {
   useEffect(() => {
     // Barcha ruxsat etilgan mentorlarni yuklaymiz (branch bo'yicha filter frontendda bo'ladi)
     api
-      .get(`/groups/mentors/`)
-      .then((res) => setMentors(res.data))
+      .get(`/groups/mentors/?page_size=200`)
+      .then((res) => setMentors(res.data.results || res.data))
       .catch((err) => {
         console.error("Mentor fetch error:", err);
       });

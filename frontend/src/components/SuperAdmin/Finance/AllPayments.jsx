@@ -58,20 +58,23 @@ const AllPayments = () => {
         api.get(`/finance/statistics/`)
       ]);
 
+      const branchesData = branchRes.data.results || branchRes.data;
+      const statsData = statsRes.data;
+
       const statsMap = {};
-      statsRes.data.branches?.forEach(b => {
+      statsData.branches?.forEach(b => {
         statsMap[b.id] = b;
       });
 
-      const mergedBranches = branchRes.data.map(b => ({
+      const mergedBranches = branchesData.map(b => ({
         ...b,
         finance: statsMap[b.id] || { income: 0, expense: 0, profit: 0 }
       }));
 
       setBranches(mergedBranches);
-      setStatistics(statsRes.data);
-      setStatistics(statsRes.data);
+      setStatistics(statsData);
     } catch (error) {
+      console.error("Fetch Data Error:", error);
       toast.error("Ma'lumotlarni yuklashda xatolik.");
     } finally {
       setLoading(false);
@@ -123,7 +126,7 @@ const AllPayments = () => {
                 <p className="text-[10px] text-[var(--text-muted)] font-black uppercase tracking-[0.2em] mt-1">Barcha filiallar bo'yicha</p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-6">
               <div className="text-right hidden sm:block">
                 <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-1">Xodimlar</p>
@@ -131,9 +134,9 @@ const AllPayments = () => {
                   {totalPersonnel} <Users size={14} className="text-[var(--gold)] opacity-50" />
                 </div>
               </div>
-              
+
               <div className="w-px h-10 bg-[var(--border-glass)] hidden sm:block"></div>
-              
+
               <div className="text-right">
                 <p className="text-[9px] font-black text-[var(--gold)] uppercase tracking-widest mb-1">
                   Tasdiqlangan Tushum
@@ -157,29 +160,29 @@ const AllPayments = () => {
 
           {/* PERFORMANCE METRICS (Horizontal grid) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <StatMetric 
-              label="Chiqimlar" 
-              value={formatNumber(statistics.total_expense)} 
-              icon={<TrendingDown size={20} />} 
-              color="text-red-500" 
+            <StatMetric
+              label="Chiqimlar"
+              value={formatNumber(statistics.total_expense)}
+              icon={<TrendingDown size={20} />}
+              color="text-red-500"
               bg="bg-red-500/10 border-red-500/20"
-              trend={`${statistics.expense_trend >= 0 ? '+' : ''}${statistics.expense_trend}%`} 
+              trend={`${statistics.expense_trend >= 0 ? '+' : ''}${statistics.expense_trend}%`}
             />
-            <StatMetric 
-              label="Qarzdorlik" 
-              value={formatNumber(statistics.total_debt)} 
-              icon={<CreditCard size={20} />} 
-              color="text-amber-500" 
+            <StatMetric
+              label="Qarzdorlik"
+              value={formatNumber(statistics.total_debt)}
+              icon={<CreditCard size={20} />}
+              color="text-amber-500"
               bg="bg-amber-500/10 border-amber-500/20"
-              trend={`${(parseFloat(statistics.total_debt) / (parseFloat(statistics.total_income) + parseFloat(statistics.total_debt) || 1) * 100).toFixed(1)}%`} 
+              trend={`${(parseFloat(statistics.total_debt) / (parseFloat(statistics.total_income) + parseFloat(statistics.total_debt) || 1) * 100).toFixed(1)}%`}
             />
-            <StatMetric 
-              label="Sof Foyda" 
-              value={formatNumber(statistics.net_profit)} 
-              icon={<TrendingUp size={20} />} 
-              color="text-emerald-500" 
+            <StatMetric
+              label="Sof Foyda"
+              value={formatNumber(statistics.net_profit)}
+              icon={<TrendingUp size={20} />}
+              color="text-emerald-500"
               bg="bg-emerald-500/10 border-emerald-500/20"
-              trend={`${statistics.profit_trend >= 0 ? '+' : ''}${statistics.profit_trend}%`} 
+              trend={`${statistics.profit_trend >= 0 ? '+' : ''}${statistics.profit_trend}%`}
             />
           </div>
 
@@ -196,15 +199,15 @@ const AllPayments = () => {
               <div className="h-[140px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={statistics.branches} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-                    <XAxis 
-                      dataKey="name" 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{ fill: 'var(--text-muted)', fontSize: 9, fontWeight: 800 }} 
-                      dy={10} 
+                    <XAxis
+                      dataKey="name"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: 'var(--text-muted)', fontSize: 9, fontWeight: 800 }}
+                      dy={10}
                     />
-                    <Tooltip 
-                      cursor={{ fill: 'rgba(255,255,255,0.02)' }} 
+                    <Tooltip
+                      cursor={{ fill: 'rgba(255,255,255,0.02)' }}
                       contentStyle={{ backgroundColor: '#111827', borderColor: '#374151', borderRadius: '12px', padding: '12px', fontSize: '10px', textTransform: 'uppercase', fontWeight: '900', letterSpacing: '1px' }}
                       itemStyle={{ fontSize: '11px', fontWeight: 'bold' }}
                       formatter={(value) => [`${formatNumber(value)} UZS`, '']}

@@ -880,6 +880,18 @@ class FinanceDashboardView(APIView):
         if (total_income + total_debt) > 0:
             efficiency = round((total_income / (total_income + total_debt)) * 100, 1)
 
+        # 10. Global Statistics (General counts)
+        total_students = Student.objects.count()
+        total_mentors = User.objects.filter(role='mentor', is_active=True).count()
+        total_groups = Group.objects.filter(is_faol=True).count()
+        total_admins = User.objects.filter(role='admin', is_active=True).count()
+        
+        # Today's Absents
+        today_absents = Attendance.objects.filter(
+            date=today,
+            is_present=False
+        ).count()
+
         data = {
             "total_income": float(total_income),
             "total_expense": float(total_expense),
@@ -891,7 +903,22 @@ class FinanceDashboardView(APIView):
             "collection_efficiency": efficiency,
             "new_payments_count": new_payments_count,
             "branches": branches_data,
-            "top_groups": top_groups
+            "top_groups": top_groups,
+            "groups": top_groups,
+            "stats": {
+                "students": total_students,
+                "mentors": total_mentors,
+                "groups": total_groups,
+                "admins": total_admins,
+                "attendance_today": {
+                    "absent": today_absents
+                }
+            },
+            "finance": {
+                "received_income": float(total_income),
+                "expenses": float(total_expense),
+                "net_profit": float(total_income - total_expense)
+            }
         }
 
         return Response(data)

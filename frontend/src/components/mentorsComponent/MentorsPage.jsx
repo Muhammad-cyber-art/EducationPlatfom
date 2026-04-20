@@ -4,7 +4,8 @@ import { setSearchQuery } from "../../store/slices/mentorSlice";
 import { useEffect, useState } from "react";
 import React from "react";
 import toast from "react-hot-toast";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
+import { useInView } from "react-intersection-observer";
 import api from "../../tokenUpdater/updater";
 import {
   Search, Loader2, Palette, X, Phone, UserPlus, ChevronRight, GraduationCap,
@@ -15,9 +16,15 @@ import { useCurrentBranch } from "../Authorized/useBranchId";
 import { get_user_info } from "../Authorized/getRole";
 
 // Fetcher function
-const fetchMentorsData = async (branchId, search) => {
+const fetchMentorsData = async ({ pageParam = 1, queryKey }) => {
+  const [_key, branchId, search] = queryKey;
   const res = await api.get(`/groups/nested_mentors/`, {
-    params: { branch_id: branchId, search: search }
+    params: {
+      branch_id: branchId,
+      search: search,
+      page: pageParam,
+      page_size: 5
+    }
   });
   return res.data;
 };
@@ -286,6 +293,7 @@ export default function MentorsPage() {
   const searchTerm = useSelector(state => state.mentor.searchQuery);
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [viewMode, setViewMode] = useState("grid"); // grid or list
+  const { ref, inView } = useInView();
 
   const { data: userData = {} } = useQuery({
     queryKey: ['user-me'],
@@ -306,19 +314,47 @@ export default function MentorsPage() {
   const effectiveBranchId = user_info.role === "super_admin" ? superAdminBranchId : currentBranchId;
   const canFetch = user_info.role === "super_admin" ? !!effectiveBranchId : (!branchLoading && hasAccess && !!effectiveBranchId);
 
-  const { data: mentors = [], isLoading, isFetching, isError, error } = useQuery({
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+    isFetching,
+    isError,
+    error
+  } = useInfiniteQuery({
     queryKey: ['mentors', effectiveBranchId, debouncedSearch],
-    queryFn: () => fetchMentorsData(effectiveBranchId, debouncedSearch),
+    queryFn: fetchMentorsData,
     enabled: canFetch,
     staleTime: 1000 * 60 * 5,
     refetchOnWindowFocus: false,
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => {
+      if (lastPage.next) {
+        const url = new URL(lastPage.next);
+        return url.searchParams.get('page');
+      }
+      return undefined;
+    },
   });
+
+  useEffect(() => {
+    if (inView && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [inView, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   useEffect(() => {
     if (isError) {
       toast.error(error?.message || "O'qituvchilarni yuklashda xatolik yuz berdi!");
     }
   }, [isError, error]);
+
+  const mentors = useMemo(() => {
+    if (!data) return [];
+    return data.pages.flatMap(page => page.results || []);
+  }, [data]);
 
   return (
     <div className="p-3 sm:p-6 space-y-12">
@@ -417,17 +453,29 @@ export default function MentorsPage() {
             </p>
           </div>
         )}
-      </div>
+
+        {/* INFINITE SCROLL SENSOR */}
+        <div ref={ref} className="py-10 flex justify-center">
+          {isFetchingNextPage && (
+            <div className="flex items-center gap-2 text-[var(--gold)]">
+              <Loader2 size={24} className="animate-spin" />
+              <span className="text-[10px] font-black uppercase tracking-widest">Yana yuklanmoqda...</span>
+            </div>
+          )}
+        </div>
+      </div >
 
       {/* Mobile Floating Action Button */}
-      {canCreateMentor && (
-        <button
-          onClick={() => navigate(`add-mentor?branch=${effectiveBranchId}`)}
-          className="lg:hidden fixed bottom-24 right-8 w-16 h-16 bg-[var(--gold)] text-black rounded-2xl shadow-[0_15px_40px_rgba(184,134,11,0.5)] flex items-center justify-center z-[110] active:scale-90 transition-transform"
-        >
-          <UserPlus size={28} />
-        </button>
-      )}
-    </div>
+      {
+        canCreateMentor && (
+          <button
+            onClick={() => navigate(`add-mentor?branch=${effectiveBranchId}`)}
+            className="lg:hidden fixed bottom-24 right-8 w-16 h-16 bg-[var(--gold)] text-black rounded-2xl shadow-[0_15px_40px_rgba(184,134,11,0.5)] flex items-center justify-center z-[110] active:scale-90 transition-transform"
+          >
+            <UserPlus size={28} />
+          </button>
+        )
+      }
+    </div >
   );
 }

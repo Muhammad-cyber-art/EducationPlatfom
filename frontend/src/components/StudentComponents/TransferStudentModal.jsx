@@ -12,7 +12,7 @@ const TransferStudentModal = ({ isOpen, onClose, student, currentBranchId, api, 
   useEffect(() => {
     if (isOpen && currentBranchId) {
       setFetchingGroups(true);
-      api.get(`/groups/groups/?branch_id=${currentBranchId}`)
+      api.get(`/groups/groups/?branch_id=${currentBranchId}&page_size=200`)
         .then(res => {
           // O'quvchining hozirgi guruhini ro'yxatdan chiqarib tashlaymiz
           const availableGroups = (res.data.results || res.data).filter(
