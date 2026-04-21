@@ -449,15 +449,17 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             center_align = Alignment(horizontal='center', vertical='center')
             
             # Header row
-            headers = ["№", "O'quvchi ismi-familiyasi"] + [d.day for d in date_list]
+            headers = ["№", "O'quvchi ismi-familiyasi", "Telefon", "Ota-ona telefon"] + [d.day for d in date_list]
             for col_num, header in enumerate(headers, 1):
                 cell = ws.cell(row=2, column=col_num)
                 cell.value = header
 
             # Column widths
             ws.column_dimensions['A'].width = 5
-            ws.column_dimensions['B'].width = 35
-            for col_num in range(3, len(headers) + 1):
+            ws.column_dimensions['B'].width = 30
+            ws.column_dimensions['C'].width = 15
+            ws.column_dimensions['D'].width = 15
+            for col_num in range(5, len(headers) + 1):
                 ws.column_dimensions[get_column_letter(col_num)].width = 4
                 
             # Header Row Styling
@@ -471,10 +473,12 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             for row_num, student in enumerate(students, 3):
                 ws.cell(row=row_num, column=1).value = row_num - 2
                 ws.cell(row=row_num, column=2).value = student.full_name
+                ws.cell(row=row_num, column=3).value = student.phone or "-"
+                ws.cell(row=row_num, column=4).value = student.parent_phone or "-"
                 
                 joined_at = student.joined_at.date() if student.joined_at else None
                 
-                for col_idx, d in enumerate(date_list, 3):
+                for col_idx, d in enumerate(date_list, 5):
                     cell = ws.cell(row=row_num, column=col_idx)
                     
                     if joined_at and d < joined_at:

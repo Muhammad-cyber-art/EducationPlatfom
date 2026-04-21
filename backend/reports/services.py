@@ -1,8 +1,9 @@
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from django.utils import timezone
+from django.db.models import Prefetch
 from homework_attends.models import Attendance, Homework, HomeworkSubmission
-from groups.models import Group
+from groups.models import Group, Student, GroupEnrollment
 
 def generate_daily_full_report(target_date=None):
     if target_date is None:
@@ -25,7 +26,7 @@ def generate_daily_full_report(target_date=None):
     # --- Sarlavhalar ---
     headers = [
         "№", "Filial", "Guruh", "O'quvchi F.I.SH", 
-        "Davomat", "Uy vazifasi (Mavzu)", "Vazifa holati"
+        "Telefon", "Ota-ona telefon", "Davomat"
     ]
     ws.append(headers)
 
@@ -37,62 +38,77 @@ def generate_daily_full_report(target_date=None):
         cell.border = border
 
     # --- Ma'lumotlarni yig'ish ---
-    # Bugungi barcha davomatlarni olamiz
-    # select_related orqali bog'langan modellarni bitta so'rovda olamiz (Performance uchun)
-    attendances = Attendance.objects.filter(date=target_date).select_related(
-        'student', 
-        'group', 
-        'group__branch'
+    # 1. Faol guruhlardagi o'quvchilarni guruhlar bo'yicha saralangan holda olamiz
+    enrollments = GroupEnrollment.objects.filter(
+        is_active=True, 
+        group__is_faol=True
+    ).select_related(
+        'student', 'group', 'group__branch'
     ).order_by('group__branch__name', 'group__name', 'student__full_name')
 
-    for index, att in enumerate(attendances, start=1):
-        student = att.student
-        group = att.group
+    # Bugungi davomatlarni keshga olamiz
+    attendances = Attendance.objects.filter(date=target_date)
+    att_dict = {(a.student_id, a.group_id): a for a in attendances}
+
+    row_idx = 1
+    reported_student_ids = set()
+
+    # Guruhli o'quvchilarni chiqarish
+    for enroll in enrollments:
+        student = enroll.student
+        group = enroll.group
         branch = group.branch
+        reported_student_ids.add(student.id)
         
-        # 1. Shu guruh uchun bugungi (yoki oxirgi) uy vazifasini topamiz
-        # created_at DateTimeField bo'lgani uchun __date orqali solishtiramiz
-        homework = Homework.objects.filter(
-            group=group, 
-            created_at__date=target_date
-        ).first()
+        is_lesson_day = group.is_lesson_day(target_date)
+        att_status = "Belgilanmagan ⚠️"
 
-        hw_title = "Vazifa berilmagan"
-        hw_status = "-"
+        if not is_lesson_day:
+            att_status = "Dars yo'q"
+        else:
+            att = att_dict.get((student.id, group.id))
+            if att:
+                att_status = "✅ Keldi" if att.is_present else "❌ Kelmadi"
 
-        if homework:
-            hw_title = homework.title
-            # 2. Shu o'quvchining vazifa topshirganlik holatini tekshiramiz
-            submission = HomeworkSubmission.objects.filter(
-                homework=homework, 
-                student=student
-            ).first()
-            
-            if submission:
-                # get_status_display() "full" ni "To'liq topshirgan" qilib ko'rsatadi
-                hw_status = submission.get_status_display()
-            else:
-                hw_status = "Topshirmagan ❌"
-
-        # Qatorga ma'lumotlarni qo'shish
         row_data = [
-            index,
+            row_idx,
             branch.name if branch else "Filialsiz",
             group.name,
             student.full_name,
-            "✅ Keldi" if att.is_present else "❌ Kelmadi",
-            hw_title,
-            hw_status
+            student.phone or "-",
+            student.parent_phone or "-",
+            att_status
         ]
         ws.append(row_data)
 
-        # Qator kataklari uchun stil
+        # Stillar
         for cell in ws[ws.max_row]:
             cell.border = border
             cell.alignment = Alignment(vertical="center", horizontal="left")
-            # "№", "Davomat" va "Holat" ustunlarini markazga tekislaymiz
-            if cell.column in [1, 5, 7]:
+            if cell.column in [1, 7]:
                 cell.alignment = Alignment(horizontal="center", vertical="center")
+        
+        row_idx += 1
+
+    # 2. Guruhsiz o'quvchilarni oxiriga qo'shamiz
+    students_without_groups = Student.objects.exclude(id__in=reported_student_ids).order_by('full_name')
+    for student in students_without_groups:
+        row_data = [
+            row_idx,
+            student.branch.name if student.branch else "Filialsiz",
+            "Guruhsiz",
+            student.full_name,
+            student.phone or "-",
+            student.parent_phone or "-",
+            "Noma'lum"
+        ]
+        ws.append(row_data)
+        for cell in ws[ws.max_row]:
+            cell.border = border
+            cell.alignment = Alignment(vertical="center", horizontal="left")
+            if cell.column in [1, 7]:
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+        row_idx += 1
 
     # --- Ustun kengliklarini avtomatik sozlash ---
     dims = {
@@ -100,9 +116,9 @@ def generate_daily_full_report(target_date=None):
         'B': 20, # Filial
         'C': 20, # Guruh
         'D': 35, # F.I.SH
-        'E': 15, # Davomat
-        'F': 30, # Mavzu
-        'G': 20  # Holat
+        'E': 15, # Telefon
+        'F': 15, # Ota-ona tel
+        'G': 20  # Davomat
     }
     for col, value in dims.items():
         ws.column_dimensions[col].width = value

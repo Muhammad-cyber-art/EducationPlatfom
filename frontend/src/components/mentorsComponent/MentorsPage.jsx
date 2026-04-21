@@ -1,7 +1,7 @@
 import { useOutletContext, useNavigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import { setSearchQuery } from "../../store/slices/mentorSlice";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import React from "react";
 import toast from "react-hot-toast";
 import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
@@ -9,7 +9,7 @@ import { useInView } from "react-intersection-observer";
 import api from "../../tokenUpdater/updater";
 import {
   Search, Loader2, Palette, X, Phone, UserPlus, ChevronRight, GraduationCap,
-  ShieldCheck, Briefcase, Star, Sparkles, LayoutGrid, List, Users
+  ShieldCheck, Briefcase, Star, LayoutGrid, List, Users
 } from "lucide-react";
 import GoBackButton from "../sendback";
 import { useCurrentBranch } from "../Authorized/useBranchId";

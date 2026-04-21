@@ -881,7 +881,8 @@ class FinanceDashboardView(APIView):
             efficiency = round((total_income / (total_income + total_debt)) * 100, 1)
 
         # 10. Global Statistics (General counts)
-        total_students = Student.objects.count()
+        # Faqat faol guruhlarga ega o'quvchilarni sanaymiz
+        total_students = Student.objects.filter(enrollments__is_active=True).distinct().count()
         total_mentors = User.objects.filter(role='mentor', is_active=True).count()
         total_groups = Group.objects.filter(is_faol=True).count()
         total_admins = User.objects.filter(role='admin', is_active=True).count()
@@ -1024,10 +1025,8 @@ class BranchFinanceDetailView(APIView):
         # Guruhlar soni (faol guruhlar)
         groups_count = Group.objects.filter(branch=branch, is_faol=True).count()
         
-        # O'quvchilar soni (Talabalar + Kutish zalidagilar)
-        actual_students = Student.objects.filter(branch=branch).count()
-        waiting_students = WaitingStudent.objects.filter(branch=branch).count()
-        students_count = actual_students + waiting_students
+        # O'quvchilar soni (Faqat faol guruhlarda borlar, kutish zalidagilar qo'shilmaydi)
+        students_count = Student.objects.filter(branch=branch, enrollments__is_active=True).distinct().count()
 
         # 2. Kutilayotgan daromad (Expected Income)
         # Har bir faol guruhning (monthly_price * o'quvchilar soni)

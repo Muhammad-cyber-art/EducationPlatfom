@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate, useOutletContext, useLocation } from "react-router-dom";
 import api from "../../tokenUpdater/updater";
 import toast from "react-hot-toast";
@@ -255,12 +256,12 @@ export default function WaitingHall() {
             )}
 
             {/* ADD MODAL */}
-            {showAddModal && (
+            {showAddModal && createPortal(
                 <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-black/80 backdrop-blur-xl animate-in fade-in duration-500" onClick={() => setShowAddModal(false)}></div>
-                    <div className="lux-card w-full max-w-lg relative z-10 animate-in zoom-in-95 duration-500 flex flex-col p-0 overflow-hidden border-[var(--gold)]/20 shadow-[0_30px_60px_-15px_rgba(184,134,11,0.2)]">
+                    <div className="lux-card w-full max-w-lg max-h-[90vh] relative z-10 animate-in zoom-in-95 duration-500 flex flex-col p-0 overflow-hidden border-[var(--gold)]/20 shadow-[0_30px_60px_-15px_rgba(184,134,11,0.2)]">
                         {/* Modal Header */}
-                        <div className="p-8 border-b border-[var(--border-glass)] bg-gradient-to-r from-[var(--bg-panel)] to-[var(--bg-void)] relative overflow-hidden">
+                        <div className="p-8 border-b border-[var(--border-glass)] bg-gradient-to-r from-[var(--bg-panel)] to-[var(--bg-void)] relative overflow-hidden flex-shrink-0">
                             <div className="absolute top-0 right-0 w-32 h-32 bg-[var(--gold)]/5 rounded-full blur-3xl -mr-16 -mt-16"></div>
                             <div className="flex justify-between items-center relative z-10">
                                 <div>
@@ -274,7 +275,7 @@ export default function WaitingHall() {
                         </div>
 
                         {/* Modal Body */}
-                        <form onSubmit={handleAddStudent} className="p-8 space-y-6 bg-[var(--bg-panel)]/40">
+                        <form onSubmit={handleAddStudent} className="p-8 space-y-6 bg-[var(--bg-panel)]/40 overflow-y-auto custom-scrollbar">
                             <div className="grid grid-cols-1 gap-6">
                                 <div className="group/field space-y-2">
                                     <label className="text-[9px] font-black uppercase tracking-[0.3em] text-[var(--text-muted)] px-1 flex items-center gap-2 group-focus-within/field:text-[var(--gold)] transition-colors">
@@ -349,21 +350,22 @@ export default function WaitingHall() {
                                 </button>
                             </div>
                         </form>
-                        
+
                         {/* Modal Footer Decorative */}
-                        <div className="px-8 py-4 bg-[var(--bg-void)]/60 border-t border-[var(--border-glass)] flex items-center justify-center">
+                        <div className="px-8 py-4 bg-[var(--bg-void)]/60 border-t border-[var(--border-glass)] flex items-center justify-center flex-shrink-0">
                             <p className="text-[7px] text-[var(--text-muted)] uppercase tracking-[0.5em] font-black">Secure Data Entry Protocol v2.0</p>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {/* ASSIGN MODAL */}
-            {showAssignModal && (
+            {showAssignModal && createPortal(
                 <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-black/90 backdrop-blur-2xl animate-in fade-in duration-300" onClick={() => setShowAssignModal(null)}></div>
-                    <div className="lux-card w-full max-w-lg relative z-10 animate-in slide-in-from-bottom-10 duration-500 flex flex-col p-0 overflow-hidden">
-                        <div className="p-8 border-b border-[var(--border-glass)] bg-[var(--bg-void)]/80">
+                    <div className="lux-card w-full max-w-lg max-h-[90vh] relative z-10 animate-in slide-in-from-bottom-10 duration-500 flex flex-col p-0 overflow-hidden shadow-[0_30px_60px_-15px_rgba(184,134,11,0.2)]">
+                        <div className="p-8 border-b border-[var(--border-glass)] bg-[var(--bg-void)]/80 flex-shrink-0">
                             <div className="flex justify-between items-center mb-4">
                                 <h3 className="text-2xl font-black gold-text uppercase">Guruh tanlash</h3>
                                 <button onClick={() => setShowAssignModal(null)} className="text-[var(--text-muted)] hover:text-white transition-colors"><X size={24} /></button>
@@ -373,14 +375,14 @@ export default function WaitingHall() {
                             </p>
                         </div>
 
-                        <div className="p-8 max-h-[450px] overflow-y-auto lux-scroll">
+                        <div className="p-8 overflow-y-auto custom-scrollbar flex-1">
                             <div className="space-y-3">
                                 {loadingGroups ? (
                                     <div className="py-20 flex justify-center">
                                         <Loader2 className="animate-spin text-[var(--gold)]" size={32} />
                                     </div>
                                 ) : groups.length === 0 ? (
-                                    <div className="text-center py-10 opacity-50 italic text-sm">Faol guruhlar topilmadi.</div>
+                                    <div className="text-center py-10 opacity-50 italic text-sm text-[var(--text-muted)] uppercase tracking-widest">Faol guruhlar topilmadi.</div>
                                 ) : (
                                     groups.map(group => (
                                         <button
@@ -408,13 +410,14 @@ export default function WaitingHall() {
                             </div>
                         </div>
 
-                        <div className="p-6 bg-[var(--bg-void)]/40 border-t border-[var(--border-glass)]">
+                        <div className="p-6 bg-[var(--bg-void)]/40 border-t border-[var(--border-glass)] flex-shrink-0">
                             <p className="text-[8px] text-[var(--text-muted)] text-center uppercase tracking-[0.2em] font-black">
                                 Guruh tanlaganingizdan so'ng, o'quvchi avtomatik tarzda Studentlar ro'yxatiga ko'chiriladi.
                             </p>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );
