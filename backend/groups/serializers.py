@@ -14,7 +14,7 @@ class GroupSimpleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Group
-        fields = ('id', 'name', 'is_faol', 'computed_status', 'color', 'subject','mentor','monthly_price','dars_kunlari','dars_vaqti','students_count','branch', 'today_attendance_confirmed')
+        fields = ('id', 'name', 'is_faol', 'computed_status', 'color', 'subject','mentor','monthly_price','days','dars_kunlari','dars_vaqti','students_count','branch', 'today_attendance_confirmed')
 
     def get_today_attendance_confirmed(self, obj):
         from homework_attends.models import Attendance
@@ -198,6 +198,7 @@ class GroupShortSerializer(serializers.ModelSerializer):
             'id', 
             'name', 
             'subject', 
+            'days',
             'dars_kunlari', 
             'dars_vaqti', 
             'students_count', 
@@ -288,7 +289,7 @@ class GroupNestedSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Group
-        fields = ('id', 'name', 'subject','monthly_price', 'mentor', 'admin', 'is_faol')
+        fields = ('id', 'name', 'subject','monthly_price', 'days', 'mentor', 'admin', 'is_faol')
 
 class StudentNestedSerializer(serializers.ModelSerializer):
     group = GroupNestedSerializer(read_only=True)
