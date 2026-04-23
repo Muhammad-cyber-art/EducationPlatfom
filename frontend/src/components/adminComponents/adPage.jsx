@@ -127,7 +127,7 @@ export default function AdminPageFirst() {
       {/* Bot Stats Grid */}
       <div className="lux-grid-3" style={{ marginBottom: '40px' }}>
         <StatBox 
-          label="BOT JAMI FOYDALANUVCHILAR" 
+          label="BOT JAMI ULANMALAR" 
           value={botStats?.total_bot_users || 0} 
           icon={MessageSquare} 
           actionButton={

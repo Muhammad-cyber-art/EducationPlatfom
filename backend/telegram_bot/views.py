@@ -117,13 +117,14 @@ class BotStatisticsView(APIView):
         branch_id = request.query_params.get('branch_id')
         group_id = request.query_params.get('group_id')
         
-        qs = Student.objects.all()
+        # Faqat aktiv guruhlarda o'qiyotgan o'quvchilarni olamiz
+        qs = Student.objects.filter(enrollments__is_active=True).distinct()
         
         if branch_id:
             qs = qs.filter(branch_id=branch_id)
         if group_id:
             group_obj = get_object_or_404(Group, id=group_id)
-            qs = group_obj.students.all()
+            qs = qs.filter(groups=group_obj)
             
         # O'quvchilarni sanash (telegram_id bo'sh bo'lmaganlar)
         students_bot = qs.exclude(Q(telegram_id__isnull=True) | Q(telegram_id='')).count()
@@ -146,10 +147,10 @@ class ExportUnregisteredStudentsView(APIView):
     def get(self, request):
         branch_id = request.query_params.get('branch_id')
         
-        # O'quvchilar: yoki o'zi yoki ota-onasi botdan o'tmaganlar
+        # O'quvchilar: na o'zi va na ota-onasi botdan o'tganlar (umuman ulanmaganlar)
         qs = Student.objects.filter(
-            Q(telegram_id__isnull=True) | Q(telegram_id='') |
-            Q(parent_telegram_id__isnull=True) | Q(parent_telegram_id='')
+            (Q(telegram_id__isnull=True) | Q(telegram_id='')) &
+            (Q(parent_telegram_id__isnull=True) | Q(parent_telegram_id=''))
         ).select_related('branch').prefetch_related('groups')
 
         if branch_id:
@@ -182,20 +183,18 @@ class ExportUnregisteredStudentsView(APIView):
         ws.column_dimensions['C'].width = 30
         ws.column_dimensions['D'].width = 20
         ws.column_dimensions['E'].width = 20
-        ws.column_dimensions['F'].width = 25
+        ws.column_dimensions['F'].width = 35
 
         # Data
         for row_num, student in enumerate(qs, 2):
-            status = []
-            if not student.telegram_id: status.append("O'quvchi ulanmagan")
-            if not student.parent_telegram_id: status.append("Ota-ona ulanmagan")
+            status_text = "O'quvchi ulanmagan & Otaona ulanmagan"
             
             ws.cell(row=row_num, column=1).value = row_num - 1
             ws.cell(row=row_num, column=2).value = student.full_name
             ws.cell(row=row_num, column=3).value = ", ".join([g.name for g in student.groups.all()])
             ws.cell(row=row_num, column=4).value = student.phone or ""
             ws.cell(row=row_num, column=5).value = student.parent_phone or ""
-            ws.cell(row=row_num, column=6).value = " & ".join(status)
+            ws.cell(row=row_num, column=6).value = status_text
             
             # Text wrapping for groups
             ws.cell(row=row_num, column=3).alignment = Alignment(wrap_text=True)

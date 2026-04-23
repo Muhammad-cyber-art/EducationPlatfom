@@ -140,8 +140,8 @@ const SuperAdminDashboard = () => {
           </div>
         </div>
         <StatCard
-          title="Bot Jami"
-          value={botStats?.total_bot_users}
+          title="Bot Ulanmalari"
+          value={botStats?.total_bot_users || 0}
           icon={<MessageSquare size={20} />}
           trend="BOT"
           delay="400"
