@@ -1,14 +1,42 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Activity, Globe, Search, Loader2, Phone } from 'lucide-react';
+import { Activity, Globe, Search, Loader2, Phone, Download } from 'lucide-react';
 import api from '../../tokenUpdater/updater';
+import toast from 'react-hot-toast';
 
 const AbsentStudentsModal = ({ isOpen, onClose, branchId }) => {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [downloading, setDownloading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
+
+    const handleDownloadExcel = async () => {
+        if (!branchId) return;
+        try {
+            setDownloading(true);
+            const response = await api.get(`/finance/statistics/absent-students/${branchId}/`, {
+                params: { export: 'excel', search: searchTerm },
+                responseType: 'blob'
+            });
+
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            const today = new Date().toISOString().split('T')[0];
+            link.setAttribute('download', `kelmaganlar_${today}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            toast.success("Excel yuklandi.");
+        } catch (err) {
+            console.error("Excel download error:", err);
+            toast.error("Excel yuklashda xatolik.");
+        } finally {
+            setDownloading(false);
+        }
+    };
 
     const fetchStudents = useCallback(async (pageNum, searchStr, isNewSearch = false) => {
         if (!branchId) return;
@@ -83,12 +111,25 @@ const AbsentStudentsModal = ({ isOpen, onClose, branchId }) => {
                             <p className="text-[9px] font-black text-[var(--gold)]/80 uppercase tracking-widest mt-0.5">Davomat Nazorati</p>
                         </div>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="p-2 text-[var(--text-muted)] hover:text-[var(--gold)] hover:bg-[var(--gold)]/10 rounded-xl transition-all active:scale-95"
-                    >
-                        <Globe size={18} className="rotate-45" />
-                    </button>
+                    
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={handleDownloadExcel}
+                            disabled={downloading || data.length === 0}
+                            title="Excel yuklab olish"
+                            className="p-2.5 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-xl hover:bg-emerald-500 hover:text-white transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                            {downloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                            <span className="hidden sm:inline text-[9px] font-black uppercase tracking-widest">Excel</span>
+                        </button>
+
+                        <button
+                            onClick={onClose}
+                            className="p-2 text-[var(--text-muted)] hover:text-[var(--gold)] hover:bg-[var(--gold)]/10 rounded-xl transition-all active:scale-95"
+                        >
+                            <Globe size={18} className="rotate-45" />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Search Bar */}
