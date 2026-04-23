@@ -1,18 +1,41 @@
-import React, { useState } from 'react';
-import { Users, UserCheck, GraduationCap, Building2, ArrowUpRight, Send, Globe, Loader2, Sparkles, Activity, ShieldCheck, Zap, MessageSquare, UserPlus as UserPlusIcon, Heart } from 'lucide-react';
+import { Users, UserCheck, GraduationCap, Building2, ArrowUpRight, Send, Globe, Loader2, Sparkles, Activity, ShieldCheck, Zap, MessageSquare, UserPlus as UserPlusIcon, Heart, Download } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import api from '../../tokenUpdater/updater';
 import toast from 'react-hot-toast';
 import AbsentStudentsModal from '../Common/AbsentStudentsModal';
-
+import { useState, useEffect } from 'react';
 const SuperAdminDashboard = () => {
   const navigate = useNavigate();
   const { branchId } = useOutletContext() || {};
   const [message, setMessage] = useState("");
   const [isGlobal, setIsGlobal] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [downloadingBotList, setDownloadingBotList] = useState(false);
   const [showAbsentModal, setShowAbsentModal] = useState(false);
+
+  const handleDownloadBotUnregistered = async (e) => {
+    e.stopPropagation(); // Card bosilishini to'xtatamiz
+    try {
+      setDownloadingBotList(true);
+      const response = await api.get('/bot/export-unregistered-students/', {
+        params: { branch_id: branchId },
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'botdan_otmaganlar.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success("Excel yuklandi.");
+    } catch (err) {
+      toast.error("Xatolik yuz berdi.");
+    } finally {
+      setDownloadingBotList(false);
+    }
+  };
 
   const { data: botStats, isLoading: botStatsLoading } = useQuery({
     queryKey: ['bot-stats', branchId],
@@ -116,7 +139,24 @@ const SuperAdminDashboard = () => {
             </div>
           </div>
         </div>
-        <StatCard title="Bot Jami" value={botStats?.total_bot_users} icon={<MessageSquare size={20} />} trend="BOT" delay="400" variant="gold" />
+        <StatCard
+          title="Bot Jami"
+          value={botStats?.total_bot_users}
+          icon={<MessageSquare size={20} />}
+          trend="BOT"
+          delay="400"
+          variant="gold"
+          actionButton={
+            <button
+              onClick={handleDownloadBotUnregistered}
+              disabled={downloadingBotList}
+              className="p-1.5 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500 hover:text-white rounded-lg transition-all"
+              title="Ro'yxatdan o'tmaganlarni yuklash"
+            >
+              {downloadingBotList ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+            </button>
+          }
+        />
       </div>
 
       {/* BROADCAST CENTER */}
@@ -188,20 +228,23 @@ const SuperAdminDashboard = () => {
   );
 };
 
-const StatCard = ({ onClick, title, value, icon, trend, delay, variant = "default" }) => {
+const StatCard = ({ onClick, title, value, icon, trend, delay, variant = "default", actionButton }) => {
   return (
     <div
       onClick={onClick}
       style={{ animationDelay: `${delay}ms` }}
-      className={`lux-card group relative p-6 cursor-pointer hover:border-[var(--gold)]/40 active:scale-95 animate-in slide-in-from-bottom-4 duration-700 overflow-hidden ${variant === "gold" ? "border-[var(--gold)]/20" : ""}`}
+      className={`lux-card group relative p-6 cursor-pointer hover:border-[var(--gold)]/40 animate-in slide-in-from-bottom-4 duration-700 overflow-hidden ${variant === "gold" ? "border-[var(--gold)]/20" : ""}`}
     >
       <div className={`absolute top-0 left-0 w-1 h-full bg-[var(--gold)] transition-opacity ${variant === "gold" ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`} />
       <div className="flex items-center justify-between mb-8">
         <div className={`p-3 bg-[var(--bg-void)]/60 rounded-xl border border-[var(--border-glass)] shadow-inner group-hover:scale-110 transition-transform duration-500 ${variant === "gold" ? "text-[var(--gold)] border-[var(--gold)]/20" : "text-[var(--gold)]"}`}>
           {icon}
         </div>
-        <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-[8px] font-black tracking-widest border ${variant === "gold" ? "bg-[var(--gold-dim)] text-[var(--gold)] border-[var(--gold)]/20" : "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"}`}>
-          <ArrowUpRight size={10} /> {trend}{!isNaN(trend) ? "%" : ""}
+        <div className="flex items-center gap-2">
+          {actionButton}
+          <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-[8px] font-black tracking-widest border ${variant === "gold" ? "bg-[var(--gold-dim)] text-[var(--gold)] border-[var(--gold)]/20" : "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"}`}>
+            <ArrowUpRight size={10} /> {trend}{!isNaN(trend) ? "%" : ""}
+          </div>
         </div>
       </div>
       <div>

@@ -6,7 +6,7 @@ import {
   Users, Briefcase,
   TrendingUp, Wallet,
   Activity, ArrowUpRight, ArrowLeft, Download, User, ChevronRight,
-  ShieldCheck, Layers, MessageSquare, Heart, UserCheck as UserCheckIcon
+  ShieldCheck, Layers, MessageSquare, Heart, UserCheck as UserCheckIcon, Loader2
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { useCurrentBranch } from "../Authorized/useBranchId";
@@ -14,15 +14,19 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'rec
 import { Globe } from "lucide-react";
 import AbsentStudentsModal from "../Common/AbsentStudentsModal";
 
-/* 1:1 Design Folder StatBox */
-const StatBox = ({ label, value, icon: Icon, onClick, isClickable }) => (
+const StatBox = ({ label, value, icon: Icon, onClick, isClickable, actionButton }) => (
   <div
-    className={`lux-card ${isClickable ? 'cursor-pointer hover:border-red-500/50 hover:scale-[1.02] transition-all' : ''}`}
-    style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '120px' }}
+    className={`lux-card ${isClickable ? 'cursor-pointer hover:border-red-500/50 transition-all' : ''}`}
+    style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '120px', position: 'relative' }}
     onClick={onClick}
   >
     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
       <Icon size={20} color={isClickable ? "var(--red-500, #ef4444)" : "var(--gold)"} strokeWidth={2} />
+      {actionButton && (
+        <div style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 10 }}>
+          {actionButton}
+        </div>
+      )}
     </div>
     <div className="flex flex-col justify-end flex-1">
       <div className="lux-value" style={{ color: isClickable ? '#ef4444' : 'var(--text-primary)', fontSize: '24px', lineHeight: '1' }}>{value}</div>
@@ -60,6 +64,30 @@ export default function AdminPageFirst() {
 
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [showAbsentModal, setShowAbsentModal] = useState(false);
+  const [downloadingBotList, setDownloadingBotList] = useState(false);
+
+  const handleDownloadBotUnregistered = async (e) => {
+    e.stopPropagation();
+    try {
+      setDownloadingBotList(true);
+      const response = await api.get('/bot/export-unregistered-students/', {
+        params: { branch_id: currentBranchId },
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'botdan_otmaganlar.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success("Excel yuklandi.");
+    } catch (err) {
+      toast.error("Xatolik yuz berdi.");
+    } finally {
+      setDownloadingBotList(false);
+    }
+  };
 
   useEffect(() => {
     if (isFinanceError && hasFinancePerm) {
@@ -98,9 +126,24 @@ export default function AdminPageFirst() {
 
       {/* Bot Stats Grid */}
       <div className="lux-grid-3" style={{ marginBottom: '40px' }}>
-        <StatBox label="BOT JAMI FOYDALANUVCHILAR" value={botStats?.total_bot_users || 0} icon={MessageSquare} />
-        {/* <StatBox label="BOT O'QUVCHILAR" value={botStats?.students_bot_count || 0} icon={UserCheckIcon} />
-        <StatBox label="BOT OTA-ONALAR" value={botStats?.parents_bot_count || 0} icon={Heart} /> */}
+        <StatBox 
+          label="BOT JAMI FOYDALANUVCHILAR" 
+          value={botStats?.total_bot_users || 0} 
+          icon={MessageSquare} 
+          actionButton={
+            <button
+               onClick={handleDownloadBotUnregistered}
+               disabled={downloadingBotList}
+               className="p-1 px-2 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500 hover:text-white rounded-lg transition-all"
+               title="Ro'yxatdan o'tmaganlarni yuklash"
+            >
+              <div className="flex items-center gap-1.5">
+                {downloadingBotList ? <Loader2 size={10} className="animate-spin" /> : <Download size={12} />}
+                <span className="text-[8px] font-black uppercase tracking-tighter">Export</span>
+              </div>
+            </button>
+          }
+        />
       </div>
 
       {/* Main Content - Only visible if has finance permission */}

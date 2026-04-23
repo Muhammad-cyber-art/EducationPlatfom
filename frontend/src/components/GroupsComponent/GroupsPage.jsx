@@ -107,7 +107,7 @@ const GroupCard = React.memo(({ group, readOnly, currentBranchId }) => {
           <div className="grid grid-cols-2 gap-3 sm:gap-4 py-4 sm:py-5 border-y border-[var(--border-glass)]">
             <div>
               <p className="text-[8px] sm:text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-1 sm:mb-1.5">O'qituvchi</p>
-              <p className="text-[11px] sm:text-[12px] font-bold text-[var(--text-primary)] truncate">{group.mentor?.first_name || 'Tayinlanmagan'}</p>
+              <p className="text-[11px] sm:text-[12px] font-bold text-[var(--text-primary)] truncate">{group.mentor?.full_name || 'Tayinlanmagan'}</p>
             </div>
             <div className="text-right">
               <p className="text-[8px] sm:text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-1 sm:mb-1.5">O'quvchilar</p>

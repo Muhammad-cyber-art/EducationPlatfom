@@ -7,25 +7,6 @@ from django.utils import timezone
 from finance.models import Payment
 User = get_user_model()
 
-class GroupSimpleSerializer(serializers.ModelSerializer):
-    students_count = serializers.SerializerMethodField()
-    branch = BranchSerializer(read_only=True)
-    today_attendance_confirmed = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Group
-        fields = ('id', 'name', 'is_faol', 'computed_status', 'color', 'subject','mentor','monthly_price','days','dars_kunlari','dars_vaqti','students_count','branch', 'today_attendance_confirmed')
-
-    def get_today_attendance_confirmed(self, obj):
-        from homework_attends.models import Attendance
-        from django.utils import timezone
-        return Attendance.objects.filter(group=obj, date=timezone.localdate(), marked_by__isnull=False).exists()
-
-    def get_students_count(self, obj):
-        # Faqat is_active=True bo'lgan o'quvchilarni sanaymiz
-        return obj.enrollments.filter(is_active=True).count()
-
-
 # Oddiy mentorlar ro'yxati uchun serializer
 class MentorListSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
@@ -53,6 +34,25 @@ class MentorListSerializer(serializers.ModelSerializer):
             ]
         except Exception:
             return []
+
+class GroupSimpleSerializer(serializers.ModelSerializer):
+    students_count = serializers.SerializerMethodField()
+    branch = BranchSerializer(read_only=True)
+    today_attendance_confirmed = serializers.SerializerMethodField()
+    mentor = MentorListSerializer(read_only=True)
+
+    class Meta:
+        model = Group
+        fields = ('id', 'name', 'is_faol', 'computed_status', 'color', 'subject','mentor','monthly_price','days','dars_kunlari','dars_vaqti','students_count','branch', 'today_attendance_confirmed')
+
+    def get_today_attendance_confirmed(self, obj):
+        from homework_attends.models import Attendance
+        from django.utils import timezone
+        return Attendance.objects.filter(group=obj, date=timezone.localdate(), marked_by__isnull=False).exists()
+
+    def get_students_count(self, obj):
+        # Faqat is_active=True bo'lgan o'quvchilarni sanaymiz
+        return obj.enrollments.filter(is_active=True).count()
         
 class MentorAssignmentSerializer(serializers.ModelSerializer):
     mentor_name = serializers.CharField(source='mentor.get_full_name', read_only=True)

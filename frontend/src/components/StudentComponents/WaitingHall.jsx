@@ -155,15 +155,15 @@ export default function WaitingHall() {
             </div>
 
             {/* SEARCH CARD */}
-            <div className="lux-card mb-8 p-1 flex items-center gap-4 bg-[var(--bg-panel)]/50 border border-[var(--border-glass)] backdrop-blur-md">
+            <div className="lux-card mb-8 p-0.5 max-w-xl flex items-center bg-[var(--bg-panel)]/50 border border-[var(--border-glass)] backdrop-blur-md">
                 <div className="flex-1 relative flex items-center">
-                    <Search size={18} className="absolute left-6 text-[var(--text-muted)]" />
+                    <Search size={16} className="absolute left-4 text-[var(--text-muted)]" />
                     <input
                         type="text"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        placeholder="O'quvchi ismi, telefoni yoki fani bo'yicha qidiruv..."
-                        className="w-full h-14 bg-transparent pl-16 pr-6 text-sm text-[var(--text-primary)] border-none focus:ring-0 outline-none font-medium placeholder:text-[var(--text-muted)]/50"
+                        placeholder="Qidiruv..."
+                        className="w-full h-11 bg-transparent pl-12 pr-6 text-xs text-[var(--text-primary)] border-none focus:ring-0 outline-none font-medium placeholder:text-[var(--text-muted)]/50"
                     />
                 </div>
             </div>

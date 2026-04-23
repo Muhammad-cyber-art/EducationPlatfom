@@ -136,3 +136,71 @@ class BotStatisticsView(APIView):
             "parents_bot_count": parents_bot,
             "total_bot_users": students_bot + parents_bot
         })
+
+class ExportUnregisteredStudentsView(APIView):
+    """
+    Botdan o'tmagan (chat_id si yo'q) o'quvchilar ro'yxatini Excel export qiladi.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        branch_id = request.query_params.get('branch_id')
+        
+        # O'quvchilar: yoki o'zi yoki ota-onasi botdan o'tmaganlar
+        qs = Student.objects.filter(
+            Q(telegram_id__isnull=True) | Q(telegram_id='') |
+            Q(parent_telegram_id__isnull=True) | Q(parent_telegram_id='')
+        ).select_related('branch').prefetch_related('groups')
+
+        if branch_id:
+            qs = qs.filter(branch_id=branch_id)
+
+        import openpyxl
+        from openpyxl.styles import Font, Alignment, PatternFill
+        from django.http import HttpResponse
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Botdan o'tmaganlar"
+
+        # Header
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="b88a0b", end_color="b88a0b", fill_type="solid") # Gold variant
+        center_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+        headers = ["№", "O'quvchi ismi-familiyasi", "Guruhlari", "Telefon", "Ota-ona telefoni", "Holati"]
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_num)
+            cell.value = header
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center_align
+
+        # Column widths
+        ws.column_dimensions['A'].width = 5
+        ws.column_dimensions['B'].width = 35
+        ws.column_dimensions['C'].width = 30
+        ws.column_dimensions['D'].width = 20
+        ws.column_dimensions['E'].width = 20
+        ws.column_dimensions['F'].width = 25
+
+        # Data
+        for row_num, student in enumerate(qs, 2):
+            status = []
+            if not student.telegram_id: status.append("O'quvchi ulanmagan")
+            if not student.parent_telegram_id: status.append("Ota-ona ulanmagan")
+            
+            ws.cell(row=row_num, column=1).value = row_num - 1
+            ws.cell(row=row_num, column=2).value = student.full_name
+            ws.cell(row=row_num, column=3).value = ", ".join([g.name for g in student.groups.all()])
+            ws.cell(row=row_num, column=4).value = student.phone or ""
+            ws.cell(row=row_num, column=5).value = student.parent_phone or ""
+            ws.cell(row=row_num, column=6).value = " & ".join(status)
+            
+            # Text wrapping for groups
+            ws.cell(row=row_num, column=3).alignment = Alignment(wrap_text=True)
+
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = 'attachment; filename="botdan_otmaganlar.xlsx"'
+        wb.save(response)
+        return response
