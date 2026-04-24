@@ -135,20 +135,28 @@ class GroupViewSet(viewsets.ModelViewSet):
 
     def retrieve(self, request, *args, **kwargs):
         """Bitta guruh sahifasini yuklashda N+1 muammosini oldini olish"""
-        instance = Group.objects.select_related(
+        exclude_students = request.query_params.get('exclude_students', 'false').lower() == 'true'
+        
+        queryset = Group.objects.select_related(
             'mentor', 'mentor__branch',
             'admin', 'branch'
         ).prefetch_related(
-            Prefetch(
-                'students',
-                queryset=Student.objects.select_related('group', 'branch').only(
-                    'id', 'full_name', 'phone', 'parent_phone',
-                    'image', 'color', 'status', 'custom_fee',
-                    'telegram_id', 'parent_telegram_id', 'group_id', 'branch_id'
-                )
-            ),
             'additional_mentors__mentor',
-        ).get(pk=kwargs['pk'])
+        )
+        
+        if not exclude_students:
+            queryset = queryset.prefetch_related(
+                Prefetch(
+                    'students',
+                    queryset=Student.objects.select_related('group', 'branch').only(
+                        'id', 'full_name', 'phone', 'parent_phone',
+                        'image', 'color', 'status', 'custom_fee',
+                        'telegram_id', 'parent_telegram_id', 'group_id', 'branch_id'
+                    ).order_by('full_name') # Alphabetical sorting
+                )
+            )
+            
+        instance = get_object_or_404(queryset, pk=kwargs['pk'])
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
@@ -777,7 +785,8 @@ class StudentNestedView(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = Student.objects.select_related('group', 'group__mentor', 'group__admin', 'group__branch').prefetch_related('group__additional_mentors', 'groups')
+        # Alphabetical sorting added
+        qs = Student.objects.select_related('group', 'group__mentor', 'group__admin', 'group__branch').prefetch_related('group__additional_mentors', 'groups').order_by('full_name')
 
         # 1. Frontend query param (Branch bo'yicha filtr)
         branch_id = self.request.query_params.get('branch_id')
@@ -914,9 +923,17 @@ class WaitingStudentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        # Alphabetical sorting added
+        qs = self.queryset.order_by('full_name')
         if user.role == 'super_admin':
-            return self.queryset
-        return self.queryset.filter(branch=user.branch)
+            return qs
+        return qs.filter(branch=user.branch)
+
+    def paginate_queryset(self, queryset):
+        # Faqat page parametri bo'lsa paginate qilamiz (veb frontendni buzmaslik uchun)
+        if self.request.query_params.get('page') or self.request.query_params.get('page_size'):
+            return super().paginate_queryset(queryset)
+        return None
 
     def perform_create(self, serializer):
         if not serializer.validated_data.get('branch'):
