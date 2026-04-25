@@ -506,7 +506,7 @@ class StudentViewSet(viewsets.ModelViewSet):
                 if remaining_groups.count() == 0:
                     # Oxirgi guruh ekan -> Kutish zaliga
                     move_student_to_waiting_hall(student, request.user, reason=reason)
-                    return Response({"detail": "O'quvchi oxirgi guruhidan olindi va kutish zaliga o'tkazildi."}, status=200)
+                    return Response({"status": "O'quvchi oxirgi guruhidan olindi va kutish zaliga o'tkazildi."}, status=200)
                 else:
                     # Boshqa guruhlari bor -> Studentni bazada qoldiramiz, faqat group FK ni yangilaymiz
                     student.group = remaining_groups.first()
@@ -954,14 +954,32 @@ class WaitingStudentViewSet(viewsets.ModelViewSet):
         
         try:
             with transaction.atomic():
-                # 1. Haqiqiy student yaratish
-                student = Student.objects.create(
-                    branch=group.branch,
-                    group=group, # Bu Student.save() dagi Enrollment logikasini triggery qiladi
+                from archivebase.models import ArchivedStudent
+                from archivebase.services import restore_student_from_archive
+                
+                # Arxivda bormi yoki yo'qligini tekshiramiz (Ism va telefon orqali)
+                archived = ArchivedStudent.objects.filter(
                     full_name=waiting_student.full_name,
-                    phone=waiting_student.phone,
-                    notes=waiting_student.notes
-                )
+                    metadata__phone=waiting_student.phone
+                ).order_by('-archived_at').first()
+
+                if archived:
+                    # Agar arxiv topilsa, uni tiklaymiz (bu to'lovlar va tarixni ham tiklaydi)
+                    student = restore_student_from_archive(archived.id, request.user)
+                    # Yangi guruhga biriktiramiz
+                    student.group = group
+                    student.save()
+                    # Arxivni o'chiramiz
+                    archived.delete()
+                else:
+                    # 1. Haqiqiy student yaratish (Agar arxiv topilmasa)
+                    student = Student.objects.create(
+                        branch=group.branch,
+                        group=group,
+                        full_name=waiting_student.full_name,
+                        phone=waiting_student.phone,
+                        notes=waiting_student.notes
+                    )
                 
                 # 2. Kutish zalidan o'chirish
                 waiting_student.delete()

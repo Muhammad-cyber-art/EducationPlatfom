@@ -57,9 +57,13 @@ class StudentPaymentViewSet(viewsets.ModelViewSet):
             'marked_by'
         )
 
-        # 1. Ruxsatlar bo'yicha filter (Filial cheklovi olib tashlangan)
-        if user.role in ['super_admin', 'admin']:
+        # 1. Ruxsatlar bo'yicha filter
+        if user.role == 'super_admin':
             pass # Hammani ko'radi
+        elif user.role == 'admin':
+            # Admin o'z filialidagi o'quvchilarning to'lovlarini ko'ra olishi kerak.
+            # Agar guruh o'chib ketgan bo'lsa (group=None), student__branch orqali tekshiramiz.
+            qs = qs.filter(Q(group__branch=user.branch) | Q(student__branch=user.branch))
         elif user.role == 'mentor':
             qs = qs.filter(group__mentor=user)
         else:
@@ -70,8 +74,9 @@ class StudentPaymentViewSet(viewsets.ModelViewSet):
         if self.action == 'list':
             month_param = self.request.query_params.get('month')
             month_gte = self.request.query_params.get('month__gte')
+            student_param = self.request.query_params.get('student')
             
-            if not month_param and not month_gte:
+            if not month_param and not month_gte and not student_param:
                 current_month = timezone.localdate().replace(day=1)
                 qs = qs.filter(month=current_month)
 

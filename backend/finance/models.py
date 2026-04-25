@@ -6,7 +6,7 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 
 class Payment(models.Model):
     # O'quvchi va Guruh bilan bog'liqlik
-    student = models.ForeignKey('groups.Student', on_delete=models.SET_NULL, null=True, blank=True, related_name='payments')
+    student = models.ForeignKey('groups.Student', on_delete=models.CASCADE, related_name='payments')
     group = models.ForeignKey('groups.Group', on_delete=models.SET_NULL, null=True, blank=True, related_name='payments')
     
     # Qaysi oy uchun to'lov (Masalan: 2025-12-01)

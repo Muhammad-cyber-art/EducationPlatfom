@@ -43,25 +43,33 @@ def move_student_to_archive(student, archived_by, reason: str = "") -> ArchivedS
     
     # 1. Bog'liq ma'lumotlarni yig'ish
     from homework_attends.models import Attendance, HomeworkSubmission, MockTestResult
+    from finance.models import FinanceTransaction
     
     payments = Payment.objects.filter(student=student)
     attendances = Attendance.objects.filter(student=student)
     submissions = HomeworkSubmission.objects.filter(student=student)
     mock_results = MockTestResult.objects.filter(student=student)
+    transactions = FinanceTransaction.objects.filter(student=student)
     
     # 2. Student ma'lumotlarini dict qilish va sanalarni tozalash
     student_data = model_to_dict(student)
     cleaned_student_data = json_serializable_convert(student_data)
     
-    # Qo'shimcha ID larni qo'shish
+    # model_to_dict auto_now_add fieldlarni (joined_at) tashlab ketadi, 
+    # shuning uchun ularni qo'lda qo'shamiz
+    cleaned_student_data["joined_at"] = student.joined_at.isoformat() if student.joined_at else None
+    cleaned_student_data["phone"] = student.phone
     cleaned_student_data["branch_id"] = student.branch_id
     cleaned_student_data["group_id"] = student.group_id
+    cleaned_student_data["custom_fee"] = float(student.custom_fee) if student.custom_fee else None
     
     # 3. Bog'langan barcha o'quv ma'lumotlarini arxivga yig'amiz
     cleaned_student_data["payments"] = serialize_related(payments)
     cleaned_student_data["attendances"] = serialize_related(attendances)
     cleaned_student_data["submissions"] = serialize_related(submissions)
     cleaned_student_data["mock_results"] = serialize_related(mock_results)
+    # Tranzaksiyalar ledger bo'lgani uchun ularni o'chirmaymiz, faqat IDlarini saqlaymiz
+    cleaned_student_data["transaction_ids"] = list(transactions.values_list('id', flat=True))
 
     # 4. Arxiv yaratish
     archived = ArchivedStudent.objects.create(
@@ -84,8 +92,10 @@ def move_student_to_waiting_hall(student, archived_by, reason: str = ""):
     """O'quvchini oxirgi guruhidan chiqarganda kutish zaliga o'tkazish"""
     from groups.models import WaitingStudent
     
-    # 1. Arxivga saqlaymiz (Tarix yo'qolmasligi uchun)
-    archived = move_student_to_archive(student, archived_by, reason)
+    # 1. Arxivga saqlaymiz (To'lovlar va tarix yo'qolmasligi uchun)
+    # Maxsus prefix qo'shamizki, Arxiv ro'yxatida ko'rinmasin
+    hidden_reason = f"[WAITING_HALL] {reason}"
+    archived = move_student_to_archive(student, archived_by, hidden_reason)
     
     # 2. Kutish zalida yangi record ochamiz
     waiting = WaitingStudent.objects.create(
@@ -229,92 +239,167 @@ def restore_student_from_archive(archived_student_id, restored_by):
     """
     Arxivlangan studentni qayta tiklash.
     Metadata dan barcha ma'lumotlarni olib, yangi Student obyekti yaratadi.
+    To'lov ma'lumotlari qanday saqlangan bo'lsa, shundayligicha tiklanadi.
     """
     from groups.models import Student, Group, GroupEnrollment
     from branches.models import Branch
     from finance.models import Payment
     from homework_attends.models import Attendance, HomeworkSubmission, MockTestResult
-    
+    from django.contrib.auth import get_user_model
+    from datetime import date as date_type, datetime as datetime_type
+    from django.utils import timezone as tz
+    User = get_user_model()
+
     archived = ArchivedStudent.objects.get(id=archived_student_id)
     metadata = archived.metadata
-    
+
+    # --- YORDAMCHI FUNKSIYALAR ---
+    def parse_date(val):
+        if not val:
+            return None
+        if isinstance(val, date_type):
+            return val
+        try:
+            return date_type.fromisoformat(str(val)[:10])
+        except Exception:
+            return None
+
+    def parse_datetime(val):
+        if not val:
+            return None
+        if isinstance(val, datetime_type):
+            return val
+        try:
+            from django.utils.dateparse import parse_datetime as dj_parse
+            result = dj_parse(str(val))
+            if result and result.tzinfo is None:
+                from django.utils import timezone as _tz
+                result = _tz.make_aware(result)
+            return result
+        except Exception:
+            return None
+
+    def safe_fk(Model, val):
+        if not val:
+            return None
+        try:
+            return Model.objects.filter(id=int(val)).first()
+        except Exception:
+            return None
+
     # 1. Branch va Group ni topish
-    branch_id = metadata.get('branch_id') or metadata.get('branch')
-    branch = Branch.objects.filter(id=branch_id).first() if branch_id else None
-    
-    group_id = metadata.get('group_id') or metadata.get('group')
-    group = Group.objects.filter(id=group_id).first() if group_id else None
-    
+    branch = safe_fk(Branch, metadata.get('branch_id') or metadata.get('branch'))
+    group = safe_fk(Group, metadata.get('group_id') or metadata.get('group'))
+
     # 2. Studentni qayta yaratish
-    # Metadata ichidagi keraksiz fieldlarni tozalaymiz
-    student_fields = {
-        'full_name': archived.full_name,
-        'branch': branch,
-        'group': group,
-        'phone': metadata.get('phone', ''),
-        'birth_date': metadata.get('birth_date'),
-        'parent_name': metadata.get('parent_name', ''),
-        'parent_phone': metadata.get('parent_phone', ''),
-        'address': metadata.get('address', ''),
-        'notes': metadata.get('notes', ''),
-        'color': metadata.get('color', '#ffffff'),
-        'telegram_id': metadata.get('telegram_id'),
-        'parent_telegram_id': metadata.get('parent_telegram_id'),
-        'status': metadata.get('status', 'regular'),
-        'custom_fee': metadata.get('custom_fee'),
-    }
-    
-    student = Student.objects.create(**student_fields)
+    student = Student.objects.create(
+        full_name=archived.full_name,
+        branch=branch,
+        group=group,
+        phone=metadata.get('phone', ''),
+        birth_date=parse_date(metadata.get('birth_date')),
+        parent_name=metadata.get('parent_name', ''),
+        parent_phone=metadata.get('parent_phone', ''),
+        address=metadata.get('address', ''),
+        notes=metadata.get('notes', ''),
+        color=metadata.get('color', '#ffffff'),
+        telegram_id=metadata.get('telegram_id'),
+        parent_telegram_id=metadata.get('parent_telegram_id'),
+        status=metadata.get('status', 'regular'),
+        custom_fee=metadata.get('custom_fee'),
+    )
 
-    # 3. Many-to-Many bog'liqlikni tiklash (Guruhga a'zolik)
+    # 3. Many-to-Many bog'liqlikni tiklash
     if group:
-        GroupEnrollment.objects.get_or_create(student=student, group=group, defaults={'is_active': True})
-        
-    # 4. Bog'langan ma'lumotlarni tiklash (Helper orqali FK larni to'g'rilaymiz)
-    def clean_related_data(data, student_inst):
-        clean = {}
-        for k, v in data.items():
-            if k in ['id', 'student']: continue # Bularni tashlab ketamiz
-            # FK fieldlarni _id ga o'tkazamiz
-            if k in ['group', 'marked_by', 'homework', 'test']:
-                clean[f"{k}_id"] = v
-            else:
-                clean[k] = v
-        return clean
+        GroupEnrollment.objects.get_or_create(
+            student=student, group=group, defaults={'is_active': True}
+        )
 
-    # To'lovlar
+    # 4. TO'LOVLARNI TIKLASH — har bir maydon aniq ko'rsatiladi
     for pay_data in metadata.get('payments', []):
         try:
-            cleaned_pay = clean_related_data(pay_data, student)
-            Payment.objects.create(student=student, **cleaned_pay)
+            old_pay_id = pay_data.get('id')
+            pay_group = safe_fk(Group, pay_data.get('group'))
+            pay_marked_by = safe_fk(User, pay_data.get('marked_by'))
+
+            # transaction_id unique — bazada mavjud bo'lsa None qilamiz
+            t_id = pay_data.get('transaction_id') or None
+            if t_id and Payment.objects.filter(transaction_id=t_id).exists():
+                t_id = None
+
+            p = Payment.objects.create(
+                student=student,
+                group=pay_group,
+                month=parse_date(pay_data.get('month')),
+                is_paid=bool(pay_data.get('is_paid', False)),
+                refund_ignored=bool(pay_data.get('refund_ignored', False)),
+                amount=pay_data.get('amount'),
+                marked_by=pay_marked_by,
+                paid_at=parse_datetime(pay_data.get('paid_at')),
+                transaction_id=t_id,
+                payer_name=pay_data.get('payer_name'),
+                payer_phone=pay_data.get('payer_phone'),
+                payer_card_mask=pay_data.get('payer_card_mask'),
+            )
+
+            # FinanceTransaction ni yangi payment ID ga bog'laymiz
+            if old_pay_id:
+                from finance.models import FinanceTransaction
+                FinanceTransaction.objects.filter(
+                    related_id=f"STP-{old_pay_id}"
+                ).update(related_id=f"STP-{p.id}")
+
         except Exception as e:
-            print(f"Payment restore error: {e}")
-        
-    # Davomat
+            print(f"[RESTORE] Payment error: {e} | data: {pay_data}")
+
+    # 5. DAVOMAT tiklash
     for att_data in metadata.get('attendances', []):
         try:
-            cleaned_att = clean_related_data(att_data, student)
-            Attendance.objects.create(student=student, **cleaned_att)
+            Attendance.objects.create(
+                student=student,
+                group=safe_fk(Group, att_data.get('group')),
+                date=parse_date(att_data.get('date')),
+                is_present=att_data.get('is_present', True),
+            )
         except Exception as e:
-            print(f"Attendance restore error: {e}")
+            print(f"[RESTORE] Attendance error: {e}")
 
-    # Uy vazifalari
+    # 6. UY VAZIFALARI tiklash
     for sub_data in metadata.get('submissions', []):
         try:
-            cleaned_sub = clean_related_data(sub_data, student)
-            HomeworkSubmission.objects.create(student=student, **cleaned_sub)
+            from homework_attends.models import Homework
+            hw = safe_fk(Homework, sub_data.get('homework'))
+            if hw:
+                HomeworkSubmission.objects.get_or_create(
+                    student=student,
+                    homework=hw,
+                    defaults={'status': sub_data.get('status', 'not_submitted')},
+                )
         except Exception as e:
-            print(f"Submission restore error: {e}")
+            print(f"[RESTORE] Submission error: {e}")
 
-    # Mock testlar
+    # 7. MOCK TESTLAR tiklash
     for mock_data in metadata.get('mock_results', []):
         try:
-            cleaned_mock = clean_related_data(mock_data, student)
-            MockTestResult.objects.create(student=student, **cleaned_mock)
+            from homework_attends.models import MockTest
+            test = safe_fk(MockTest, mock_data.get('test'))
+            if test:
+                MockTestResult.objects.get_or_create(
+                    student=student,
+                    test=test,
+                    defaults={'score': mock_data.get('score', 0)},
+                )
         except Exception as e:
-            print(f"MockResult restore error: {e}")
+            print(f"[RESTORE] MockResult error: {e}")
+
+    # 8. FINANCE TRANSACTIONS → yangi studentga bog'lash
+    transaction_ids = metadata.get('transaction_ids', [])
+    if transaction_ids:
+        from finance.models import FinanceTransaction
+        FinanceTransaction.objects.filter(id__in=transaction_ids).update(student=student)
 
     return student
+
 
 @transaction.atomic
 def restore_staff_from_archive(archived_staff_id, restored_by):

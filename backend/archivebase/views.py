@@ -17,12 +17,15 @@ from django_filters.rest_framework import DjangoFilterBackend # Filtr uchun
 
 class ArchivedStudentViewSet(mixins.DestroyModelMixin, viewsets.ReadOnlyModelViewSet):
     """Faqat ko'rish va o'chirish (Arxivdan butunlay)"""
-    queryset = ArchivedStudent.objects.all().order_by('-archived_at')
     serializer_class = ArchivedStudentSerializer
     permission_classes = [IsArchiveAdmin] # Faqat adminlar uchun
     
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     search_fields = ['full_name', 'branch_name', 'last_group_name']
+
+    def get_queryset(self):
+        # Kutish zaliga o'tkazilganlarni asosiy arxiv ro'yxatidan yashiramiz
+        return ArchivedStudent.objects.exclude(reason__startswith="[WAITING_HALL]").order_by('-archived_at')
     
     def destroy(self, request, *args, **kwargs):
         """
