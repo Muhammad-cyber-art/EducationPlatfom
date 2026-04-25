@@ -238,7 +238,7 @@ def restore_student_from_archive(archived_student_id, restored_by):
     archived = ArchivedStudent.objects.get(id=archived_student_id)
     metadata = archived.metadata
     
-    # 1. Branch va Group ni topish (ID kalitlari metadata ichida _id bilan saqlangan)
+    # 1. Branch va Group ni topish
     branch_id = metadata.get('branch_id') or metadata.get('branch')
     branch = Branch.objects.filter(id=branch_id).first() if branch_id else None
     
@@ -246,49 +246,73 @@ def restore_student_from_archive(archived_student_id, restored_by):
     group = Group.objects.filter(id=group_id).first() if group_id else None
     
     # 2. Studentni qayta yaratish
-    student = Student.objects.create(
-        full_name=archived.full_name,
-        branch=branch,
-        group=group,
-        phone=metadata.get('phone', ''),
-        birth_date=metadata.get('birth_date'),
-        parent_name=metadata.get('parent_name', ''),
-        parent_phone=metadata.get('parent_phone', ''),
-        address=metadata.get('address', ''),
-        notes=metadata.get('notes', ''),
-        color=metadata.get('color', '#ffffff'),
-    )
+    # Metadata ichidagi keraksiz fieldlarni tozalaymiz
+    student_fields = {
+        'full_name': archived.full_name,
+        'branch': branch,
+        'group': group,
+        'phone': metadata.get('phone', ''),
+        'birth_date': metadata.get('birth_date'),
+        'parent_name': metadata.get('parent_name', ''),
+        'parent_phone': metadata.get('parent_phone', ''),
+        'address': metadata.get('address', ''),
+        'notes': metadata.get('notes', ''),
+        'color': metadata.get('color', '#ffffff'),
+        'telegram_id': metadata.get('telegram_id'),
+        'parent_telegram_id': metadata.get('parent_telegram_id'),
+        'status': metadata.get('status', 'regular'),
+        'custom_fee': metadata.get('custom_fee'),
+    }
+    
+    student = Student.objects.create(**student_fields)
 
     # 3. Many-to-Many bog'liqlikni tiklash (Guruhga a'zolik)
     if group:
-        GroupEnrollment.objects.get_or_create(student=student, group=group)
+        GroupEnrollment.objects.get_or_create(student=student, group=group, defaults={'is_active': True})
         
-    # 4. Bog'langan ma'lumotlarni tiklash (Agar metadata ichida bo'lsa)
-    # Eslatma: ID lar yangi yaratiladi, shuning uchun **data usulidan foydalanamiz
-    
+    # 4. Bog'langan ma'lumotlarni tiklash (Helper orqali FK larni to'g'rilaymiz)
+    def clean_related_data(data, student_inst):
+        clean = {}
+        for k, v in data.items():
+            if k in ['id', 'student']: continue # Bularni tashlab ketamiz
+            # FK fieldlarni _id ga o'tkazamiz
+            if k in ['group', 'marked_by', 'homework', 'test']:
+                clean[f"{k}_id"] = v
+            else:
+                clean[k] = v
+        return clean
+
     # To'lovlar
     for pay_data in metadata.get('payments', []):
-        if 'id' in pay_data: del pay_data['id']
-        if 'student' in pay_data: del pay_data['student']
-        Payment.objects.create(student=student, **pay_data)
+        try:
+            cleaned_pay = clean_related_data(pay_data, student)
+            Payment.objects.create(student=student, **cleaned_pay)
+        except Exception as e:
+            print(f"Payment restore error: {e}")
         
     # Davomat
     for att_data in metadata.get('attendances', []):
-        if 'id' in att_data: del att_data['id']
-        if 'student' in att_data: del att_data['student']
-        Attendance.objects.create(student=student, **att_data)
+        try:
+            cleaned_att = clean_related_data(att_data, student)
+            Attendance.objects.create(student=student, **cleaned_att)
+        except Exception as e:
+            print(f"Attendance restore error: {e}")
 
     # Uy vazifalari
     for sub_data in metadata.get('submissions', []):
-        if 'id' in sub_data: del sub_data['id']
-        if 'student' in sub_data: del sub_data['student']
-        HomeworkSubmission.objects.create(student=student, **sub_data)
+        try:
+            cleaned_sub = clean_related_data(sub_data, student)
+            HomeworkSubmission.objects.create(student=student, **cleaned_sub)
+        except Exception as e:
+            print(f"Submission restore error: {e}")
 
     # Mock testlar
     for mock_data in metadata.get('mock_results', []):
-        if 'id' in mock_data: del mock_data['id']
-        if 'student' in mock_data: del mock_data['student']
-        MockTestResult.objects.create(student=student, **mock_data)
+        try:
+            cleaned_mock = clean_related_data(mock_data, student)
+            MockTestResult.objects.create(student=student, **cleaned_mock)
+        except Exception as e:
+            print(f"MockResult restore error: {e}")
 
     return student
 
@@ -338,11 +362,12 @@ def restore_staff_from_archive(archived_staff_id, restored_by):
         try:
             from finance.models import StaffProfile
             profile_data = metadata['staff_profile']
-            # Yangi userga bog'laymiz
+            # FK larni to'g'rilaymiz (StaffProfile da hozircha faqat user)
+            if 'id' in profile_data: del profile_data['id']
+            if 'user' in profile_data: del profile_data['user']
+            
             StaffProfile.objects.create(user=user, **profile_data)
         except Exception as e:
-            # Profil tiklanmasa ham user tiklandi, shuning uchun xatoni yutib yuboramiz
-            # yoki log qilamiz. Asosiy maqsad user tiklanishi.
             print(f"StaffProfile tiklashda xato: {e}")
             pass
     
@@ -363,17 +388,18 @@ def restore_group_from_archive(archived_group_id, restored_by):
     metadata = archived.metadata
     
     # Branch va Mentorni topish
-    branch = None
-    if metadata.get('branch'):
-        branch = Branch.objects.filter(id=metadata['branch']).first()
+    branch_id = metadata.get('branch_id') or metadata.get('branch')
+    branch = Branch.objects.filter(id=branch_id).first() if branch_id else None
     
-    mentor = None
-    if metadata.get('mentor'):
-        mentor = User.objects.filter(id=metadata['mentor'], role='mentor').first()
+    # BIZNES LOGIKA: Branch o'chirilgan bo'lsa, guruhni tiklab bo'lmaydi
+    if not branch:
+        raise ValueError("Guruhni tiklab bo'lmadi: Filial (Branch) topilmadi yoki o'chirilgan.")
+
+    mentor_id = metadata.get('mentor_id') or metadata.get('mentor')
+    mentor = User.objects.filter(id=mentor_id, role='mentor').first() if mentor_id else None
     
-    admin = None
-    if metadata.get('admin'):
-        admin = User.objects.filter(id=metadata['admin']).first()
+    admin_id = metadata.get('admin_id') or metadata.get('admin')
+    admin = User.objects.filter(id=admin_id).first() if admin_id else None
     
     # Guruhni qayta yaratish
     group = Group.objects.create(
