@@ -82,6 +82,41 @@ class StudentPaymentViewSet(viewsets.ModelViewSet):
 
         return qs
 
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        student_id = request.query_params.get('student')
+        
+        # Mobil ilovada bitta zaprosda o'quvchi to'lovlari va boshqa tranzaksiyalarni ko'rish uchun
+        if student_id and response.status_code == 200:
+            try:
+                data = response.data
+                is_paginated = isinstance(data, dict) and 'results' in data
+                results = data['results'] if is_paginated else data
+                
+                if isinstance(results, list) and len(results) > 0:
+                    # Qo'shimcha tranzaksiyalarni olish
+                    extra_qs = FinanceTransaction.objects.filter(
+                        student_id=student_id
+                    ).select_related('marked_by').order_by('-date')[:50]
+                    extra_data = FinanceTransactionSerializer(extra_qs, many=True).data
+                    
+                    # Birinchi elementga ma'lumotlarni qo'shish (mutable dict ga o'tkazib)
+                    results = list(results)
+                    first_item = dict(results[0])
+                    first_item['extra_transactions'] = extra_data
+                    results[0] = first_item
+                    
+                    if is_paginated:
+                        data['results'] = results
+                        response.data = data
+                    else:
+                        response.data = results
+            except Exception as e:
+                # Agar biron xato bo'lsa, original javobni qaytaramiz (500 xatolik bermaslik uchun)
+                print(f"Error in StudentPaymentViewSet.list override: {e}")
+        
+        return response
+
     def retrieve(self, request, *args, **kwargs):
         """
         Bitta to'lovga kirilganda o'sha o'quvchining shu guruhdagi 
@@ -256,7 +291,7 @@ class StudentPaymentViewSet(viewsets.ModelViewSet):
 
         else:
             # Agar aniq summa kiritilmagan bo'lsa va refund ignored bo'lmasa, uni ayiramiz
-            if not payment.refund_ignored:
+            if not payment.refund_ignored and payment.month:
                 from decimal import Decimal
                 from finance.utils import floor_amount
                 refund = payment.student.calculate_refund_amount(payment.month.year, payment.month.month)
