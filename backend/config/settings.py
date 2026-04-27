@@ -28,8 +28,8 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-@%_8w_d8d9df5l3r$7avnz+rl4
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
-# ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'yaxshi-niyat.uz,www.yaxshi-niyat.uz,localhost,127.0.0.1,192.168.43.209').split(',')
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'yaxshi-niyat.uz,www.yaxshi-niyat.uz,localhost,127.0.0.1,192.168.43.209').split(',')
+# ALLOWED_HOSTS = ['*']
 
 
 # Application definition

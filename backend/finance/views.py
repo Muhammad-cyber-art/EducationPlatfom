@@ -277,7 +277,12 @@ class StudentPaymentViewSet(viewsets.ModelViewSet):
         # To'lov summasini o'zgartirish (agar so'rovda yangi summa kelsa)
         new_amount = request.data.get('amount')
         if new_amount is not None:
-            payment.amount = new_amount
+            from decimal import Decimal
+            try:
+                # String bo'lsa Decimal ga o'girish (ValueError oldini olish uchun)
+                payment.amount = Decimal(str(new_amount))
+            except (ValueError, TypeError, Decimal.InvalidOperation):
+                pass 
             payment.save()
             
             # Kelgusi oylar uchun ham saqlab qolish (individual narx sifatida)

@@ -115,7 +115,7 @@ def notify_payment(sender, instance, created, **kwargs):
             f"O'quvchi: {student.full_name}\n"
             f"Guruh: {instance.group.name if instance.group else 'Nomalum'}\n"
             f"Oy: {instance.month.strftime('%B %Y') if instance.month else ''}\n"
-            f"Summa: {instance.amount if instance.amount else 0:,.0f} so'm\n"
+            f"Summa: {float(instance.amount) if instance.amount else 0:,.0f} so'm\n"
             f"Sana: {instance.paid_at.strftime('%Y-%m-%d %H:%M') if instance.paid_at else ''}"
         )
         
