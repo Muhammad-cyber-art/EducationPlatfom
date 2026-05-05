@@ -2,6 +2,7 @@ import React, { useState, useEffect } from"react";
 import { X, ArrowRightLeft, Users, Shield, MapPin, UserCheck } from"lucide-react";
 import api from"../../tokenUpdater/updater";
 import toast from"react-hot-toast";
+import { safeArray } from"../../utils/safeArray";
 
 export default function TransferStaff({ isOpen, onClose }) {
  const [activeTab, setActiveTab] = useState("mentor");
@@ -20,7 +21,7 @@ export default function TransferStaff({ isOpen, onClose }) {
  useEffect(() => {
  if (isOpen) {
  api.get(`/add_branch/branches/`)
- .then(res => SetBRanch(res.data))
+ .then(res => SetBRanch(safeArray(res.data)))
  .catch(err => {
  });
  }
@@ -44,7 +45,7 @@ export default function TransferStaff({ isOpen, onClose }) {
  : `/groups/admins/?branch_id=${selectedSourceBranch}`;
 
  const res = await api.get(url);
- setStaff(res.data);
+ setStaff(safeArray(res.data));
  } catch (error) {
  } finally {
  setLoading(false);

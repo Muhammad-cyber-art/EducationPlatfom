@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from'react';
 import toast from'react-hot-toast';
 import { X, ArrowRightLeft, CheckCircle2, AlertCircle, Loader2 } from'lucide-react';
+import { safeArray } from'../../utils/safeArray';
 
 const TransferStudentModal = ({ isOpen, onClose, student, currentBranchId, api, onSuccess }) => {
  const [groups, setGroups] = useState([]);
@@ -15,7 +16,8 @@ const TransferStudentModal = ({ isOpen, onClose, student, currentBranchId, api, 
  api.get(`/groups/groups/?branch_id=${currentBranchId}&page_size=200`)
  .then(res => {
  // O'quvchining hozirgi guruhini ro'yxatdan chiqarib tashlaymiz
- const availableGroups = (res.data.results || res.data).filter(
+ const groupsArray = safeArray(res.data);
+ const availableGroups = groupsArray.filter(
  g => g.id !== student?.group?.id
  );
  setGroups(availableGroups);

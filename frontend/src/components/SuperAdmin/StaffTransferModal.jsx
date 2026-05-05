@@ -2,6 +2,7 @@ import React, { useState, useEffect } from"react";
 import { X, ArrowRightLeft, MapPin, Loader2, CheckCircle2 } from"lucide-react";
 import api from"../../tokenUpdater/updater";
 import toast from"react-hot-toast";
+import { safeArray } from"../../utils/safeArray";
 
 export default function StaffTransferModal({ isOpen, onClose, staffMember, onTransferSuccess }) {
  const [branches, setBranches] = useState([]);
@@ -15,7 +16,7 @@ export default function StaffTransferModal({ isOpen, onClose, staffMember, onTra
  setFetchingBranches(true);
  api.get(`/add_branch/branches/`)
  .then(res => {
- setBranches(res.data);
+ setBranches(safeArray(res.data));
  setFetchingBranches(false);
  })
  .catch((err) => {

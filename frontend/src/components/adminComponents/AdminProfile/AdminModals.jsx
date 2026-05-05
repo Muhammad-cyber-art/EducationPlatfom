@@ -39,9 +39,9 @@ const AdminModals = ({
  <span className="text-[10px] font-black text-[var(--text-primary)] capitalize tracking-widest">{PERMISSION_LABELS[key]}</span>
  <button
  onClick={() => dispatch({ type:'TOGGLE_PERMISSION_KEY', key })}
- className={`w-10 h-5 rounded-full relative flex items-center transition-all duration-300 ${permissions[key] ?'bg-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.4)]' :'bg-white/10'}`}
+ className={`w-10 h-5 rounded-full relative flex items-center transition-all duration-300 border border-white/10 ${permissions[key] ?'bg-indigo-500 border-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.4)]' :'bg-white/20'}`}
  >
- <div className={`absolute w-3.5 h-3.5 bg-white rounded-full transition-all duration-300 ${permissions[key] ?'left-5.5' :'left-1'}`} />
+ <div className={`absolute left-1 w-3.5 h-3.5 bg-white rounded-full transition-all duration-300 ${permissions[key] ?'translate-x-5' :'translate-x-0'}`} />
  </button>
  </div>
  ))}

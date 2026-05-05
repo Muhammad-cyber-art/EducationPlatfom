@@ -4,6 +4,7 @@ import api from"../../tokenUpdater/updater";
 import { get_user_info } from"../Authorized/getRole";
 import { useQueryClient } from"@tanstack/react-query";
 import toast from"react-hot-toast";
+import { safeArray } from"../../utils/safeArray";
 
 export default function AddMentorModal({ groupId, isOpen, onClose, currentMentors = [] }) {
  const [mentors, setMentors] = useState([]);
@@ -21,7 +22,8 @@ export default function AddMentorModal({ groupId, isOpen, onClose, currentMentor
  .then((res) => {
  // Allaqachon guruhda bor mentorlarni filtrlab tashlash
  const currentIds = currentMentors.map(m => m.mentor || m.id);
- const availableMentors = res.data.filter(m => !currentIds.includes(m.id));
+ const mentorsArray = safeArray(res.data);
+ const availableMentors = mentorsArray.filter(m => !currentIds.includes(m.id));
  setMentors(availableMentors);
  })
  .catch((err) => console.error("Mentorlarni yuklashda xato:", err))

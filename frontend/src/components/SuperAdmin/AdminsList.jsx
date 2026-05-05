@@ -42,7 +42,8 @@ const AdminList = () => {
 
  try {
  const res = await api.get(`/groups/admins/?branch_id=${branchId}`);
- setAdmin(res.data);
+ const data = res.data;
+ setAdmin(Array.isArray(data) ? data : data?.results || []);
  } catch (err) {
  console.error(err);
  toast.error("Ma'lumotlarni yuklashda xatolik.");

@@ -20,6 +20,7 @@ import {
 import AmountInput from'../Common/AmountInput';
 import api from'../../tokenUpdater/updater';
 import toast from'react-hot-toast';
+import { safeArray } from'../../utils/safeArray';
 
 const StudentAdd = () => {
  const location = useLocation();
@@ -80,7 +81,7 @@ const StudentAdd = () => {
  useEffect(() => {
  if (!hasGroupId && (currentBranchId || branchId)) {
  api.get(`/groups/nested_groups/`)
- .then(res => setGroups(res.data))
+ .then(res => setGroups(safeArray(res.data)))
  .catch(err => console.error("Error loading groups", err));
  }
  }, [hasGroupId, currentBranchId, branchId]);
@@ -102,7 +103,7 @@ const StudentAdd = () => {
  setSearching(true);
  try {
  const response = await api.get(`/groups/students/search/?q=${encodeURIComponent(query)}`);
- setSearchResults(response.data);
+ setSearchResults(safeArray(response.data));
  } catch (error) {
  console.error("Qidiruvda xatolik:", error);
  } finally {

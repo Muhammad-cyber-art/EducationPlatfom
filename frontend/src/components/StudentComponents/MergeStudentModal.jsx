@@ -3,6 +3,7 @@ import { createPortal } from"react-dom";
 import { X, Search, User, Phone, Check, Loader2, AlertTriangle, Layers } from"lucide-react";
 import api from"../../tokenUpdater/updater";
 import toast from"react-hot-toast";
+import { safeArray } from"../../utils/safeArray";
 
 const MergeStudentModal = ({ isOpen, onClose, masterStudent, onMerge }) => {
  const [searchQuery, setSearchQuery] = useState("");
@@ -21,7 +22,8 @@ const MergeStudentModal = ({ isOpen, onClose, masterStudent, onMerge }) => {
  try {
  const res = await api.get(`/groups/students/search/?q=${searchQuery}`);
  // Filter out the master student itself
- const filtered = res.data.filter(s => s.id !== masterStudent.id);
+ const studentsArray = safeArray(res.data);
+ const filtered = studentsArray.filter(s => s.id !== masterStudent.id);
  setResults(filtered);
  } catch (err) {
  console.error("Search error:", err);

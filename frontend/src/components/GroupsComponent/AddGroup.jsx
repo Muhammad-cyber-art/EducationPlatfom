@@ -20,6 +20,7 @@ import { useNavigate, useOutletContext } from"react-router-dom";
 import { useCurrentBranch } from"../Authorized/useBranchId";
 import GoBackButton from"../sendback";
 import AmountInput from"../Common/AmountInput";
+import { safeArray } from"../../utils/safeArray";
 
 const AddGroup = () => {
  const navigate = useNavigate();
@@ -70,7 +71,7 @@ const AddGroup = () => {
  // Barcha ruxsat etilgan mentorlarni yuklaymiz (branch bo'yicha filter frontendda bo'ladi)
  api
  .get(`/groups/mentors/?page_size=200`)
- .then((res) => setMentors(res.data.results || res.data))
+ .then((res) => setMentors(safeArray(res.data)))
  .catch((err) => {
  console.error("Mentor fetch error:", err);
  });
