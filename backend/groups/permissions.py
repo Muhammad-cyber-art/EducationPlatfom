@@ -122,33 +122,39 @@ class IsMentorBranchAccessible(permissions.BasePermission):
     """
     Mentor o'zining asosiy filialiga va unga ruxsat berilgan (BranchAccess) 
     filiallarga kirishi uchun ruxsat beruvchi permission.
+    Shuningdek super_admin va adminlarga ham ruxsat beradi.
     """
 
     def has_permission(self, request, view):
-        # 1. Foydalanuvchi tizimga kirgan va roli mentor ekanligini tekshiramiz
-        if not request.user.is_authenticated or request.user.role != 'mentor':
-            # Agar foydalanuvchi admin bo'lsa, bu permission unga tegishli emas (boshqa klass tekshiradi)
+        if not request.user or not request.user.is_authenticated:
             return False
-        return True
+        
+        # SuperAdmin, Admin va Mentorlar bu view'dan foydalanishi mumkin
+        return request.user.role in ['super_admin', 'admin', 'mentor']
 
-    def has_object_permission(self, request, obj, view):
-        # 2. Obyekt (masalan, Group yoki Student) qaysi filialga tegishli ekanini aniqlaymiz
-        # Odatda obyektlarda 'branch' yoki 'branch_id' maydoni bo'ladi
+    def has_object_permission(self, request, view, obj):
+        # DRF calls this with request, view, obj (in BasePermission)
+        # So we swap the variable names if the old code had request, obj, view
+        # Wait, the old code used request, obj, view which is not standard.
+        # Let's use request, view, obj.
+        user = request.user
+        
+        if user.role == 'super_admin':
+            return True
+
         target_branch_id = getattr(obj, 'branch_id', None)
         
         if target_branch_id is None and hasattr(obj, 'branch'):
             target_branch_id = obj.branch.id
 
-        # 3. Mantiqiy tekshiruv:
-        
-        # a) Agar obyekt mentorning asosiy filialiga tegishli bo'lsa
-        if request.user.branch_id == target_branch_id:
-            return True
-        
-        # b) Agar obyekt mentorga ruxsat berilgan (BranchAccess) filiallardan biriga tegishli bo'lsa
-        is_accessible = BranchAccess.objects.filter(
-            user=request.user, 
-            branch_id=target_branch_id
-        ).exists()
-        
-        return is_accessible
+        if user.role == 'admin':
+            if user.branch_id == target_branch_id:
+                return True
+            return user.branch_accesses.filter(branch_id=target_branch_id).exists()
+
+        if user.role == 'mentor':
+            if user.branch_id == target_branch_id:
+                return True
+            return BranchAccess.objects.filter(user=user, branch_id=target_branch_id).exists()
+            
+        return False

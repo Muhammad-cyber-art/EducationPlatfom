@@ -120,6 +120,13 @@ class Group(models.Model):
             
         return self.start_date <= timezone.localdate()
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['branch', 'is_faol']),
+            models.Index(fields=['mentor', 'is_faol']),
+            models.Index(fields=['start_date', 'days']),
+        ]
+
     def __str__(self):
         return f"{self.name} | Mentor: {self.mentor} | Kun: {self.get_days_display()}"
 
@@ -259,6 +266,10 @@ class GroupEnrollment(models.Model):
         unique_together = ('student', 'group')
         verbose_name = "O'quvchi guruhga birikishi"
         verbose_name_plural = "O'quvchilar guruhga birikishi"
+        indexes = [
+            models.Index(fields=['student', 'is_active']),
+            models.Index(fields=['group', 'is_active']),
+        ]
 
     def __str__(self):
         return f"{self.student.full_name} -> {self.group.name}"

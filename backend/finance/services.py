@@ -1,19 +1,25 @@
 from django.utils import timezone
 from django.db import transaction
-from django.db.models import Sum, Q
-from .models import Payment, EmployeePayment, StaffProfile
-from groups.models import Group
+from django.db.models import Sum, Q, F, Count
+from django.shortcuts import get_object_or_404
+from .models import Payment, EmployeePayment, StaffProfile, FinanceTransaction, EmployeeAdvance
+from groups.models import Group, Student, Branch
+from homework_attends.models import Attendance
 from django.contrib.auth import get_user_model
-from finance.utils import normalize_month
+from finance.utils import normalize_month, floor_amount
+from decimal import Decimal
+import traceback
+import logging
+
+logger = logging.getLogger(__name__)
 User = get_user_model()
+
 def generate_monthly_student_payments(month_date=None):
     """
     Har oy barcha faol guruhlardagi studentlar uchun payment yaratadi
     """
     if month_date is None:
         month_date = timezone.localdate().replace(day=1)
-
-    from finance.utils import floor_amount
 
     with transaction.atomic():
         # User talabi: Boshlanish sanasi kelmaguncha to'lovlar yaratilmasligi kerak
@@ -38,7 +44,6 @@ def generate_monthly_payments(month_date=None):
     else:
         month_date = normalize_month(month_date)
 
-    from finance.utils import floor_amount
     created_count = 0
 
     # 1. STUDENT PAYMENTS (Guruh narxi o'zgarishi mumkin, shuning uchun amount'ni saqlaymiz)
@@ -81,9 +86,6 @@ def generate_monthly_payments(month_date=None):
 
 def calculate_employee_salary(profile, month_date):
     """Xodim maoshini hisoblash (Mavjud foyiz logikasi buzilmadi, floor qo'shildi)"""
-    from finance.utils import floor_amount
-    from decimal import Decimal
-
     if profile.salary_type == 'fixed':
         return floor_amount(profile.fixed_salary)
     
@@ -115,7 +117,6 @@ def calculate_employee_salary(profile, month_date):
                     total_income += (student_revenue - refund)
 
                     # Portal orqali qo'shimcha tushum/chiqim (specific for this student in this group)
-                    from .models import FinanceTransaction
                     extra_txs = FinanceTransaction.objects.filter(
                         student=student,
                         group=group,
@@ -175,9 +176,6 @@ def process_absence_refunds(month_date=None):
     if month_date is None:
         month_date = timezone.localdate().replace(day=1)
     
-    from finance.models import FinanceTransaction
-    from groups.models import Group
-    
     refund_count = 0
     total_refund_amount = 0
     
@@ -213,3 +211,216 @@ def process_absence_refunds(month_date=None):
                     total_refund_amount += refund_amount
                 
     return refund_count, total_refund_amount
+
+def handle_custom_payment(request_user, data):
+    """O'quvchi uchun maxsus (oylikdan tashqari) to'lovni boshqarish"""
+    id_student = data['student']
+    id_group = data['group']
+    amount = data['amount']
+    transaction_type = data['transaction_type']
+    payer_name = data.get('payer_name', '')
+    description = data.get('description', '')
+    date_val = data.get('date', timezone.localdate())
+    
+    student = get_object_or_404(Student, id=id_student)
+    group = get_object_or_404(Group, id=id_group)
+    
+    branch_instance = student.branch or group.branch
+    if not branch_instance and hasattr(request_user, 'branch'):
+        branch_instance = request_user.branch
+
+    if not branch_instance:
+        raise ValueError("Filialni aniqlab bo'lmadi.")
+
+    final_payer = payer_name if (payer_name and payer_name.strip()) else student.full_name
+    title_val = f"Qo'shimcha to'lov: {student.full_name}" if transaction_type == 'income' else f"Chiqim (Portal): {student.full_name}"
+
+    with transaction.atomic():
+        ft = FinanceTransaction.objects.create(
+            transaction_type=transaction_type,
+            category='student_extra',
+            amount=amount,
+            date=date_val,
+            marked_by=request_user,
+            branch=branch_instance,
+            student=student,
+            group=group,
+            payer_name=final_payer,
+            title=title_val,
+            description=description
+        )
+        
+        # Mentor oyligini qayta hisoblash
+        mentor_salary_updated = False
+        try:
+            mentor = group.mentor
+            if mentor and hasattr(mentor, 'staff_profile'):
+                profile = mentor.staff_profile
+                if profile.salary_type in ['percentage', 'student_count']:
+                    payment_month = date_val.replace(day=1)
+                    emp_payment = EmployeePayment.objects.filter(employee=mentor, month=payment_month, is_paid=False).first()
+                    
+                    if emp_payment:
+                        emp_payment.salary_base = profile.calculate_salary_for_month(payment_month)
+                        emp_payment.save()
+                    else:
+                        EmployeePayment.objects.get_or_create(
+                            employee=mentor,
+                            month=payment_month,
+                            defaults={'salary_base': profile.calculate_salary_for_month(payment_month), 'is_paid': False}
+                        )
+                    mentor_salary_updated = True
+        except Exception as salary_err:
+            logger.error(f"Mentor salary recalculate error: {salary_err}")
+
+    return ft, mentor_salary_updated
+
+def confirm_student_payment(request_user, payment, data):
+    """O'quvchi to'lovini tasdiqlash va tegishli amallarni bajarish"""
+    ignore_refund = str(data.get('ignore_refund', False)).lower() in ['true', '1', 'yes']
+    payment.refund_ignored = ignore_refund
+    
+    new_amount = data.get('amount')
+    if new_amount is not None:
+        payment.amount = Decimal(str(new_amount))
+        student = payment.student
+        student.custom_fee = new_amount
+        if student.status == 'regular':
+            student.status = 'negotiated'
+        student.save()
+    elif not payment.refund_ignored and payment.month:
+        refund = payment.student.calculate_refund_amount(payment.month.year, payment.month.month)
+        if float(refund) > 0:
+            current_amount = Decimal(str(payment.amount or payment.group.monthly_price))
+            payment.amount = floor_amount(current_amount - Decimal(str(refund)))
+    
+    payment.save()
+    payment.mark_as_paid(request_user)
+    
+    # Mentor oyligini qayta hisoblash
+    try:
+        mentor = payment.group.mentor
+        if mentor and hasattr(mentor, 'staff_profile'):
+            profile = mentor.staff_profile
+            if profile.salary_type in ['percentage', 'student_count']:
+                payment_month = payment.month.replace(day=1) if payment.month else None
+                if payment_month:
+                    emp_payment = EmployeePayment.objects.filter(employee=mentor, month=payment_month, is_paid=False).first()
+                    if emp_payment:
+                        emp_payment.salary_base = profile.calculate_salary_for_month(payment_month)
+                        emp_payment.save()
+    except Exception as salary_err:
+        logger.error(f"Mentor salary recalculate error: {salary_err}")
+
+    return payment
+
+def get_finance_dashboard_stats(user, month, year):
+    """Moliya dashboardi uchun statistikani yig'ish"""
+    today = timezone.localdate()
+    payment_filter = Q(month__month=month, month__year=year)
+    employee_filter = Q(month__month=month, month__year=year)
+    transaction_filter = Q(date__month=month, date__year=year)
+
+    if user.role == 'admin':
+        payment_filter &= Q(group__branch=user.branch)
+        employee_filter &= Q(employee__branch=user.branch)
+        transaction_filter &= Q(branch=user.branch)
+
+    total_income = FinanceTransaction.objects.filter(transaction_filter, transaction_type='income').aggregate(total=Sum('amount'))['total'] or 0
+    total_expense = FinanceTransaction.objects.filter(transaction_filter, transaction_type='expense').aggregate(total=Sum('amount'))['total'] or 0
+    total_debt = Payment.objects.filter(payment_filter, is_paid=False).aggregate(total=Sum('amount'))['total'] or 0
+
+    branches_data = []
+    if user.role == 'super_admin':
+        for branch in Branch.objects.all():
+            b_income = FinanceTransaction.objects.filter(branch=branch, date__month=month, date__year=year, transaction_type='income').aggregate(total=Sum('amount'))['total'] or 0
+            b_expense = FinanceTransaction.objects.filter(branch=branch, date__month=month, date__year=year, transaction_type='expense').aggregate(total=Sum('amount'))['total'] or 0
+            branches_data.append({
+                "id": branch.id, "name": branch.name,
+                "income": float(b_income), "expense": float(b_expense), "profit": float(b_income - b_expense)
+            })
+
+    top_groups_qs = Group.objects.filter(is_faol=True)
+    if user.role == 'admin': top_groups_qs = top_groups_qs.filter(branch=user.branch)
+    top_groups_data = top_groups_qs.annotate(
+        group_income=Sum('payments__amount', filter=Q(payments__month__month=month, payments__month__year=year, payments__is_paid=True)),
+        st_count=Count('students', distinct=True)
+    ).order_by('-group_income')[:5]
+
+    prev_month = month - 1 if month > 1 else 12
+    prev_year = year if month > 1 else year - 1
+    prev_tx_filter = Q(date__month=prev_month, date__year=prev_year)
+    if user.role == 'admin': prev_tx_filter &= Q(branch=user.branch)
+    prev_income = FinanceTransaction.objects.filter(prev_tx_filter, transaction_type='income').aggregate(total=Sum('amount'))['total'] or 0
+    prev_expense = FinanceTransaction.objects.filter(prev_tx_filter, transaction_type='expense').aggregate(total=Sum('amount'))['total'] or 0
+
+    def calc_trend(curr, prev):
+        curr, prev = float(curr), float(prev)
+        if prev == 0: return 100.0 if curr > 0 else (-100.0 if curr < 0 else 0.0)
+        return round(((curr - prev) / abs(prev)) * 100, 1)
+
+    return {
+        "total_income": float(total_income),
+        "total_expense": float(total_expense),
+        "net_profit": float(total_income - total_expense),
+        "total_debt": float(total_debt),
+        "income_trend": calc_trend(total_income, prev_income),
+        "expense_trend": calc_trend(total_expense, prev_expense),
+        "profit_trend": calc_trend(total_income - total_expense, prev_income - prev_expense),
+        "branches": branches_data,
+        "top_groups": [{"name": g.name, "profit": float(g.group_income or 0), "student_count": g.st_count} for g in top_groups_data],
+        "stats": {
+            "students": Student.objects.filter(enrollments__is_active=True).distinct().count(),
+            "mentors": User.objects.filter(role='mentor', is_active=True).count(),
+            "groups": Group.objects.filter(is_faol=True).count(),
+            "admins": User.objects.filter(role='admin', is_active=True).count(),
+            "attendance_today": {"absent": Attendance.objects.filter(date=today, is_present=False).count()}
+        }
+    }
+
+def get_branch_finance_stats(branch_id, month, year):
+    """Filial uchun moliya statistikasini yig'ish"""
+    branch = get_object_or_404(Branch, id=branch_id)
+    today = timezone.localdate()
+
+    mentors_count = User.objects.filter(branch=branch, role='mentor', is_active=True).count()
+    admins_count = User.objects.filter(branch=branch, role='admin', is_active=True).count()
+    groups_count = Group.objects.filter(branch=branch, is_faol=True).count()
+    students_count = Student.objects.filter(branch=branch, enrollments__is_active=True).distinct().count()
+
+    expected_income = Group.objects.filter(branch=branch, is_faol=True).annotate(
+        student_count=Count('students', distinct=True),
+        group_expected=F('monthly_price') * F('student_count')
+    ).aggregate(total=Sum('group_expected'))['total'] or 0
+
+    received_income = FinanceTransaction.objects.filter(branch=branch, date__month=month, date__year=year, transaction_type='income').aggregate(total=Sum('amount'))['total'] or 0
+    expenses = FinanceTransaction.objects.filter(branch=branch, date__month=month, date__year=year, transaction_type='expense').aggregate(total=Sum('amount'))['total'] or 0
+
+    groups_detail = []
+    for group in Group.objects.filter(branch=branch, is_faol=True).annotate(student_count=Count('students', distinct=True)):
+        g_received = Payment.objects.filter(group=group, month__month=month, month__year=year, is_paid=True).aggregate(total=Sum('amount'))['total'] or 0
+        g_debt = Payment.objects.filter(group=group, month__month=month, month__year=year, is_paid=False).aggregate(total=Sum('amount'))['total'] or 0
+        g_refunds = sum(float(student.calculate_refund_amount(year, month)) for student in group.students.all())
+        
+        groups_detail.append({
+            "id": group.id, "name": group.name, "student_count": group.student_count,
+            "expected_income": float(group.monthly_price * group.student_count),
+            "received_income": float(g_received), "refund_amount": g_refunds,
+            "real_income": float(g_received) - g_refunds, "debt": float(g_debt),
+            "mentor": group.mentor.get_full_name() if group.mentor else "Yo'q"
+        })
+
+    return {
+        "branch": {"id": branch.id, "name": branch.name},
+        "stats": {
+            "mentors": mentors_count, "admins": admins_count, "groups": groups_count, "students": students_count,
+            "attendance_today": {
+                "absent": Attendance.objects.filter(group__branch=branch, date=today, is_present=False).count()
+            }
+        },
+        "finance": {
+            "expected_income": float(expected_income), "received_income": float(received_income),
+            "expenses": float(expenses), "net_profit": float(received_income) - float(expenses)
+        },
+        "groups": groups_detail
+    }

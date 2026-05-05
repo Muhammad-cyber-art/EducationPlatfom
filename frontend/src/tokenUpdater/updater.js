@@ -1,6 +1,6 @@
-// src/api/axios.js
-import axios from "axios";
-import toast from "react-hot-toast";
+import axios from"axios";
+import toast from"react-hot-toast";
+import { jwtDecode } from"jwt-decode";
 
 /**
  * Sozlamalar:
@@ -9,89 +9,91 @@ import toast from "react-hot-toast";
  */
 // Dinamik BASE_URL sozlash
 const getBaseUrl = () => {
-  const { hostname, protocol, origin } = window.location;
+ const { hostname, protocol, origin } = window.location;
 
-  // Agarda production domainda bo'lsak (yaxshi-niyat.uz bilan tugasa yoki localhost bo'lmasa)
-  if (hostname !== "localhost" && hostname !== "127.0.0.1") {
-    // Production URL (agarda backend bir xil domainda bo'lsa)
-    // return origin + "/api/"; 
-    return "https://yaxshi-niyat.uz/api/";
-  }
+ // Agarda production domainda bo'lsak (yaxshi-niyat.uz bilan tugasa yoki localhost bo'lmasa)
+ if (hostname !=="localhost" && hostname !=="127.0.0.1") {
+ // Production URL (agarda backend bir xil domainda bo'lsa)
+ // return origin +"/api/"; 
+ return"https://yaxshi-niyat.uz/api/";
+ }
 
-  // Development (Localhost)
-  return "http://127.0.0.1:8000/api/";
+ // Development (Localhost)
+ return"http://127.0.0.1:8000/api/";
 };
 
 const BASE_URL = getBaseUrl();
-const REFRESH_ENDPOINT = "refresh/"; // Relative URL ishlatiladi
+const REFRESH_ENDPOINT ="refresh/"; // Relative URL ishlatiladi
 
 // Asosiy api client (barcha so'rovlar shu orqali ketadi)
 const api = axios.create({
-  baseURL: BASE_URL,
-  headers: {
-    "Content-Type": "application/json",
-  },
+ baseURL: BASE_URL,
+ timeout: 30000, // 30 soniya timeout
+ headers: {
+"Content-Type":"application/json",
+ },
 });
 
 // Alohida client refresh so'rovi uchun (interceptorlarga tushmasin)
 const refreshClient = axios.create({
-  baseURL: BASE_URL,
-  headers: {
-    "Content-Type": "application/json",
-  },
+ baseURL: BASE_URL,
+ headers: {
+"Content-Type":"application/json",
+ },
 });
 
 // =====================
 // Token helpers
 // =====================
 function getAccessToken() {
-  return localStorage.getItem("access_token");
+ return localStorage.getItem("access_token");
 }
 
 function getRefreshToken() {
-  return localStorage.getItem("refresh_token");
+ return localStorage.getItem("refresh_token");
 }
 
 function setAccessToken(token) {
-  localStorage.setItem("access_token", token);
+ localStorage.setItem("access_token", token);
 }
 
 function setRefreshToken(token) {
-  localStorage.setItem("refresh_token", token);
+ localStorage.setItem("refresh_token", token);
 }
 
 function clearTokensAndLogout() {
-  localStorage.removeItem("access_token");
-  localStorage.removeItem("refresh_token");
-  // Global event — routing/auth context eshitib redirect qilishi mumkin
-  window.dispatchEvent(new Event("logout"));
+ localStorage.removeItem("access_token");
+ localStorage.removeItem("refresh_token");
+ // Global event — routing/auth context eshitib redirect qilishi mumkin
+ window.dispatchEvent(new Event("logout"));
 }
+
 
 // JWT access token muddati tugaganini tekshiruvchi helper
 export function isAccessTokenExpired() {
-  const token = getAccessToken();
-  if (!token) return true;
+ const token = getAccessToken();
+ if (!token) return true;
 
-  try {
-    const payload = JSON.parse(atob(token.split(".")[1]));
-    return payload.exp * 1000 < Date.now();
-  } catch {
-    return true;
-  }
+ try {
+ const decoded = jwtDecode(token);
+ return decoded.exp * 1000 < Date.now();
+ } catch {
+ return true;
+ }
 }
 
 // =====================
 // Request interceptor
 // =====================
 api.interceptors.request.use(
-  (config) => {
-    const token = getAccessToken();
-    if (token && config && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
+ (config) => {
+ const token = getAccessToken();
+ if (token && config && config.headers) {
+ config.headers.Authorization = `Bearer ${token}`;
+ }
+ return config;
+ },
+ (error) => Promise.reject(error)
 );
 
 // =====================
@@ -101,113 +103,113 @@ let isRefreshing = false;
 let refreshSubscribers = []; // [{ resolve, reject }]
 
 function onRefreshed(newToken) {
-  refreshSubscribers.forEach((cb) => cb.resolve(newToken));
-  refreshSubscribers = [];
+ refreshSubscribers.forEach((cb) => cb.resolve(newToken));
+ refreshSubscribers = [];
 }
 
 function onRefreshFailed(err) {
-  refreshSubscribers.forEach((cb) => cb.reject(err));
-  refreshSubscribers = [];
+ refreshSubscribers.forEach((cb) => cb.reject(err));
+ refreshSubscribers = [];
 }
 
 // Queue ga promise qo‘shish
 function addRefreshSubscriber() {
-  return new Promise((resolve, reject) => {
-    refreshSubscribers.push({ resolve, reject });
-  });
+ return new Promise((resolve, reject) => {
+ refreshSubscribers.push({ resolve, reject });
+ });
 }
 
 api.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
+ (response) => response,
+ async (error) => {
+ const originalRequest = error.config;
 
-    if (!originalRequest) return Promise.reject(error);
+ if (!originalRequest) return Promise.reject(error);
 
-    // Refresh endpoint bo‘lsa — loopni to‘xtatamiz
-    const isRefreshCall = originalRequest.url?.includes(REFRESH_ENDPOINT);
-    if (isRefreshCall) {
-      clearTokensAndLogout();
-      return Promise.reject(error);
-    }
+ // Refresh endpoint bo‘lsa — loopni to‘xtatamiz
+ const isRefreshCall = originalRequest.url?.includes(REFRESH_ENDPOINT);
+ if (isRefreshCall) {
+ clearTokensAndLogout();
+ return Promise.reject(error);
+ }
 
-    const status = error.response?.status;
+ const status = error.response?.status;
 
-    // 401 yoki token bilan bog‘liq 403 larni auth error deb hisoblaymiz
-    const isAuthError =
-      status === 401 ||
-      (status === 403 &&
-        error.response?.data?.detail
-          ?.toLowerCase()
-          ?.includes("token"));
+ // 401 yoki token bilan bog‘liq 403 larni auth error deb hisoblaymiz
+ const isAuthError =
+ status === 401 ||
+ (status === 403 &&
+ error.response?.data?.detail
+ ?.toLowerCase()
+ ?.includes("token"));
 
-    if (isAuthError && !originalRequest._retry) {
-      originalRequest._retry = true;
+ if (isAuthError && !originalRequest._retry) {
+ originalRequest._retry = true;
 
-      // Agar hozir refresh ketayotgan bo‘lsa — queue ga qo‘shamiz
-      if (isRefreshing) {
-        try {
-          const newToken = await addRefreshSubscriber();
-          originalRequest.headers.Authorization = `Bearer ${newToken}`;
-          return api(originalRequest);
-        } catch (err) {
-          return Promise.reject(err);
-        }
-      }
+ // Agar hozir refresh ketayotgan bo‘lsa — queue ga qo‘shamiz
+ if (isRefreshing) {
+ try {
+ const newToken = await addRefreshSubscriber();
+ originalRequest.headers.Authorization = `Bearer ${newToken}`;
+ return api(originalRequest);
+ } catch (err) {
+ return Promise.reject(err);
+ }
+ }
 
-      // Refreshni boshlaymiz
-      isRefreshing = true;
-      try {
-        const refreshToken = getRefreshToken();
-        if (!refreshToken) {
-          throw new Error("No refresh token available");
-        }
+ // Refreshni boshlaymiz
+ isRefreshing = true;
+ try {
+ const refreshToken = getRefreshToken();
+ if (!refreshToken) {
+ throw new Error("No refresh token available");
+ }
 
-        const res = await refreshClient.post(REFRESH_ENDPOINT, {
-          refresh: refreshToken,
-        });
+ const res = await refreshClient.post(REFRESH_ENDPOINT, {
+ refresh: refreshToken,
+ });
 
-        const newAccessToken = res.data?.access;
-        const newRefreshToken = res.data?.refresh;
+ const newAccessToken = res.data?.access;
+ const newRefreshToken = res.data?.refresh;
 
-        if (!newAccessToken) {
-          throw new Error("No access token in refresh response");
-        }
+ if (!newAccessToken) {
+ throw new Error("No access token in refresh response");
+ }
 
-        setAccessToken(newAccessToken);
-        if (newRefreshToken) {
-          setRefreshToken(newRefreshToken);
-        }
+ setAccessToken(newAccessToken);
+ if (newRefreshToken) {
+ setRefreshToken(newRefreshToken);
+ }
 
-        onRefreshed(newAccessToken);
+ onRefreshed(newAccessToken);
 
-        isRefreshing = false;
+ isRefreshing = false;
 
-        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
-        return api(originalRequest);
-      } catch (refreshError) {
-        isRefreshing = false;
-        onRefreshFailed(refreshError);
-        clearTokensAndLogout();
-        return Promise.reject(refreshError);
-      }
-    }
+ originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+ return api(originalRequest);
+ } catch (refreshError) {
+ isRefreshing = false;
+ onRefreshFailed(refreshError);
+ clearTokensAndLogout();
+ return Promise.reject(refreshError);
+ }
+ }
 
-    // --- GLOBAL ERROR HANDLING ---
-    // Faqat 401 bo'lmagan xatolarni toast qilamiz (401 yuqorida handle qilingan)
-    if (status >= 400 && status !== 401) {
-      const message = error.response?.data?.detail ||
-        error.response?.data?.message ||
-        "Tizimda kutilmagan xatolik yuz berdi";
+ // --- GLOBAL ERROR HANDLING ---
+ // Faqat 401 bo'lmagan xatolarni toast qilamiz (401 yuqorida handle qilingan)
+ if (status >= 400 && status !== 401) {
+ const message = error.response?.data?.detail ||
+ error.response?.data?.message ||
+"Tizimda kutilmagan xatolik yuz berdi";
 
-      // Faqat bitta toast chiqishi uchun (agar ko'p parallel so'rovlar bo'lsa)
-      toast.error(message, {
-        id: 'global-api-error',
-      });
-    }
+ // Faqat bitta toast chiqishi uchun (agar ko'p parallel so'rovlar bo'lsa)
+ toast.error(message, {
+ id:'global-api-error',
+ });
+ }
 
-    return Promise.reject(error);
-  }
+ return Promise.reject(error);
+ }
 );
 
 export default api;

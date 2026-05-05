@@ -26,8 +26,9 @@ class CustomUserManager(BaseUserManager):
 
 class UserModel(AbstractUser):
     ROLE_CHOICES = (
-        ('mentor', 'Mentor'),
+        ('super_admin', 'Super Admin'),
         ('admin', 'Admin'),
+        ('mentor', 'Mentor'),
     )
     color = models.CharField(max_length=7, default="#ffffff", validators=[color_validator])
     image = models.ImageField(

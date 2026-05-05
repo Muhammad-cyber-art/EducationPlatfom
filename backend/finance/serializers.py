@@ -67,6 +67,7 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
     mentor_groups = serializers.SerializerMethodField() # ✅ QO'SHILDI
     total_advances = serializers.DecimalField(max_digits=20, decimal_places=2, read_only=True)
     advances_history = serializers.SerializerMethodField()
+    payment_history = serializers.SerializerMethodField()  # ✅ QO'SHILDI
     
     class Meta:
         model = EmployeePayment
@@ -93,6 +94,7 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             'mentor_groups',            # ✅ QO'SHILDI (Guruhlar tafsiloti)
             'total_advances',           # ✅ QO'SHILDI
             'advances_history',         # ✅ QO'SHILDI
+            'payment_history',          # ✅ QO'SHILDI (O'tgan oylar tarixi)
             'is_paid', 
             'paid_at', 
             'marked_by'
@@ -396,6 +398,36 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             month=obj.month
         )
         return EmployeeAdvanceSerializer(advances, many=True).data
+
+    def get_total_advances(self, obj):
+        """Ushbu oy uchun berilgan jami avanslar"""
+        from .models import EmployeeAdvance
+        from django.db.models import Sum
+        total = EmployeeAdvance.objects.filter(
+            employee=obj.employee,
+            month=obj.month
+        ).aggregate(total=Sum('amount'))['total'] or 0
+        return float(total)
+
+    def get_payment_history(self, obj):
+        """Xodimning barcha (o'tgan va joriy) to'lovlari tarixi"""
+        from .models import EmployeePayment
+        # Joriy paymentdan tashqari barcha paymentlarni qaytaramiz (yoki hammasini)
+        history = EmployeePayment.objects.filter(
+            employee=obj.employee
+        ).order_by('-month', '-id')
+        
+        # Cheksiz rekursiyani oldini olish uchun oddiyroq ma'lumot qaytaramiz yoki limitlaymiz
+        return [{
+            'id': p.id,
+            'month': p.month,
+            'salary_base': float(p.salary_base),
+            'bonus': float(p.bonus),
+            'deductions': float(p.deductions),
+            'total_amount': float(p.total_amount),
+            'is_paid': p.is_paid,
+            'paid_at': p.paid_at
+        } for p in history]
 
 class EmployeeAdvanceSerializer(serializers.ModelSerializer):
     marked_by_name = serializers.CharField(source='marked_by.get_full_name', read_only=True)

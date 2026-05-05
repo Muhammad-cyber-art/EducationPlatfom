@@ -1,0 +1,272 @@
+from django.db import transaction, models
+from django.utils import timezone
+from datetime import date, timedelta
+from calendar import monthrange
+from .models import Attendance, Homework, HomeworkSubmission, MockTest, MockTestResult
+from groups.models import Group, Student
+
+def get_or_create_attendance_records(group, requested_date):
+    """Dars kuni uchun davomat yozuvlarini olish yoki yaratish"""
+    is_lesson_day = group.is_lesson_day(requested_date)
+    if not is_lesson_day:
+        return Attendance.objects.none()
+    
+    queryset = Attendance.objects.filter(group=group, date=requested_date)
+    active_students = group.students.filter(joined_at__date__lte=requested_date)
+
+    if queryset.count() < active_students.count():
+        existing_student_ids = queryset.values_list('student_id', flat=True)
+        new_records = [
+            Attendance(student=student, group=group, date=requested_date, is_present=True)
+            for student in active_students if student.id not in existing_student_ids
+        ]
+        if new_records:
+            Attendance.objects.bulk_create(new_records)
+        queryset = Attendance.objects.filter(group=group, date=requested_date)
+    
+    return queryset.filter(student__joined_at__date__lte=requested_date).select_related('student').order_by('student__full_name')
+
+def generate_weekly_attendance_report(group, today=None):
+    """Haftalik davomat hisobotini yaratish"""
+    if today is None:
+        today = timezone.localdate()
+    
+    start_of_week = today - timedelta(days=today.weekday()) 
+    date_list = [(start_of_week + timedelta(days=i)) for i in range(7)]
+
+    students = group.students.all().order_by('full_name')
+    attendances = Attendance.objects.filter(
+        group=group, 
+        date__range=[date_list[0], date_list[-1]]
+    )
+
+    att_data = {}
+    for att in attendances:
+        if att.student_id not in att_data:
+            att_data[att.student_id] = {}
+        att_data[att.student_id][str(att.date)] = att.is_present
+
+    report = []
+    for student in students:
+        student_history = []
+        joined_date = student.joined_at.date() if student.joined_at else None
+
+        for d in date_list:
+            date_str = str(d)
+            if joined_date and d < joined_date:
+                status = None
+            elif not group.is_lesson_day(d):
+                status = None
+            else:
+                status = att_data.get(student.id, {}).get(date_str, True)
+
+            student_history.append({
+                "date": date_str, 
+                "day_name": d.strftime('%A'),
+                "is_present": status
+            })
+
+        report.append({
+            "student_id": student.id,
+            "student_name": student.full_name,
+            "history": student_history
+        })
+
+    return {
+        "week_start": str(date_list[0]),
+        "week_end": str(date_list[-1]),
+        "data": report
+    }
+
+def bulk_confirm_attendance(group, requested_date, attendances_payload, user):
+    """Davomatlarni bulk tasdiqlash va xabarnomalarni yuborish"""
+    existing_attendances = Attendance.objects.filter(group=group, date=requested_date)
+    attendance_map = {att.student_id: att for att in existing_attendances}
+    
+    to_create = []
+    to_update = []
+    updated_ids = []
+
+    with transaction.atomic():
+        for item in attendances_payload:
+            student_id = item.get('student_id')
+            is_present = item.get('is_present', True)
+            if student_id is None: continue
+
+            if student_id in attendance_map:
+                attendance = attendance_map[student_id]
+                if attendance.is_present != is_present or attendance.marked_by != user:
+                    attendance.is_present = is_present
+                    attendance.marked_by = user
+                    to_update.append(attendance)
+                updated_ids.append(attendance.id)
+            else:
+                to_create.append(Attendance(
+                    student_id=student_id,
+                    group=group,
+                    date=requested_date,
+                    is_present=is_present,
+                    marked_by=user
+                ))
+
+        if to_update:
+            Attendance.objects.bulk_update(to_update, ['is_present', 'marked_by'])
+        if to_create:
+            created_objs = Attendance.objects.bulk_create(to_create)
+            updated_ids.extend([obj.id for obj in created_objs])
+
+    # Xabarnomalarni yuborish (Async or Fallback)
+    try:
+        from telegram_bot.tasks import send_attendance_notifications_task
+        send_attendance_notifications_task.delay(updated_ids)
+    except Exception:
+        import threading
+        from telegram_bot.signals import send_attendance_notification
+        def fallback_notifications():
+            atts = Attendance.objects.filter(id__in=updated_ids)
+            for a in atts: 
+                try:
+                    send_attendance_notification(a, async_send=False)
+                    import time
+                    time.sleep(0.05)
+                except: pass
+        threading.Thread(target=fallback_notifications).start()
+
+    return Attendance.objects.filter(group=group, date=requested_date).select_related('student').order_by('student__full_name')
+
+def get_monthly_attendance_data(group, month, year):
+    """Oylik davomat ma'lumotlarini yig'ish"""
+    today = timezone.localdate()
+    first_day = date(year, month, 1)
+    _, last_day_num = monthrange(year, month)
+    last_day = date(year, month, last_day_num)
+    
+    report_end_day = today if (year == today.year and month == today.month) else last_day
+    date_list = [first_day + timedelta(days=i) for i in range((report_end_day - first_day).days + 1)]
+    
+    students = group.students.all().order_by('full_name')
+    attendances = Attendance.objects.filter(group=group, date__range=[first_day, report_end_day])
+    
+    att_data = {}
+    for att in attendances:
+        if att.student_id not in att_data:
+            att_data[att.student_id] = {}
+        att_data[att.student_id][str(att.date)] = att.is_present
+        
+    return date_list, students, att_data
+
+def create_homework_with_submissions(serializer, user, group):
+    """Uyga vazifa yaratish va barcha studentlar uchun submission ochish"""
+    with transaction.atomic():
+        homework = serializer.save(mentor=user, group=group)
+        students = group.students.all()
+        
+        submissions = [
+            HomeworkSubmission(
+                homework=homework,
+                student=student,
+                status=HomeworkSubmission.NOT_SUBMITTED
+            )
+            for student in students
+        ]
+        HomeworkSubmission.objects.bulk_create(submissions)
+        return homework
+
+def archive_homework(instance, user):
+    """Uyga vazifani o'chirishdan oldin arxivlash"""
+    from archivebase.models import ArchivedHomework
+    
+    submissions = instance.submissions.all().select_related('student')
+    total = submissions.count()
+    full = submissions.filter(status='full').count()
+    half = submissions.filter(status='half').count()
+    not_sub = submissions.filter(status='not_submitted').count()
+    
+    submission_rate = (full / total * 100) if total > 0 else 0
+    quality_rate = ((full + (half * 0.5)) / total * 100) if total > 0 else 0
+    
+    stats = {
+        "total_students": total,
+        "full_submissions": full,
+        "half_submissions": half,
+        "not_submitted": not_sub,
+        "submission_rate": round(submission_rate, 2),
+        "quality_rate": round(quality_rate, 2),
+        "students_data": [
+            {
+                "name": sub.student.full_name,
+                "status": sub.get_status_display(),
+                "date": sub.submitted_at.strftime('%Y-%m-%d %H:%M') if sub.submitted_at else None
+            }
+            for sub in submissions
+        ]
+    }
+    
+    ArchivedHomework.objects.create(
+        original_id=instance.id,
+        full_name=instance.title,
+        item_type='homework',
+        archived_by=user,
+        group_id=instance.group.id,
+        group_name=instance.group.name,
+        mentor_name=instance.mentor.get_full_name() if instance.mentor else "Noma'lum",
+        submission_stats=stats,
+        metadata={
+            "description": instance.description,
+            "created_at": instance.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            "group_id": instance.group.id
+        }
+    )
+
+def create_mock_test_with_results(serializer, group):
+    """Mock test yaratish va barcha studentlar uchun natija qatorini ochish"""
+    with transaction.atomic():
+        mock_test = serializer.save(group=group)
+        students = group.students.all()
+        
+        results = [
+            MockTestResult(test=mock_test, student=student, score='')
+            for student in students
+        ]
+        MockTestResult.objects.bulk_create(results)
+        return mock_test
+
+def archive_mock_test(instance, user):
+    """Mock testni o'chirishdan oldin arxivlash"""
+    from archivebase.models import ArchivedHomework
+    
+    results = instance.results.all().select_related('student')
+    total = results.count()
+    scored = results.exclude(score='').exclude(score__isnull=True).count()
+    
+    stats = {
+        "total_students": total,
+        "participated": scored,
+        "not_participated": total - scored,
+        "participation_rate": round((scored / total * 100), 2) if total > 0 else 0,
+        "students_data": [
+            {
+                "name": res.student.full_name,
+                "score": res.score or "N/A",
+                "status": "Qatnashgan" if res.score else "Qatnashmagan"
+            }
+            for res in results
+        ]
+    }
+    
+    ArchivedHomework.objects.create(
+        original_id=instance.id,
+        full_name=instance.subject,
+        item_type='mock_test',
+        archived_by=user,
+        group_id=instance.group.id,
+        group_name=instance.group.name,
+        mentor_name=instance.group.mentor.get_full_name() if instance.group.mentor else "Noma'lum",
+        submission_stats=stats,
+        metadata={
+            "test_type": instance.type,
+            "test_date": instance.date.strftime('%Y-%m-%d'),
+            "created_at": instance.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            "group_id": instance.group.id
+        }
+    )

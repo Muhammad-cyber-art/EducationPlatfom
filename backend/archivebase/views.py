@@ -14,11 +14,18 @@ from .services import (
 )
 from rest_framework import filters # Qidiruv uchun
 from django_filters.rest_framework import DjangoFilterBackend # Filtr uchun
+from rest_framework.pagination import PageNumberPagination
+
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 15
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 class ArchivedStudentViewSet(mixins.DestroyModelMixin, viewsets.ReadOnlyModelViewSet):
     """Faqat ko'rish va o'chirish (Arxivdan butunlay)"""
     serializer_class = ArchivedStudentSerializer
     permission_classes = [IsArchiveAdmin] # Faqat adminlar uchun
+    pagination_class = StandardResultsSetPagination
     
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     search_fields = ['full_name', 'branch_name', 'last_group_name']
@@ -75,6 +82,7 @@ class ArchivedStaffViewSet(mixins.DestroyModelMixin, viewsets.ReadOnlyModelViewS
     queryset = ArchivedStaff.objects.all().order_by('-archived_at')
     serializer_class = ArchivedStaffSerializer
     permission_classes = [IsArchiveAdmin]
+    pagination_class = StandardResultsSetPagination
     
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     search_fields = ['full_name', 'role', 'phone']
@@ -134,6 +142,7 @@ class ArchivedGroupViewSet(mixins.DestroyModelMixin, viewsets.ReadOnlyModelViewS
     queryset = ArchivedGroup.objects.all().order_by('-archived_at')
     serializer_class = ArchivedGroupSerializer
     permission_classes = [IsArchiveAdmin]
+    pagination_class = StandardResultsSetPagination
 
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     search_fields = ['full_name', 'branch_name', 'mentor_name', 'subject']

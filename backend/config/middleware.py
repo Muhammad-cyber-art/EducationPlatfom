@@ -64,47 +64,33 @@ class RequestLoggingMiddleware(MiddlewareMixin):
 
 class RateLimitMiddleware(MiddlewareMixin):
     """
-    Oddiy rate limiting (DDoS himoyasi)
-    Production uchun django-ratelimit yoki Redis ishlatish tavsiya etiladi
+    Oddiy rate limiting (DDoS himoyasi).
+    Production uchun django-ratelimit yoki Redis ishlatish tavsiya etiladi.
     """
-    # IP addresslar va ularning so'rovlar soni
     request_counts = {}
-    
+
     def process_request(self, request):
-        # Faqat authentication endpointlar uchun
         if '/login/' in request.path or '/register/' in request.path:
-            ip = self.get_client_ip(request)
-            
-            # Har 1 daqiqada maksimal 10 ta so'rov
+            ip = RequestLoggingMiddleware.get_client_ip(request)
+
             import time
-            current_time = int(time.time() / 60)  # 1 daqiqalik bloklar
-            
+            current_time = int(time.time() / 60)
             key = f"{ip}_{current_time}"
-            
+
             if key in self.request_counts:
                 self.request_counts[key] += 1
                 if self.request_counts[key] > 10:
                     logger.warning(f"Rate limit exceeded for IP: {ip}")
                     return JsonResponse(
-                        {'error': 'Juda ko\'p so\'rov. Iltimos, bir oz kuting.'},
+                        {'error': "Juda ko'p so'rov. Iltimos, bir oz kuting."},
                         status=429
                     )
             else:
                 self.request_counts[key] = 1
-            
+
             # Eski keylarni tozalash (memory leak oldini olish)
-            old_keys = [k for k in self.request_counts.keys() if not k.endswith(str(current_time))]
+            old_keys = [k for k in self.request_counts if not k.endswith(str(current_time))]
             for old_key in old_keys:
                 del self.request_counts[old_key]
-        
+
         return None
-    
-    @staticmethod
-    def get_client_ip(request):
-        """Client IP addressini olish"""
-        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-        if x_forwarded_for:
-            ip = x_forwarded_for.split(',')[0]
-        else:
-            ip = request.META.get('REMOTE_ADDR')
-        return ip

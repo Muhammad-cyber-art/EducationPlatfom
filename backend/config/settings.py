@@ -27,7 +27,7 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-@%_8w_d8d9df5l3r$7avnz+rl4
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
-
+# DEBUG = True    
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'yaxshi-niyat.uz,www.yaxshi-niyat.uz,localhost,127.0.0.1,192.168.43.209').split(',')
 # ALLOWED_HOSTS = ['*']
 
@@ -78,11 +78,9 @@ MIDDLEWARE = [
 ]
 
 
-# CORS Configuration
-CORS_ALLOWED_ORIGINS = os.getenv(
-    'CORS_ALLOWED_ORIGINS',
-    'https://yaxshi-niyat.uz,https://www.yaxshi-niyat.uz,http://localhost:5173,http://127.0.0.1:5173,http://192.168.43.209:8081,http://192.168.43.209:8080,http://192.168.43.209:8000'
-).split(',')
+# CORS Configuration - faqat .env dan o'qiladi, default bo'sh
+_cors_origins = os.getenv('CORS_ALLOWED_ORIGINS', '')
+CORS_ALLOWED_ORIGINS = [origin.strip() for origin in _cors_origins.split(',') if origin.strip()]
 
 CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
 
@@ -115,6 +113,9 @@ REST_FRAMEWORK = {
         'django_filters.rest_framework.DjangoFilterBackend'
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 50,
+    'MAX_PAGE_SIZE': 200,
 }
 
 SPECTACULAR_SETTINGS = {

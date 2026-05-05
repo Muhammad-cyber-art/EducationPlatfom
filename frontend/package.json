@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.11.2",
-    "@tailwindcss/vite": "^4.1.17",
+    "autoprefixer": "^10.4.20",
     "@tanstack/react-query": "^5.90.17",
     "axios": "^1.13.2",
     "framer-motion": "^12.23.25",
@@ -24,7 +24,8 @@
     "react-redux": "^9.2.0",
     "react-router-dom": "^7.10.0",
     "recharts": "^2.15.4",
-    "tailwindcss": "^4.1.17"
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.17"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

@@ -1,87 +1,8 @@
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
-
 from django.core.validators import MinValueValidator, MaxValueValidator
-
-class Payment(models.Model):
-    # O'quvchi va Guruh bilan bog'liqlik
-    student = models.ForeignKey('groups.Student', on_delete=models.CASCADE, related_name='payments')
-    group = models.ForeignKey('groups.Group', on_delete=models.SET_NULL, null=True, blank=True, related_name='payments')
-    
-    # Qaysi oy uchun to'lov (Masalan: 2025-12-01)
-    month = models.DateField(null=True, blank=True)    
-    
-    # To'lov holati
-    is_paid = models.BooleanField(default=False)
-    
-    # Refund (Qaytarib berish)ni bekor qilish opsiyasi
-    refund_ignored = models.BooleanField(default=False, verbose_name="Refund bekor qilingan")
-    
-    # Guruhning o'sha paytdagi narxi (audit uchun muhim!)
-    amount = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
-    
-    # Kim tomonidan va qachon tasdiqlandi
-    marked_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True,
-        related_name='marked_student_payments',
-        limit_choices_to={'role__in': ['admin', 'super_admin']}
-    )
-    paid_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    # Payment Gateway dan keladigan ma'lumotlar
-    transaction_id = models.CharField(max_length=100, null=True, blank=True, unique=True)
-    payer_name = models.CharField(max_length=100, null=True, blank=True)
-    payer_phone = models.CharField(max_length=20, null=True, blank=True)
-    payer_card_mask = models.CharField(max_length=20, null=True, blank=True)
-
-    class Meta:
-        unique_together = ('student', 'group', 'month')
-        ordering = ['-month']
-        verbose_name = "O'quvchi to'lovi"
-        verbose_name_plural = "O'quvchilar to'lovlari"
-
-    def __str__(self):
-        return f"{self.student.full_name} - {self.group.name} - {self.month.strftime('%B %Y') if self.month else 'No month'}"
-
-    def mark_as_paid(self, admin_user):
-        if not self.is_paid:
-            self.is_paid = True
-            self.marked_by = admin_user
-            self.paid_at = timezone.now()
-            self.save()
-            
-            # ✅ Centralized Finance Ledger ga yozish
-            from .models import FinanceTransaction
-            FinanceTransaction.objects.get_or_create(
-                related_id=f"STP-{self.id}",
-                defaults={
-                    'transaction_type': 'income',
-                    'category': 'student_fee',
-                    'amount': self.amount,
-                    'date': self.paid_at.date(),
-                    'marked_by': admin_user,
-                    'branch': self.student.branch,
-                    'title': f"To'lov: {self.student.full_name}",
-                    'description': f"{self.group.name} guruhi uchun {self.month.strftime('%Y-%m')} oyi to'lovi",
-                }
-            )
-    def save(self, *args, **kwargs):
-        if self.month:
-            from finance.utils import normalize_month
-            self.month = normalize_month(self.month)
-        super().save(*args, **kwargs)
-# finance/models.py
-
-from django.db import models
-from django.conf import settings
-from django.core.validators import MinValueValidator, MaxValueValidator
-from django.utils import timezone
-
+from decimal import Decimal
 
 class EmployeePayment(models.Model):
     """Xodimlar (mentor va admin) uchun oylik maosh to'lovlari"""
@@ -115,6 +36,7 @@ class EmployeePayment(models.Model):
     @property
     def total_advances(self):
         """Ushbu oy uchun berilgan barcha avanslar yig'indisi"""
+        from finance.models import EmployeeAdvance
         return EmployeeAdvance.objects.filter(
             employee=self.employee, 
             month=self.month
@@ -123,7 +45,6 @@ class EmployeePayment(models.Model):
     @property
     def total_amount(self):
         """Jami to'lov miqdori (floor) - Endi Avanslar ham ayriladi"""
-        from decimal import Decimal
         from finance.utils import floor_amount
         # ✅ Barcha qiymatlarni Decimal ga o'girish
         salary = Decimal(str(self.salary_base)) if self.salary_base else Decimal('0')
@@ -181,7 +102,7 @@ class EmployeePayment(models.Model):
                     print(f"Warning: Employee {self.employee.id} has no branch assigned")
                     return  # Transaction yaratmasdan chiqamiz
                 
-                from .models import FinanceTransaction
+                from finance.models import FinanceTransaction
                 FinanceTransaction.objects.get_or_create(
                     related_id=f"EMP-{self.id}",
                     defaults={
@@ -207,7 +128,6 @@ class EmployeePayment(models.Model):
             return self.salary_base # To'langan maoshni o'zgartirib bo'lmaydi
         
         try:
-            from decimal import Decimal
             profile = self.employee.staff_profile
             # calculate_salary_for_month metodidan foydalanamiz
             calculated_salary = profile.calculate_salary_for_month(self.month)
@@ -326,14 +246,13 @@ class StaffProfile(models.Model):
         (To'langan oylik to'lovlar + qo'shimcha to'lovlar - refundlar)
         Natija floor qilinadi.
         """
-        from decimal import Decimal
         from finance.utils import floor_amount
         
         if self.user.role != 'mentor':
             return Decimal('0')
         
         from groups.models import Group
-        from .models import Payment, FinanceTransaction
+        from finance.models import Payment, FinanceTransaction
         
         # Mentorning barcha guruhlari (faol + nofaol, chunki tarixiy to'lovlar bo'lishi mumkin)
         mentor_groups = Group.objects.filter(mentor=self.user)
@@ -381,7 +300,6 @@ class StaffProfile(models.Model):
     
     def calculate_salary_for_month(self, month):
         """Berilgan oy uchun maoshni hisoblash (natija floor qilinadi)"""
-        from decimal import Decimal
         from finance.utils import floor_amount
         
         if self.salary_type == 'fixed':
@@ -397,7 +315,7 @@ class StaffProfile(models.Model):
         
         elif self.salary_type == 'student_count':
             # ✅ O'quvchilar soni bo'yicha - FAQAT TO'LAGANLARNI HISIBLAYMIZ
-            from .models import Payment
+            from finance.models import Payment
             
             # Mentorning barcha guruhlarini topish
             from groups.models import Group
@@ -456,102 +374,16 @@ class StaffProfile(models.Model):
         """To'lanmagan va joriy/kelajakdagi paymentlarni yangilash"""
         today = timezone.now().date()
         current_month = today.replace(day=1)
-        
+
         unpaid_payments = EmployeePayment.objects.filter(
             employee=self.user,
             is_paid=False,
             month__gte=current_month
         )
-        
+
         for payment in unpaid_payments:
-            new_salary = self.calculate_salary_for_month(payment.month)
-            new_salary = self.calculate_salary_for_month(payment.month)
-            payment.salary_base = new_salary
+            payment.salary_base = self.calculate_salary_for_month(payment.month)
             payment.save()
-
-
-class FinanceTransaction(models.Model):
-    """
-    Markaziy moliya daftari (Unified Ledger)
-    Hamma tushum va chiqimlar shu yerga yoziladi.
-    Yuqori yuklamalar uchun indexlash kiritilgan.
-    """
-    TRANSACTION_TYPE = [
-        ('income', 'Tushum (Kirim)'),
-        ('expense', 'Chiqim (Chiqit)'),
-    ]
-
-    CATEGORY_CHOICES = [
-        ('student_fee', 'O\'quvchi to\'lovi'),
-        ('salary', 'Xodim maoshi'),
-        ('utility', 'Kommunal to\'lovlar'),
-        ('rent', 'Ijara'),
-        ('refund', 'Qaytarilgan pul (Dars qoldirgani uchun)'),
-        ('student_extra', 'O\'quvchi qo\'shimcha to\'lovi'),
-        ('other', 'Boshqa'),
-    ]
-
-    transaction_type = models.CharField(max_length=10, choices=TRANSACTION_TYPE, db_index=True)
-    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, db_index=True)
-    
-    amount = models.DecimalField(max_digits=15, decimal_places=2)
-    date = models.DateField(db_index=True)
-    
-    # Yangi: O'quvchiga bog'lash uchun (optional)
-    student = models.ForeignKey(
-        'groups.Student', 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True,
-        related_name='finance_transactions'
-    )
-    group = models.ForeignKey(
-        'groups.Group', 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True,
-        related_name='finance_transactions'
-    )
-    payer_name = models.CharField(max_length=255, blank=True, null=True)
-
-    # Mas’ul shaxs
-    marked_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        db_index=True
-    )
-    
-    # Filial bo'yicha indexlangan
-    branch = models.ForeignKey(
-        'branches.Branch',
-        on_delete=models.CASCADE,
-        related_name='transactions',
-        db_index=True
-    )
-    
-    # Qisqa mazmuni (Search uchun qulay)
-    title = models.CharField(max_length=255, db_index=True)
-    description = models.TextField(blank=True, null=True)
-    
-    # Bog'liqlikni saqlash (Generic ID kabi)
-    related_id = models.CharField(max_length=50, blank=True, null=True, db_index=True)
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ['-date', '-created_at']
-        verbose_name = "Moliya operatsiyasi"
-        verbose_name_plural = "Moliya operatsiyalari"
-        # Kompozit indexlar qidiruvni yanada tezlashtiradi
-        indexes = [
-            models.Index(fields=['date', 'transaction_type']),
-            models.Index(fields=['branch', 'transaction_type']),
-        ]
-
-    def __str__(self):
-        return f"{self.date} | {self.transaction_type} | {self.amount}"
-
 
 class EmployeeAdvance(models.Model):
     """Xodimga oylik maoshidan tashqari berilgan avans (oldindan to'lov)"""
@@ -597,7 +429,7 @@ class EmployeeAdvance(models.Model):
 
         if is_new:
             # ✅ Centralized Finance Ledger ga Chiqim sifatida yozish
-            from .models import FinanceTransaction
+            from finance.models import FinanceTransaction
             FinanceTransaction.objects.create(
                 related_id=f"ADV-{self.id}",
                 transaction_type='expense',
@@ -609,6 +441,3 @@ class EmployeeAdvance(models.Model):
                 title=f"Avans: {self.employee.get_full_name() or self.employee.username}",
                 description=f"{self.month.strftime('%Y-%m')} oyi maoshi hisobidan avans. {self.description or ''}"
             )
-            
-            # Agar shu oy uchun payment mavjud bo'lsa, uni bog'liqlik sifatida saqlash ixtiyoiy,
-            # chunki biz total_advances ni dinamik hisoblaymiz.

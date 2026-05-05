@@ -1,0 +1,71 @@
+import { useState, useCallback, useMemo } from"react";
+import { useQuery } from"@tanstack/react-query";
+import api from"../../../tokenUpdater/updater";
+import toast from"react-hot-toast";
+
+export const useAttendance = (group_id, selectedDate, groupStudents, userData) => {
+ const [localAttendanceByDate, setLocalAttendanceByDate] = useState({});
+
+ const { data: attendanceDataRaw, refetch: refetchAttends } = useQuery({
+ queryKey: ['attendance', group_id, selectedDate],
+ queryFn: () => api.get(`/homework_attends/attendances/?group_id=${group_id}&date=${selectedDate}`).then(res => res.data),
+ enabled: !!group_id && !!selectedDate && !!userData.id,
+ staleTime: 1000 * 60 * 5,
+ });
+
+ // Pagination yoki oddiy massivni qo'llab-quvvatlash
+ const attendanceData = attendanceDataRaw?.results || attendanceDataRaw || [];
+
+ const handleLocalAttendanceChange = useCallback((studentId, is_present) => {
+ setLocalAttendanceByDate((prev) => ({
+ ...prev,
+ [selectedDate]: {
+ ...(prev[selectedDate] || {}),
+ [studentId]: is_present,
+ },
+ }));
+ }, [selectedDate]);
+
+ const mergedAttendanceForDate = useMemo(() => {
+ return localAttendanceByDate[selectedDate] || {};
+ }, [localAttendanceByDate, selectedDate]);
+
+ const isAttendanceConfirmed = useMemo(() => {
+ return attendanceData.some(a => a.marked_by !== null);
+ }, [attendanceData]);
+
+ const handleConfirmAttendance = async () => {
+ const students = groupStudents || [];
+ const attendances = students.map((s) => {
+ const is_present = mergedAttendanceForDate[s.id] !== undefined
+ ? mergedAttendanceForDate[s.id]
+ : (attendanceData.find((a) => Number(a.student_id) === Number(s.id))?.is_present ?? true);
+ return { student_id: s.id, is_present };
+ });
+ try {
+ await api.post("/homework_attends/attendances/confirm/", {
+ group_id: Number(group_id),
+ date: selectedDate,
+ attendances,
+ });
+ toast.success("Davomat muvaffaqiyatli saqlandi.");
+ setLocalAttendanceByDate((prev) => {
+ const next = { ...prev };
+ delete next[selectedDate];
+ return next;
+ });
+ refetchAttends();
+ } catch (err) {
+ toast.error("Davomatni saqlashda xatolik!");
+ }
+ };
+
+ return {
+ attendanceData,
+ mergedAttendanceForDate,
+ isAttendanceConfirmed,
+ handleLocalAttendanceChange,
+ handleConfirmAttendance,
+ refetchAttends
+ };
+};

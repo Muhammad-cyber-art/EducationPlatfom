@@ -1,158 +1,104 @@
-from rest_framework import viewsets, status ,permissions
+import logging
+from django.db import transaction, models
+from django.db.models import Prefetch, Q
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import viewsets, status, permissions, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
-from rest_framework_simplejwt.authentication import JWTAuthentication
-from rest_framework.authentication import SessionAuthentication
-from django.shortcuts import get_object_or_404
-from django.contrib.auth import get_user_model
-from django.db import transaction, IntegrityError
-from django.utils import timezone 
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.exceptions import PermissionDenied
-from .models import Group, Student ,MentorGroupAssignment, GroupEnrollment, GroupTransfer, WaitingStudent
-from homework_attends.models import Attendance, HomeworkSubmission, MockTestResult
-from finance.models import Payment, FinanceTransaction
-from .serializers import ( RemoveMentorSerializer,
-    GroupSerializer, StudentSerializer, StudentNestedSerializer,AssignAdditionalMentorSerializer,
-    MentorSerializer, GroupSimpleSerializer ,AdminUserSerializers ,MentorAssignmentSerializer,
-    MentorListSerializer, WaitingStudentSerializer
+
+from .models import (
+    Group, Student, MentorGroupAssignment, 
+    GroupEnrollment, GroupTransfer, WaitingStudent
 )
-from django.db import models
-from rest_framework import filters # Qidiruv uchun
-from django_filters.rest_framework import DjangoFilterBackend # Filtr uchun
+from .serializers import (
+    GroupSerializer, GroupSimpleSerializer, StudentSerializer, 
+    StudentNestedSerializer, AssignAdditionalMentorSerializer,
+    RemoveMentorSerializer, MentorAssignmentSerializer,
+    MentorListSerializer, WaitingStudentSerializer, MentorSerializer,
+    AdminUserSerializers
+)
 from .permissions import (
     IsAdminOnly, IsGroupOwnerOrSuperAdmin,
-    IsStudentGroupOwnerOrSuperAdmin,IsAdminOrSuperAdmin ,IsMentorBranchAccessible
-) 
-from django.db.models import Prefetch, Q
-from rest_framework.renderers import JSONRenderer
-# archivebase servislar metodlar ichida lokal import qilinadi
-# from django_filters.rest_framework import DjangoFilterBackend
+    IsStudentGroupOwnerOrSuperAdmin, IsAdminOrSuperAdmin, 
+    IsMentorBranchAccessible
+)
+from .services import (
+    enroll_student_to_group, unenroll_student_from_group,
+    transfer_student_to_group, merge_student_profiles,
+    assign_waiting_student_to_group
+)
 
-User = get_user_model()
+logger = logging.getLogger(__name__)
 
-from rest_framework.pagination import PageNumberPagination
+# --- Pagination ---
 
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 15
     page_size_query_param = 'page_size'
     max_page_size = 100
 
+# --- ViewSets ---
+
 class GroupViewSet(viewsets.ModelViewSet):
-    queryset = Group.objects.select_related('mentor', 'admin').prefetch_related('students')
+    """Guruhlarni boshqarish ViewSet"""
+    queryset = Group.objects.select_related('mentor', 'admin', 'branch').prefetch_related('students', 'additional_mentors')
     serializer_class = GroupSerializer
     pagination_class = StandardResultsSetPagination
     permission_classes = [IsGroupOwnerOrSuperAdmin]
-    authentication_classes = [JWTAuthentication, SessionAuthentication]
     module_name = 'groups'
 
-    # --- QIDIRUV VA FILTR BACKENDLARI QO'SHILDI ---
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    # Guruh nomi va fan nomi bo'yicha qidirish imkoniyati
-    search_fields = ['name', 'subject', 'mentor__first_name', 'mentor__last_name','mentor__username']
+    search_fields = ['name', 'subject', 'mentor__first_name', 'mentor__last_name']
 
     def get_serializer_class(self):
-        from .serializers import GroupSerializer, GroupSimpleSerializer
         if self.action == 'list':
             return GroupSimpleSerializer
         return GroupSerializer
 
     def get_queryset(self):
         user = self.request.user
-        # Asosiy queryset (select_related va prefetch_related saqlab qolindi)
-        qs = Group.objects.select_related('mentor', 'admin', 'branch').prefetch_related('students', 'additional_mentors')
-        
+        qs = super().get_queryset()
         branch_id = self.request.query_params.get('branch_id')
-       
-        # 1. Super Admin (O'zgarishsiz)
+
         if user.role == 'super_admin':
-            if branch_id and branch_id not in ['null', 'undefined', '']:
-                return qs.filter(branch_id=branch_id)
-            return qs
-       
-        # 2. Admin uchun
+            return qs.filter(branch_id=branch_id) if branch_id else qs
+        
         if user.role == 'admin':
-            allowed_branch_ids = []
-            if user.branch:
-                allowed_branch_ids.append(user.branch.id)
-                
-            extra_ids = list(user.branch_accesses.values_list('branch_id', flat=True))
-            allowed_branch_ids.extend(extra_ids)
-       
-            admin_qs = qs.filter(branch_id__in=allowed_branch_ids)
-       
-            if branch_id and branch_id not in ['null', 'undefined', '']:
-                try:
-                    b_id = int(branch_id)
-                    if b_id in allowed_branch_ids:
-                        return admin_qs.filter(branch_id=b_id)
-                    else:
-                        return Group.objects.none()
-                except ValueError:
-                    pass
-            return admin_qs
-       
-        # 3. Mentor uchun (Logika saqlangan, faqat branch_id filtri qo'shildi)
+            allowed = [user.branch.id] if user.branch else []
+            allowed.extend(user.branch_accesses.values_list('branch_id', flat=True))
+            qs = qs.filter(branch_id__in=allowed)
+            return qs.filter(branch_id=branch_id) if branch_id else qs
+        
         if user.role == 'mentor':
-            mentor_qs = qs.filter(
-                models.Q(mentor=user) | models.Q(additional_mentors__mentor=user)
-            ).distinct()
-            
-            # Mentor ham dropdown'dan branch tanlasa, faqat o'sha branch guruhlarini ko'rsin
-            if branch_id and branch_id not in ['null', 'undefined', '']:
-                return mentor_qs.filter(branch_id=branch_id)
-                
-            return mentor_qs
-       
+            return qs.filter(Q(mentor=user) | Q(additional_mentors__mentor=user)).distinct()
+        
         return Group.objects.none()
 
     def perform_create(self, serializer):
         user = self.request.user
-        # Frontenddan tanlangan branchni olamiz
-        requested_branch = serializer.validated_data.get('branch')
-
-        if user.role == 'super_admin':
-            # Super admin o'zi tanlagan branch bilan saqlaydi
-            serializer.save(branch=requested_branch)
-        
-        elif user.role == 'admin':
-            # Agar frontenddan branch kelmasa, adminning o'z branchini oladi
-            if not requested_branch:
-                requested_branch = user.branch
-            
-            # Saqlash: Adminni biriktiramiz va branch'ni frontenddan kelganidek saqlaymiz
-            serializer.save(admin=user, branch=requested_branch)
-        
-        elif user.role == 'mentor':
-            serializer.save(mentor=user, branch=user.branch)
+        branch = serializer.validated_data.get('branch') or (user.branch if user.role == 'admin' else None)
+        if user.role in ['admin', 'super_admin']:
+            serializer.save(admin=user, branch=branch)
         else:
-            raise PermissionDenied("Ruxsat yo'q.")
-
-    def get_permissions(self):
-        if self.action == 'create':
-            return [IsAdminOrSuperAdmin()]
-        return super().get_permissions()
+            serializer.save(mentor=user, branch=user.branch)
 
     def retrieve(self, request, *args, **kwargs):
-        """Bitta guruh sahifasini yuklashda N+1 muammosini oldini olish"""
+        """N+1 muammosini oldini olish bilan retrieve"""
+        queryset = self.get_queryset().select_related(
+            'mentor', 'mentor__branch', 'admin', 'branch'
+        ).prefetch_related('additional_mentors__mentor')
+        
         exclude_students = request.query_params.get('exclude_students', 'false').lower() == 'true'
-        
-        queryset = Group.objects.select_related(
-            'mentor', 'mentor__branch',
-            'admin', 'branch'
-        ).prefetch_related(
-            'additional_mentors__mentor',
-        )
-        
         if not exclude_students:
             queryset = queryset.prefetch_related(
                 Prefetch(
                     'students',
-                    queryset=Student.objects.select_related('group', 'branch').only(
-                        'id', 'full_name', 'phone', 'parent_phone',
-                        'image', 'color', 'status', 'custom_fee',
-                        'telegram_id', 'parent_telegram_id', 'group_id', 'branch_id'
-                    ).order_by('full_name') # Alphabetical sorting
+                    queryset=Student.objects.select_related('group', 'branch').order_by('full_name')
                 )
             )
             
@@ -160,468 +106,129 @@ class GroupViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
-    @action(detail=True, methods=['get'])
-    def students(self, request, pk=None):
-        group = self.get_object()
-        students = group.students.all()
-        serializer = StudentNestedSerializer(students, many=True)
-        return Response(serializer.data)
-
     @action(detail=True, methods=['post'], url_path='enroll-student')
     def enroll_student(self, request, pk=None):
         group = self.get_object()
         student_id = request.data.get('student_id')
-        if not student_id:
-            return Response({"error": "O'quvchi ID si ko'rsatilmadi"}, status=400)
-        
-        student = get_object_or_404(Student, id=student_id)
-        
         create_payment = request.data.get('create_payment', True)
-        if isinstance(create_payment, str):
-            create_payment = create_payment.lower() == 'true'
-
-        with transaction.atomic():
-            enrollment, created = GroupEnrollment.objects.get_or_create(
-                student=student,
-                group=group
-            )
-            
+        
+        try:
+            enrollment, created = enroll_student_to_group(group, student_id, create_payment)
             if created:
-                # Also update the legacy 'group' field if it's currently empty
-                if not student.group:
-                    student.group = group
-                    student.save()
-                
-                # Oylik to'lov varaqasini yaratish (har doim to'liq kurs narxi)
-                if create_payment:
-                    from finance.models import Payment
-                    from finance.utils import floor_amount
-                    
-                    today = timezone.now().date()
-                    month_start = today.replace(day=1)
-                    base_price = student.custom_fee if student.custom_fee is not None else group.monthly_price
-                    final_amount = floor_amount(base_price)
-
-                    Payment.objects.get_or_create(
-                        student=student,
-                        group=group,
-                        month=month_start,
-                        defaults={
-                            'amount': final_amount,
-                            'is_paid': False
-                        }
-                    )
                 return Response({"status": "O'quvchi guruhga biriktirildi"}, status=201)
-            else:
-                return Response({"detail": "Ushbu o'quvchi allaqachon guruhda"}, status=200)
+            return Response({"detail": "Ushbu o'quvchi allaqachon guruhda"}, status=200)
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)
 
     @action(detail=True, methods=['post'], url_path='unenroll-student')
     def unenroll_student(self, request, pk=None):
         group = self.get_object()
         student_id = request.data.get('student_id')
-        if not student_id:
-            return Response({"error": "O'quvchi ID si ko'rsatilmadi"}, status=400)
         
-        student = get_object_or_404(Student, id=student_id)
-        
-        # Remove from group (M2M)
-        from .models import GroupEnrollment
-        enrollment = GroupEnrollment.objects.filter(
-            student=student,
-            group=group
-        ).first()
-        
-        if enrollment:
-            try:
-                with transaction.atomic():
-                    enrollment.delete()
-                    
-                    # Qolgan guruhlar sonini tekshiramiz
-                    remaining_groups_count = student.groups.count()
-                    
-                    if remaining_groups_count == 0:
-                        # Oxirgi guruhidan chiqdi -> Kutish zaliga o'tkazish
-                        from archivebase.services import move_student_to_waiting_hall
-                        move_student_to_waiting_hall(student, request.user, reason=f"{group.name} guruhidan chiqarildi")
-                        return Response({"status": "O'quvchi oxirgi guruhidan chiqarildi va kutish zaliga o'tkazildi"}, status=200)
-                    else:
-                        # Boshqa guruhlarda hali bor -> Faqat joriy guruhdan chiqaramiz
-                        if student.group == group:
-                            next_group = student.groups.exclude(id=group.id).first()
-                            student.group = next_group
-                            student.save()
-                        return Response({"status": f"O'quvchi {group.name} guruhidan chiqarildi, boshqa guruhlarda faol"}, status=200)
-            except Exception as e:
-                return Response({"error": str(e)}, status=400)
-        else:
-            return Response({"detail": "Ushbu o'quvchi bu guruhda emas"}, status=404)
+        try:
+            status_result = unenroll_student_from_group(group, student_id, request.user)
+            msg = "O'quvchi guruhdan chiqarildi"
+            if status_result == "waiting_hall":
+                msg += " va kutish zaliga o'tkazildi"
+            return Response({"status": msg}, status=200)
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)
 
     @action(detail=True, methods=['post'])
     def add_student(self, request, pk=None):
         group = self.get_object()
         data = request.data.copy()
-        # Legacy support: set the first group
         data['group'] = group.id
         serializer = StudentSerializer(data=data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         
         with transaction.atomic():
             student = serializer.save()
-            # Also add to the new ManyToMany through table
-            from .models import GroupEnrollment
             GroupEnrollment.objects.get_or_create(student=student, group=group)
             
-        response_serializer = StudentNestedSerializer(student)
-        return Response(response_serializer.data, status=201)
-    
-    # Qo‘shimcha mas'ul mentorlarni ko‘rish
+        return Response(StudentNestedSerializer(student).data, status=201)
+
+    @action(detail=True, methods=['get'])
+    def students(self, request, pk=None):
+        """Guruhdagi o'quvchilar ro'yxati"""
+        group = self.get_object()
+        students = group.students.all()
+        serializer = StudentNestedSerializer(students, many=True)
+        return Response(serializer.data)
+
     @action(detail=True, methods=['get'], url_path='additional-mentors')
     def additional_mentors(self, request, pk=None):
-            group = self.get_object()
-            assignments = group.additional_mentors.all()
-            serializer = MentorAssignmentSerializer(assignments, many=True)
-            return Response(serializer.data)
+        """Guruhning qo'shimcha mentorlari"""
+        group = self.get_object()
+        assignments = group.additional_mentors.all()
+        serializer = MentorAssignmentSerializer(assignments, many=True)
+        return Response(serializer.data)
 
-    @action(
-        detail=True, 
-        methods=['get', 'post'], 
-        url_path='assign-additional-mentor',
-        permission_classes=[IsAdminOrSuperAdmin] ,
-        serializer_class=AssignAdditionalMentorSerializer  # <-- MUHIM: Faqat shu serializer ishlaydi
-    )
+    @action(detail=True, methods=['post'], url_path='assign-additional-mentor', permission_classes=[IsAdminOrSuperAdmin])
     def assign_additional_mentor(self, request, pk=None):
         group = self.get_object()
+        serializer = AssignAdditionalMentorSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        mentor = get_object_or_404(User, id=serializer.validated_data['mentor'], role='mentor')
+        
+        assignment, created = MentorGroupAssignment.objects.get_or_create(
+            mentor=mentor, group=group, defaults={'assigned_by': request.user}
+        )
+        if created:
+            return Response({"status": "Mentor tayinlandi"}, status=201)
+        return Response({"detail": "Allaqachon tayinlangan"}, status=200)
 
-        if request.method == 'POST':
-            serializer = self.get_serializer(data=request.data)
-            serializer.is_valid(raise_exception=True)
-            mentor_id = serializer.validated_data['mentor']
-            mentor = get_object_or_404(User, id=mentor_id, role='mentor')
-
-            user = request.user
-            if user.role not in ['admin', 'super_admin']:
-                return Response({"error": "Faqat admin yoki super_admin tayinlay oladi"}, status=403)
-
-            if user.role == 'admin' and group.branch != user.branch:
-                return Response({"error": "Faqat o‘z filialingizdagi guruhga tayinlash mumkin"}, status=403)
-
-            assignment, created = MentorGroupAssignment.objects.get_or_create(
-                mentor=mentor,
-                group=group,
-                defaults={'assigned_by': user}
-            )
-
-            if created:
-                return Response({
-                    "status": "Qo‘shimcha mentor muvaffaqiyatli tayinlandi",
-                    "mentor": mentor.get_full_name() or mentor.username
-                }, status=201)
-            else:
-                return Response({"detail": "Bu mentor allaqachon qo‘shimcha mas'ul"}, status=200)
-
-        # GET da faqat forma chiqadi
-        serializer = self.get_serializer()
-        return Response(serializer.data)
-
-    # Qo‘shimcha mas'ullikni olish
-    @action(detail=True, methods=['get', 'post'], url_path='remove-additional-mentor', serializer_class=RemoveMentorSerializer)
+    @action(detail=True, methods=['post'], url_path='remove-additional-mentor', permission_classes=[IsAdminOrSuperAdmin])
     def remove_additional_mentor(self, request, pk=None):
         group = self.get_object()
+        serializer = RemoveMentorSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
         
-        if request.method == 'POST':
-            serializer = self.get_serializer(data=request.data)
-            serializer.is_valid(raise_exception=True)
-            m_id = serializer.validated_data['mentor_id']
+        MentorGroupAssignment.objects.filter(group=group, mentor_id=serializer.validated_data['mentor_id']).delete()
+        return Response({"status": "Muvaffaqiyatli olib tashlandi"}, status=200)
 
-            # DEBUG uchun: Kelayotgan ID ni terminalda ko'rish
-            print(f"Guruh ID: {group.id}, Mentor ID: {m_id}")
-
-            # Filtlashni kengaytiramiz (aniqroq topish uchun)
-            assignment = MentorGroupAssignment.objects.filter(group=group, mentor_id=m_id).first()
-            
-            if not assignment:
-                return Response({
-                    "error": f"Ushbu guruhda {m_id} ID li yordamchi mentor topilmadi.",
-                    "current_assignments": list(group.additional_mentors.values_list('mentor_id', flat=True))
-                }, status=404)
-
-            # Ruxsatlarni tekshirish logikasi...
-            # ...
-            
-            assignment.delete()
-            return Response({"status": "Muvaffaqiyatli olib tashlandi"}, status=200)
-
-        serializer = self.get_serializer()
-        return Response(serializer.data)
-    
     def destroy(self, request, *args, **kwargs):
         group = self.get_object()
-        reason = request.data.get("reason", "Guruh admin tomonidan o'chirildi/arxivlandi")
-        
+        reason = request.data.get("reason", "Guruh arxivlandi")
+        from archivebase.services import move_group_to_archive
         try:
-            # Guruhni arxivga ko'chirish funksiyasini chaqiramiz
-            from archivebase.services import move_group_to_archive
             move_group_to_archive(group, request.user, reason=reason)
-            return Response(
-                {"detail": "Guruh va uning barcha o'quvchilari arxivga ko'chirildi."}, 
-                status=status.HTTP_204_NO_CONTENT
-            )
+            return Response({"detail": "Arxivlandi"}, status=status.HTTP_204_NO_CONTENT)
         except Exception as e:
-            return Response(
-                {"error": f"Arxivlashda xato: {str(e)}"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
+            return Response({"error": str(e)}, status=400)
+
 class StudentViewSet(viewsets.ModelViewSet):
+    """O'quvchilarni boshqarish ViewSet"""
+    queryset = Student.objects.select_related('group', 'branch').all()
     serializer_class = StudentSerializer
     pagination_class = StandardResultsSetPagination
-    permission_classes = [IsStudentGroupOwnerOrSuperAdmin] 
+    permission_classes = [IsStudentGroupOwnerOrSuperAdmin]
     module_name = 'students'
 
-    # --- QIDIRUV VA FILTR QO'SHILDI ---
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    # Nimalar bo'yicha qidirishni belgilaymiz: ism va telefon
     search_fields = ['full_name', 'phone']
-    # Agar guruh bo'yicha ham filtrlamoqchi bo'lsangiz
-    filterset_fields = ['group']
+    filterset_fields = ['group', 'branch']
 
     def get_queryset(self):
         user = self.request.user
-        qs = Student.objects.select_related('group', 'branch')
-
-        if user.role == 'super_admin':
-            return qs
-
-        if user.role == 'admin':
-            # Admin o'z branchidagi barcha o'quvchilarni (guruhsiz bo'lsa ham) ko'ra olishi kerak
-            return qs.filter(branch=user.branch)
-
+        qs = super().get_queryset()
+        if user.role == 'super_admin': return qs
+        if user.role == 'admin': return qs.filter(branch=user.branch)
         if user.role == 'mentor':
-            # Mentor faqat o'zi dars o'tadigan guruh o'quvchilarini ko'radi
-            return qs.filter(
-                Q(group__mentor=user) | 
-                Q(groups__mentor=user) | 
-                Q(groups__additional_mentors__mentor=user)
-            ).distinct()
-
+            return qs.filter(Q(group__mentor=user) | Q(groups__mentor=user) | Q(groups__additional_mentors__mentor=user)).distinct()
         return Student.objects.none()
 
-    @action(detail=False, methods=['get'], url_path='search')
-    def search(self, request):
-        query = request.query_params.get('q', '').strip()
-        if not query:
-            return Response([])
-
-        import re
-        # Raqamlarni ajratib olish (telefon qidiruvi uchun)
-        clean_phone = re.sub(r'\D', '', query)
-
-        # Ham ism bo'yicha, ham telefon bo'yicha qidirish
-        query_filter = Q(full_name__icontains=query)
-        if clean_phone and len(clean_phone) >= 4: # Kamida 4 ta raqam bo'lganda telefon bo'yicha qidirish
-            query_filter |= Q(phone__icontains=clean_phone)
-
-        students = Student.objects.filter(query_filter).distinct()[:10]
-        serializer = StudentSerializer(students, many=True)
-        return Response(serializer.data)
-
-    def get_permissions(self):
-        return super().get_permissions()
-
-    # --- TO'LOV FUNKSIYASI (O'zgarishsiz qoldi) ---
-    @action(detail=True, methods=['post'], url_path='pay')
-    def pay(self, request, pk=None):
-        student = self.get_object()
-        group = student.group
-        from finance.utils import floor_amount
-        
-        payment = Payment.objects.create(
-            student=student,
-            group=group,
-            amount=floor_amount(group.monthly_price),
-            month=timezone.now().date().replace(day=1),
-            marked_by=request.user,
-            is_paid=True,
-            paid_at=timezone.now()
-        )
-        
-        serializer = PaymentSerializer(payment)
-        return Response({
-            "status": "success",
-            "message": f"{student.full_name} uchun to'lov muvaffaqiyatli saqlandi",
-            "data": serializer.data
-        }, status=status.HTTP_201_CREATED)
-        
-    @action(detail=True, methods=['post'], permission_classes=[IsAdminOrSuperAdmin])
-    def archive(self, request, pk=None):
-        from archivebase.services import send_to_archive
-        student = self.get_object()
-        reason = request.data.get('reason', "Sabab ko'rsatilmadi")
-        
-        try:
-            # Servisni chaqiramiz
-            send_to_archive(instance=student, request_user=request.user, reason=reason)
-            return Response({"detail": "Student arxivga ko'chirildi"}, status=200)
-        except Exception as e:
-            return Response({"detail": str(e)}, status=400)
-        
-    def destroy(self, request, *args, **kwargs):
-        """O'quvchini butunlay o'chirish (Archive qilish)"""
-        
-        try:
-            from archivebase.services import move_student_to_archive
-            student = self.get_object()
-            reason = request.data.get("reason", "Tizimdan o'chirildi")
-            
-            from archivebase.services import move_student_to_archive
-            move_student_to_archive(student, request.user, reason=reason)
-            return Response(
-                {"detail": "O'quvchi va uning barcha ma'lumotlari arxivga ko'chirildi."}, 
-                status=status.HTTP_204_NO_CONTENT
-            )
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-    @action(detail=True, methods=['post'], url_path='remove-from-group')
-    def remove_from_group(self, request, pk=None):
-        """Guruhdan chiqarish amali - Aqlli logika"""
-        from archivebase.services import move_student_to_archive, move_student_to_waiting_hall
-        student = self.get_object()
-        reason = request.data.get("reason", "Guruhdan chiqarildi")
-        group = student.group # Hozirgi asosiy guruh
-        
-        if not group:
-            # Agar talaba allaqachon guruhsiz bo'lsa, uni arxivga yuboramiz
-            move_student_to_archive(student, request.user, reason=reason)
-            return Response({"detail": "Guruhsiz o'quvchi arxivlandi."}, status=200)
-
-        try:
-            with transaction.atomic():
-                # 1. Guruhdan chiqarish (Enrollmentni o'chirish)
-                from .models import GroupEnrollment
-                GroupEnrollment.objects.filter(student=student, group=group).delete()
-                
-                # 2. Qolgan guruhlarni tekshirish
-                remaining_groups = student.groups.all()
-                if remaining_groups.count() == 0:
-                    # Oxirgi guruh ekan -> Kutish zaliga
-                    move_student_to_waiting_hall(student, request.user, reason=reason)
-                    return Response({"status": "O'quvchi oxirgi guruhidan olindi va kutish zaliga o'tkazildi."}, status=200)
-                else:
-                    # Boshqa guruhlari bor -> Studentni bazada qoldiramiz, faqat group FK ni yangilaymiz
-                    student.group = remaining_groups.first()
-                    student.save()
-                    return Response({"detail": f"O'quvchi {group.name} dan chiqarildi, lekin {student.group.name} da faol qoldi."}, status=200)
-        except Exception as e:
-            return Response({"error": str(e)}, status=400)
-    
     @action(detail=True, methods=['post'], url_path='transfer-group')
     def transfer_group(self, request, pk=None):
         student = self.get_object()
         new_group_id = request.data.get('new_group_id')
-        reason = request.data.get('reason', 'Guruhdan guruhga o\'tkazildi')
-        
-        if not new_group_id:
-            return Response({"error": "Yangi guruh ID si ko'rsatilmadi"}, status=400)
-
-        new_group = get_object_or_404(Group, id=new_group_id)
-        old_group = student.group
-
-        if not old_group:
-            return Response({"error": "O'quvchi hozirda bironta guruhda emas"}, status=400)
-            
-        if old_group == new_group:
-            return Response({"error": "O'quvchi allaqachon ushbu guruhda"}, status=400)
-
-        if request.user.role == 'admin' and new_group.branch != request.user.branch:
-            return Response({"error": "Siz o'quvchini boshqa filial guruhiga o'tkaza olmaysiz"}, status=403)
-
+        reason = request.data.get('reason', "Guruhdan guruhga o'tkazildi")
         try:
-            with transaction.atomic():
-                from finance.models import Payment
-                from .models import GroupTransfer, GroupEnrollment
-                from decimal import Decimal
-
-                today = timezone.now().date()
-                current_month_start = today.replace(day=1)
-
-                # 1. GroupEnrollment yangilash — student eski guruhdan butunlay chiqadi
-                # Eski guruh enrollmentini O'CHIRIB yuboramiz (is_active=False yetarli emas,
-                # chunki group.students.all() is_active ni filtrlashni bilmaydi)
-                GroupEnrollment.objects.filter(student=student, group=old_group).delete()
-
-                # Yangi guruhga enrollment yaratamiz yoki faollashtiramiz
-                new_enroll, _created = GroupEnrollment.objects.get_or_create(
-                    student=student,
-                    group=new_group,
-                    defaults={'is_active': True}
-                )
-                if not _created and not new_enroll.is_active:
-                    new_enroll.is_active = True
-                    new_enroll.save()
-
-                # 2. TO'LOVNI KO'CHIRISH — yangi yaratmasdan, mavjudini ishlatamiz
-                old_payment = Payment.objects.filter(
-                    student=student,
-                    group=old_group,
-                    month=current_month_start
-                ).first()
-
-                new_monthly_amount = (
-                    student.custom_fee if student.custom_fee is not None
-                    else new_group.monthly_price
-                )
-                from finance.utils import floor_amount
-                new_monthly_amount = floor_amount(new_monthly_amount)
-
-                if old_payment:
-                    existing_new = Payment.objects.filter(
-                        student=student, group=new_group, month=current_month_start
-                    ).first()
-                    if not existing_new:
-                        # Eskisini yangi guruhga ko'chiramiz
-                        old_payment.group = new_group
-                        if not old_payment.is_paid:
-                            old_payment.amount = new_monthly_amount
-                        old_payment.save()
-                    else:
-                        # Ikkala guruhda ham to'lov bor: to'langanini saqlaymiz
-                        if old_payment.is_paid and not existing_new.is_paid:
-                            existing_new.is_paid = True
-                            existing_new.amount = old_payment.amount
-                            existing_new.save()
-                        old_payment.delete()
-                else:
-                    # To'lov yo'q bo'lsa, yaratib qo'yamiz
-                    Payment.objects.get_or_create(
-                        student=student,
-                        group=new_group,
-                        month=current_month_start,
-                        defaults={'amount': new_monthly_amount, 'is_paid': False}
-                    )
-
-                # 3. TRANSFERNI LOG QILISH
-                GroupTransfer.objects.create(
-                    student=student,
-                    from_group=old_group,
-                    to_group=new_group,
-                    transfer_date=today,
-                    old_group_fee=Decimal('0'),
-                    new_group_fee=Decimal('0'),
-                    reason=reason,
-                    marked_by=request.user
-                )
-
-                # 4. STUDENT MODELINI YANGILASH
-                student.group = new_group
-                student.branch = new_group.branch
-                student.save()
-
-                return Response({
-                    "status": "success",
-                    "message": f"{student.full_name} {old_group.name} dan {new_group.name} ga ko'chirildi",
-                }, status=200)
-
+            transfer_student_to_group(student, new_group_id, request.user, reason)
+            return Response({"status": "success", "message": "Ko'chirildi"}, status=200)
         except Exception as e:
             return Response({"error": str(e)}, status=400)
 
@@ -633,360 +240,140 @@ class StudentViewSet(viewsets.ModelViewSet):
         transfers = student.transfers.all()
         serializer = GroupTransferSerializer(transfers, many=True)
         return Response(serializer.data)
-    
+
     @action(detail=True, methods=['post'], permission_classes=[IsAdminOrSuperAdmin])
     def merge(self, request, pk=None):
         master = self.get_object()
         duplicate_id = request.data.get('duplicate_id')
-        
-        if not duplicate_id:
-            return Response({"error": "Birlashtiriluvchi o'quvchi ID si ko'rsatilmadi"}, status=400)
-            
-        if str(master.id) == str(duplicate_id):
-            return Response({"error": "O'quvchini o'zi bilan birlashtirib bo'lmaydi"}, status=400)
-            
-        duplicate = get_object_or_404(Student, id=duplicate_id)
-        
         try:
-            with transaction.atomic():
-                # 1. Transfer Enrollments
-                for enrollment in duplicate.enrollments.all():
-                    GroupEnrollment.objects.get_or_create(
-                        student=master, 
-                        group=enrollment.group
-                    )
-                
-                # Manual FK group field support
-                if duplicate.group:
-                    GroupEnrollment.objects.get_or_create(student=master, group=duplicate.group)
-
-                # 2. Transfer Attendance
-                Attendance.objects.filter(student=duplicate).update(student=master)
-                # Handle duplicates (IntegrityError approach)
-                # In modern Django update() might fail if unique constrained. 
-                # So we iterate if we want to handle unique conflicts gracefully.
-                attendances = Attendance.objects.filter(student=duplicate)
-                for attr in attendances:
-                    try:
-                        attr.student = master
-                        attr.save()
-                    except IntegrityError:
-                        attr.delete()
-
-                # 3. Transfer Homework
-                submissions = HomeworkSubmission.objects.filter(student=duplicate)
-                for sub in submissions:
-                    try:
-                        sub.student = master
-                        sub.save()
-                    except IntegrityError:
-                        sub.delete()
-
-                # 4. Transfer Mock Tests
-                mock_results = MockTestResult.objects.filter(student=duplicate)
-                for res in mock_results:
-                    try:
-                        res.student = master
-                        res.save()
-                    except IntegrityError:
-                        res.delete()
-
-                # 5. Transfer Payments
-                payments = Payment.objects.filter(student=duplicate)
-                for pay in payments:
-                    try:
-                        pay.student = master
-                        pay.save()
-                    except IntegrityError:
-                        pay.delete()
-
-                # 6. Transfer Transactions
-                FinanceTransaction.objects.filter(student=duplicate).update(student=master)
-
-                # 7. Transfer Group Transfers
-                GroupTransfer.objects.filter(student=duplicate).update(student=master)
-
-                # 8. Merge Metadata
-                if not master.telegram_id and duplicate.telegram_id:
-                    master.telegram_id = duplicate.telegram_id
-                if not master.parent_telegram_id and duplicate.parent_telegram_id:
-                    master.parent_telegram_id = duplicate.parent_telegram_id
-                if not master.birth_date and duplicate.birth_date:
-                    master.birth_date = duplicate.birth_date
-                
-                new_notes = f"--- Merged from: {duplicate.full_name} (ID: {duplicate.id}) ---\n{duplicate.notes or ''}\n{master.notes or ''}"
-                master.notes = new_notes.strip()
-                master.save()
-
-                # 9. Delete Duplicate
-                duplicate.delete()
-
-            return Response({
-                "status": "success",
-                "message": f"{duplicate.full_name} ma'lumotlari {master.full_name} profiliga muvaffaqiyatli ko'chirildi."
-            }, status=200)
-
+            merge_student_profiles(master, duplicate_id)
+            return Response({"status": "success", "message": "Birlashtirildi"}, status=200)
         except Exception as e:
             return Response({"error": str(e)}, status=400)
-    
-from django.db.models import Q, Prefetch # Q va Prefetch kerak bo'ladi
-from rest_framework import viewsets, filters
-from django_filters.rest_framework import DjangoFilterBackend
-# ... boshqa importlar ...
+
+    def destroy(self, request, *args, **kwargs):
+        student = self.get_object()
+        reason = request.data.get("reason", "O'chirildi")
+        from archivebase.services import move_student_to_archive
+        try:
+            move_student_to_archive(student, request.user, reason=reason)
+            return Response({"detail": "Arxivlandi"}, status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)
 
 class MentorViewSet(viewsets.ModelViewSet):
+    """Mentorlarni boshqarish"""
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    queryset = User.objects.filter(role='mentor').select_related('branch')
     serializer_class = MentorSerializer
     pagination_class = StandardResultsSetPagination
-    permission_classes = [IsAuthenticated | IsMentorBranchAccessible]
+    permission_classes = [IsAuthenticated, IsMentorBranchAccessible]
     
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    search_fields = ['first_name', 'last_name', 'username'] 
-
-    def get_queryset(self):
-        branch_id = self.request.query_params.get("branch_id")
-        queryset = User.objects.filter(role="mentor")
-
-        # branch_id filtri faqat 'list' (ro'yxat) uchun ishlatilishi kerak
-        if branch_id and self.action == 'list':
-            try:
-                branch_id = int(branch_id)
-                queryset = queryset.filter(
-                    Q(branch_id=branch_id) | Q(branch_accesses__branch_id=branch_id)
-                ).distinct()
-            except (ValueError, TypeError):
-                branch_id = None
-                queryset = queryset.none()
-        
-        # Admin uchun xavfsizlik: faqat ruxsat etilgan filial mentorlari
-        user = self.request.user
-        if user.role == 'admin':
-            allowed_branches = [user.branch_id] if user.branch_id else []
-            allowed_branches.extend(user.branch_accesses.values_list('branch_id', flat=True))
-            
-            queryset = queryset.filter(
-                 Q(branch_id__in=allowed_branches) | Q(branch_accesses__branch_id__in=allowed_branches)
-            ).distinct()
-
-        return queryset.prefetch_related(
-            Prefetch(
-                'mentor_groups',
-                queryset=Group.objects.filter(branch_id=branch_id) if branch_id else Group.objects.all()
-            )
-        )
-class StudentNestedView(viewsets.ReadOnlyModelViewSet):
-    serializer_class = StudentNestedSerializer
-    pagination_class = StandardResultsSetPagination
-    permission_classes = [IsAuthenticated]
-    
-    # --- QIDIRUV VA FILTR BACKENDLARINI YOQAMIZ ---
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    # Qidiriladigan maydonlar: ism, telefon va ota-ona ismi
-    search_fields = ['full_name', 'phone', 'parent_name']
+    search_fields = ['first_name', 'last_name', 'username']
 
     def get_queryset(self):
         user = self.request.user
-        # Alphabetical sorting added
-        qs = Student.objects.select_related('group', 'group__mentor', 'group__admin', 'group__branch').prefetch_related('group__additional_mentors', 'groups').order_by('full_name')
-
-        # 1. Frontend query param (Branch bo'yicha filtr)
+        qs = self.queryset
         branch_id = self.request.query_params.get('branch_id')
+
         if branch_id:
-            try:
-                branch_id = int(branch_id)
-                qs = qs.filter(branch_id=branch_id)
-            except ValueError:
-                qs = qs.none()
+            qs = qs.filter(branch_id=branch_id)
 
-        # 2. Role based filter (Xavfsizlik mantiqi + YANGI MENTOR CHECK)
-        if user.role == 'super_admin':
-            return qs
-        elif user.role == 'admin':
-            # Admin o'z filiali va access berilgan filiallardagi studentlarni ko'rishi kerak
-            allowed_branches = []
-            if user.branch:
-                allowed_branches.append(user.branch.id)
-            
-            # Qo'shimcha ruxsatlar
-            access_ids = list(user.branch_accesses.values_list('branch_id', flat=True))
-            allowed_branches.extend(access_ids)
-            
-            return qs.filter(group__branch_id__in=allowed_branches)
-        elif user.role == 'mentor':
-            # YANGI: asosiy mentor YOKI qo‘shimcha mentor
-            return qs.filter(
-                models.Q(group__mentor=user) | models.Q(group__additional_mentors__mentor=user)
-            ).distinct()
+        if user.role == 'admin':
+            allowed = [user.branch_id] if user.branch_id else []
+            allowed.extend(user.branch_accesses.values_list('branch_id', flat=True))
+            return qs.filter(Q(branch_id__in=allowed) | Q(branch_accesses__branch_id__in=allowed)).distinct()
+        return qs
 
+class StudentNestedView(viewsets.ReadOnlyModelViewSet):
+    """Studentlar haqida batafsil ma'lumot (ReadOnly)"""
+    queryset = Student.objects.select_related('group', 'branch').prefetch_related('groups').order_by('full_name')
+    serializer_class = StudentNestedSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    search_fields = ['full_name', 'phone']
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = self.queryset
+        if user.role == 'super_admin': return qs
+        if user.role == 'admin':
+            allowed = [user.branch_id] if user.branch_id else []
+            allowed.extend(user.branch_accesses.values_list('branch_id', flat=True))
+            return qs.filter(branch_id__in=allowed)
+        if user.role == 'mentor':
+            return qs.filter(Q(group__mentor=user) | Q(group__additional_mentors__mentor=user)).distinct()
         return Student.objects.none()
 
-class GroupSimpleViewSet(viewsets.ReadOnlyModelViewSet):
-    serializer_class = GroupSimpleSerializer
-    permission_classes = [IsAuthenticated] 
+class WaitingStudentViewSet(viewsets.ModelViewSet):
+    """Kutishlar zali"""
+    queryset = WaitingStudent.objects.all().order_by('full_name')
+    serializer_class = WaitingStudentSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    search_fields = ['full_name', 'phone', 'subject']
 
     def get_queryset(self):
         user = self.request.user
-        if user.role == 'super_admin':
-            return Group.objects.all()
-        elif user.role == 'admin':
-            return Group.objects.all()
-        elif user.role == 'mentor':
-            return Group.objects.filter(mentor=user)
-        return Group.objects.none()
-    
+        if user.role == 'super_admin': return self.queryset
+        return self.queryset.filter(branch=user.branch)
+
+    @action(detail=True, methods=['post'], url_path='assign-to-group')
+    def assign_to_group(self, request, pk=None):
+        waiting_student = self.get_object()
+        group_id = request.data.get('group_id')
+        try:
+            student = assign_waiting_student_to_group(waiting_student, group_id, request.user)
+            return Response({"message": "Guruhga qo'shildi", "student_id": student.id}, status=201)
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)
 
 class AdminViewSet(viewsets.ReadOnlyModelViewSet):
+    """Adminlar ro'yxati (ReadOnly)"""
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    queryset = User.objects.filter(role='admin').distinct()
     serializer_class = AdminUserSerializers
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
-
-        # Asosiy queryset: Faqat "admin" rolli userlar
-        queryset = User.objects.filter(role='admin').distinct()
-
-        # Super Admin uchun filtrlash
-        if user.is_superuser:
-            branch_id = self.request.query_params.get('branch_id')
-            if branch_id:
-                try:
-                    branch_id = int(branch_id)  # string → integer
-                    queryset = queryset.filter(
-                        Q(branch_id=branch_id) | Q(branch_accesses__branch_id=branch_id)
-                    ).distinct()
-                except (ValueError, TypeError):
-                    # noto‘g‘ri param → bo‘sh queryset
-                    queryset = queryset.none()
-            return queryset
-
-        # Oddiy admin → faqat o‘z branch
+        if user.is_superuser: return self.queryset
         if user.branch:
             allowed = list(user.branch_accesses.values_list('branch_id', flat=True))
             allowed.append(user.branch.id)
-            return queryset.filter(
-                Q(branch_id__in=allowed) | Q(branch_accesses__branch_id__in=allowed)
-            ).distinct()
+            return self.queryset.filter(Q(branch_id__in=allowed) | Q(branch_accesses__branch_id__in=allowed))
+        return self.queryset.none()
 
-        return queryset.none()
+class GroupSimpleViewSet(viewsets.ReadOnlyModelViewSet):
+    """Guruhlar ro'yxati (oddiy)"""
+    queryset = Group.objects.all()
+    serializer_class = GroupSimpleSerializer
+    permission_classes = [IsAuthenticated]
 
-# Oddiy mentorlar ro'yxati uchun ViewSet
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'super_admin': return self.queryset
+        if user.role == 'admin': return self.queryset.filter(branch=user.branch)
+        return self.queryset.filter(mentor=user)
+
 class MentorListViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    Oddiy mentorlar ro'yxati - nested ma'lumotlarsiz.
-    Faqat id, full_name, role va branch_id qaytaradi.
-    """
+    """Mentorlar ro'yxati (oddiy)"""
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    queryset = User.objects.filter(role='mentor').select_related('branch')
     serializer_class = MentorListSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     search_fields = ['first_name', 'last_name', 'username']
-    filterset_fields = ['branch_id']
 
     def get_queryset(self):
         user = self.request.user
-        queryset = User.objects.filter(role='mentor')
-        
-        # Branch bo'yicha filtrash
-        branch_id = self.request.query_params.get('branch_id')
-        if branch_id:
-            try:
-                branch_id = int(branch_id)
-                # Asosiy branch yoki BranchAccess orqali ruxsat berilgan
-                queryset = queryset.filter(
-                    Q(branch_id=branch_id) | Q(branch_accesses__branch_id=branch_id)
-                ).distinct()
-            except (ValueError, TypeError):
-                queryset = queryset.none()
-        
-        # Role based access (xavfsizlik)
-        if user.role == 'super_admin':
-            return queryset
-        elif user.role == 'admin':
-            # Admin o'z filialidagi va ruxsat berilgan filiallardagi mentorlarni ko'radi
-            allowed_branches = [user.branch_id] if user.branch_id else []
-            allowed_branches.extend(user.branch_accesses.values_list('branch_id', flat=True))
-            return queryset.filter(
-                Q(branch_id__in=allowed_branches) | Q(branch_accesses__branch_id__in=allowed_branches)
-            ).distinct()
-        elif user.role == 'mentor':
-            # Mentor faqat o'zini ko'radi
-            return queryset.filter(id=user.id)
-        
-        return queryset.none()
-
-class WaitingStudentViewSet(viewsets.ModelViewSet):
-    """Kutishlar zali o'quvchilarini boshqarish"""
-    queryset = WaitingStudent.objects.all()
-    serializer_class = WaitingStudentSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    search_fields = ['full_name', 'phone', 'subject']
-    filterset_fields = ['branch']
-
-    def get_queryset(self):
-        user = self.request.user
-        # Alphabetical sorting added
-        qs = self.queryset.order_by('full_name')
-        if user.role == 'super_admin':
-            return qs
-        return qs.filter(branch=user.branch)
-
-    def paginate_queryset(self, queryset):
-        # Faqat page parametri bo'lsa paginate qilamiz (veb frontendni buzmaslik uchun)
-        if self.request.query_params.get('page') or self.request.query_params.get('page_size'):
-            return super().paginate_queryset(queryset)
-        return None
-
-    def perform_create(self, serializer):
-        if not serializer.validated_data.get('branch'):
-            serializer.save(branch=self.request.user.branch)
-        else:
-            serializer.save()
-
-    @action(detail=True, methods=['post'], url_path='assign-to-group')
-    def assign_to_group(self, request, pk=None):
-        """Kutayotgan o'quvchini haqiqiy guruhga biriktirish va Studentga aylantirish"""
-        waiting_student = self.get_object()
-        group_id = request.data.get('group_id')
-        
-        if not group_id:
-            return Response({"error": "Guruh tanlanishi shart"}, status=400)
-        
-        group = get_object_or_404(Group, id=group_id)
-        
-        try:
-            with transaction.atomic():
-                from archivebase.models import ArchivedStudent
-                from archivebase.services import restore_student_from_archive
-                
-                # Arxivda bormi yoki yo'qligini tekshiramiz (Ism va telefon orqali)
-                archived = ArchivedStudent.objects.filter(
-                    full_name=waiting_student.full_name,
-                    metadata__phone=waiting_student.phone
-                ).order_by('-archived_at').first()
-
-                if archived:
-                    # Agar arxiv topilsa, uni tiklaymiz (bu to'lovlar va tarixni ham tiklaydi)
-                    student = restore_student_from_archive(archived.id, request.user)
-                    # Yangi guruhga biriktiramiz
-                    student.group = group
-                    student.save()
-                    # Arxivni o'chiramiz
-                    archived.delete()
-                else:
-                    # 1. Haqiqiy student yaratish (Agar arxiv topilmasa)
-                    student = Student.objects.create(
-                        branch=group.branch,
-                        group=group,
-                        full_name=waiting_student.full_name,
-                        phone=waiting_student.phone,
-                        notes=waiting_student.notes
-                    )
-                
-                # 2. Kutish zalidan o'chirish
-                waiting_student.delete()
-                
-                return Response({
-                    "message": f"{student.full_name} muvaffaqiyatli {group.name} guruhiga qo'shildi",
-                    "student_id": student.id
-                }, status=status.HTTP_201_CREATED)
-        except Exception as e:
-            return Response({"error": str(e)}, status=400)
+        if user.role == 'super_admin': return self.queryset
+        if user.role == 'admin':
+            allowed = [user.branch_id] if user.branch_id else []
+            allowed.extend(user.branch_accesses.values_list('branch_id', flat=True))
+            return self.queryset.filter(Q(branch_id__in=allowed) | Q(branch_accesses__branch_id__in=allowed)).distinct()
+        return self.queryset.filter(id=user.id)
