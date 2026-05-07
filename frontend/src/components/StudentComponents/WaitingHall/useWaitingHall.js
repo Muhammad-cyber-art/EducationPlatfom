@@ -25,7 +25,7 @@ export const useWaitingHall = (activeBranchId) => {
  if (!activeBranchId) return;
  setLoadingGroups(true);
  try {
- const res = await api.get(`/groups/groups/?branch_id=${activeBranchId}`);
+ const res = await api.get(`/groups/?branch_id=${activeBranchId}`);
  setGroups(res.data.results || res.data);
  } catch (error) {
  toast.error("Guruhlarni yuklashda xato!");

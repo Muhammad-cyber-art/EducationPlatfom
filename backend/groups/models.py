@@ -65,11 +65,28 @@ class Group(models.Model):
 
     def get_lesson_dates(self, year, month):
         from .utils import get_lessons_in_month
-        return get_lessons_in_month(self.days, year, month)
+        dates = get_lessons_in_month(self.days, year, month)
+        if self.start_date:
+            dates = [d for d in dates if d >= self.start_date]
+        
+        # Qo'shimcha dars kunlarini qo'shish
+        special_dates = list(self.special_lesson_days.filter(
+            date__year=year, 
+            date__month=month
+        ).values_list('date', flat=True))
+        
+        dates.extend(special_dates)
+        # Unikal va tartiblangan holatda qaytaramiz (set() orqali dublikatlarni olib tashlaymiz)
+        return sorted(list(set(dates)))
 
     def is_lesson_day(self, date_obj):
-        from .utils import is_lesson_day
-        return is_lesson_day(self.days, date_obj)
+        from .utils import is_lesson_day as is_scheduled_lesson_day
+        # Agar maxsus dars kuni sifatida qo'shilgan bo'lsa
+        if self.special_lesson_days.filter(date=date_obj).exists():
+            return True
+        return is_scheduled_lesson_day(self.days, date_obj)
+
+
 
     def get_daily_price(self, year, month):
         from finance.utils import floor_amount
@@ -202,17 +219,38 @@ class Student(models.Model):
             )
 
     def get_absences_count(self, year, month, group=None):
-        """O'quvchining berilgan oydagi qoldirgan darslari sonini qaytaradi"""
+        """O'quvchining berilgan oydagi qoldirgan darslari sonini qaytaradi (Optimallashtirilgan mantiq)"""
         target_group = group or self.group
         if not target_group:
             return 0
+            
+        today = timezone.localdate()
         lesson_dates = target_group.get_lesson_dates(year, month)
-        return self.attendances.filter(
+        
+        # Faqat o'tib bo'lgan dars kunlarini olamiz (bugunni ham qo'shamiz)
+        passed_lessons = [d for d in lesson_dates if d <= today]
+        
+        # O'quvchining ushbu guruhga qo'shilgan sanasini inobatga olamiz
+        # Agar o'quvchi oyning o'rtasida kelgan bo'lsa, undan oldingi darslar "qoldirilgan" hisoblanmaydi
+        enrollment = self.enrollments.filter(group=target_group).first()
+        if enrollment:
+            join_date = enrollment.joined_at.date()
+            passed_lessons = [d for d in passed_lessons if d >= join_date]
+        
+        # Kelgan kunlari sonini hisoblaymiz
+        present_count = self.attendances.filter(
+            group=target_group,
             date__year=year, 
             date__month=month, 
-            date__in=lesson_dates,
-            is_present=False
+            date__in=passed_lessons,
+            is_present=True
         ).count()
+        
+        # Qoldirilgan darslar = O'tib bo'lgan darslar soni - Kelgan darslar soni
+        # Shu orqali davomat olinmagan (bazada rekord yo'q) kunlar ham "kelmadi" deb hisoblanadi
+        absences = len(passed_lessons) - present_count
+        return max(0, absences)
+
 
     def calculate_refund_amount(self, year, month, group=None):
         """
@@ -344,3 +382,20 @@ class WaitingStudent(models.Model):
 
     def __str__(self):
         return f"{self.full_name} ({self.subject or 'Umumiy'})"
+
+class SpecialLessonDay(models.Model):
+    """Guruh uchun qo'shimcha (jadvaldan tashqari) dars kuni"""
+    group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name='special_lesson_days')
+    date = models.DateField()
+    added_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('group', 'date')
+        ordering = ['-date']
+        verbose_name = "Qo'shimcha dars kuni"
+        verbose_name_plural = "Qo'shimcha dars kunlari"
+
+    def __str__(self):
+        return f"{self.group.name} | {self.date}"
+

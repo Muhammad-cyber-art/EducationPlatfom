@@ -31,6 +31,13 @@ export const useGroupDetails = (group_id) => {
  enabled: !!group_id,
  });
 
+  const { data: lessonDates = [] } = useQuery({
+  queryKey: ['group-lesson-dates', group_id],
+  queryFn: () => api.get(`/groups/groups/${group_id}/lesson-dates/`).then(res => res.data),
+  staleTime: 0,
+  enabled: !!group_id,
+  });
+
  // Pagination yoki oddiy massivni qo'llab-quvvatlash
  const groupStudents = groupStudentsRaw?.results || groupStudentsRaw || [];
 
@@ -64,15 +71,16 @@ export const useGroupDetails = (group_id) => {
  isGroupMentor
  };
 
- return {
- user_info,
- userData,
- groupinfo,
- groupStudents,
- botStats,
- permissions,
- isGroupError,
- isGroupLoading,
- isStudentsLoading
- };
+  return {
+  user_info,
+  userData,
+  groupinfo,
+  groupStudents,
+  lessonDates,
+  botStats,
+  permissions,
+  isGroupError,
+  isGroupLoading,
+  isStudentsLoading
+  };
 };

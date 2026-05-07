@@ -5,7 +5,7 @@ import api from '../../tokenUpdater/updater';
 import toast from 'react-hot-toast';
 import AbsentStudentsModal from '../Common/AbsentStudentsModal';
 import { useState } from 'react';
-import { BotConnectionsChart, AbsenteesChart, GroupsAttendanceChart } from './charts/AnalyticsCharts';
+import { BotConnectionsChart, AbsenteesChart, StudentGrowthChart } from './charts/AnalyticsCharts';
 import { AttendanceCard, BroadcastSection, StatCard } from './cards/DashboardCards';
 
 const SuperAdminDashboard = () => {
@@ -52,9 +52,11 @@ const SuperAdminDashboard = () => {
         enabled: !!branchId,
     });
 
-    const { data: groupsData, isLoading: groupsLoading } = useQuery({
-        queryKey: ['groups-attendance', branchId],
-        queryFn: () => api.get(`/groups/?branch=${branchId}`).then(res => res.data),
+
+
+    const { data: growthData, isLoading: growthLoading } = useQuery({
+        queryKey: ['growth-statistics', branchId],
+        queryFn: () => api.get(`/groups/students/growth_statistics/?branch_id=${branchId}`).then(res => res.data),
         enabled: !!branchId,
     });
 
@@ -83,7 +85,7 @@ const SuperAdminDashboard = () => {
     };
 
     return (
-        <div className="animate-lux-fade space-y-10">
+        <div className="animate-lux-fade space-y-4 md:space-y-10">
             {/* Atmosphere Background */}
             <div className="fixed inset-0 pointer-events-none -z-10">
                 <div className="absolute top-[-10%] left-[-10%] w-[600px] h-[600px] bg-[var(--gold)]/5 rounded-full blur-[140px]"></div>
@@ -91,28 +93,28 @@ const SuperAdminDashboard = () => {
             </div>
 
             {/* HEADER ACTION AREA */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-[var(--border-glass)]">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-3 md:gap-6 pb-4 md:pb-6 border-b border-[var(--border-glass)]">
                 <div>
-                    <h1 className="text-4xl font-black text-[var(--text-primary)] tracking-tighter capitalize mb-2">Markaziy Boshqaruv</h1>
-                    <p className="text-[10px] text-[var(--text-muted)] font-black capitalize tracking-[0.4em] flex items-center gap-3">
-                        <ShieldCheck size={12} className="text-[var(--gold)]" /> Tizimning asosiy boshqaruv paneli
+                    <h1 className="text-2xl md:text-4xl font-black text-[var(--text-primary)] tracking-tighter capitalize mb-1">Markaziy Boshqaruv</h1>
+                    <p className="text-[9px] md:text-[10px] text-[var(--text-muted)] font-black capitalize tracking-[0.3em] flex items-center gap-2">
+                        <ShieldCheck size={11} className="text-[var(--gold)]" /> Tizimning asosiy boshqaruv paneli
                     </p>
                 </div>
-                <div className="px-4 py-2 rounded-full bg-[var(--gold-dim)] border border-[var(--gold)]/20 text-[9px] font-black capitalize tracking-widest text-[var(--gold)]">
+                <div className="hidden md:block px-4 py-2 rounded-full bg-[var(--gold-dim)] border border-[var(--gold)]/20 text-[9px] font-black capitalize tracking-widest text-[var(--gold)]">
                     Holat: To'liq boshqaruv
                 </div>
             </div>
 
             {/* STATS MATRIX */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-                <StatCard onClick={() => navigate('admins')} title="Adminstratorlar" value={stats?.admins || 0} icon={<ShieldCheck size={20} />} trend="STAFF" delay="0" />
-                <StatCard onClick={() => navigate('mentors')} title="Mentorlar" value={stats?.mentors || 0} icon={<UserCheck size={20} />} trend="STAFF" delay="100" />
-                <StatCard onClick={() => navigate('all_students')} title="O'quvchilar" value={stats?.students || 0} icon={<Users size={20} />} trend="STUDENTS" delay="200" />
-                <StatCard onClick={() => navigate('groups')} title="Guruhlar" value={stats?.groups || 0} icon={<Building2 size={20} />} trend="GROUPS" delay="300" />
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
+                <StatCard onClick={() => navigate('admins')} title="Adminstratorlar" value={stats?.admins || 0} icon={<ShieldCheck size={16} />} trend="STAFF" delay="0" />
+                <StatCard onClick={() => navigate('mentors')} title="Mentorlar" value={stats?.mentors || 0} icon={<UserCheck size={16} />} trend="STAFF" delay="100" />
+                <StatCard onClick={() => navigate('all_students')} title="O'quvchilar" value={stats?.students || 0} icon={<Users size={16} />} trend="STUDENTS" delay="200" />
+                <StatCard onClick={() => navigate('groups')} title="Guruhlar" value={stats?.groups || 0} icon={<Building2 size={16} />} trend="GROUPS" delay="300" />
             </div>
 
             {/* ATTENDANCE, BOT STATS & BROADCAST MATRIX */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-6">
                 <AttendanceCard
                     absentCount={stats?.attendance_today?.absent || 0}
                     totalCount={stats?.attendance_today?.total || 0}
@@ -146,12 +148,16 @@ const SuperAdminDashboard = () => {
                 />
             </div>
 
-            {/* ANALYTICS CHARTS SECTION */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* PIE CHARTS - 2 column on mobile */}
+            <div className="grid grid-cols-2 lg:grid-cols-2 gap-3 md:gap-6">
                 <BotConnectionsChart botStats={botStats} />
                 <AbsenteesChart stats={stats} />
-                <GroupsAttendanceChart groupsData={groupsData} />
             </div>
+
+
+
+            {/* GROWTH CHART */}
+            <StudentGrowthChart data={growthData} />
 
             {/* ABSENT STUDENTS MODAL */}
             <AbsentStudentsModal

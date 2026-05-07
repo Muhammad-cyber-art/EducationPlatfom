@@ -286,8 +286,11 @@
  font-size: 14px !important;
  }
 
- /* Reduce icon sizes */
- svg {
+ /* Reduce icon sizes - only for buttons and nav, NOT charts */
+ button svg,
+ .lux-nav-item svg,
+ .nav-link-v2 svg,
+ header svg {
  width: 16px !important;
  height: 16px !important;
  }
@@ -809,3 +812,24 @@ h2 {
  }
 
 }
+
+/* Global style fixes for inputs in dark theme */
+input[type="date"] {
+  color-scheme: dark;
+  color: #ffffff !important;
+}
+
+::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
+}
+
+select {
+  color: #ffffff !important;
+}
+
+select option {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  padding: 10px;
+}

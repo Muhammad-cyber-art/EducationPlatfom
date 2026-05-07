@@ -184,6 +184,10 @@ class StaffProfileViewSet(viewsets.ModelViewSet):
     serializer_class = StaffProfileSerializer
     permission_classes = [IsAuthenticated, HasModulePermission]
     module_name = 'finance'
+    
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['user__role', 'user__branch']
+    search_fields = ['user__first_name', 'user__last_name', 'user__username']
 
     def get_queryset(self):
         user = self.request.user
@@ -339,3 +343,59 @@ def trigger_absence_refunds(request):
         return Response({'success': True, 'count': count, 'amount': float(amount)}, status=200)
     except Exception as e:
         return Response({'success': False, 'message': str(e)}, status=500)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def payment_statistics_view(request):
+    """Har bir guruh uchun to'lov statistikasi"""
+    from django.utils import timezone
+
+    branch_id = request.query_params.get('branch_id')
+    today = timezone.localdate()
+    month_start = today.replace(day=1)
+
+    # Faol guruhlarni olish
+    groups_qs = Group.objects.filter(is_faol=True).select_related('branch')
+    if branch_id:
+        groups_qs = groups_qs.filter(branch_id=branch_id)
+
+    groups_data = []
+    for group in groups_qs:
+        # Shu guruhda faol o'quvchilar soni
+        students_count = group.enrollments.filter(is_active=True).count()
+
+        # Shu oy uchun to'lovlar
+        payments_qs = Payment.objects.filter(group=group, month=month_start)
+        paid_count = payments_qs.filter(is_paid=True).count()
+        unpaid_count = payments_qs.filter(is_paid=False).count()
+        # Agar hali payment yaratilmagan bo'lsa
+        no_payment = students_count - paid_count - unpaid_count
+        if no_payment < 0:
+            no_payment = 0
+
+        groups_data.append({
+            "id": group.id,
+            "name": group.name,
+            "students_count": students_count,
+            "paid_count": paid_count,
+            "unpaid_count": unpaid_count + no_payment,
+            "payment_rate": round((paid_count / students_count * 100) if students_count > 0 else 0, 1)
+        })
+
+    # Umumiy statistika
+    total_groups = len(groups_data)
+    total_students = sum(g['students_count'] for g in groups_data)
+    total_paid = sum(g['paid_count'] for g in groups_data)
+    total_unpaid = sum(g['unpaid_count'] for g in groups_data)
+    avg_rate = round((total_paid / total_students * 100) if total_students > 0 else 0, 1)
+
+    return Response({
+        "groups": groups_data,
+        "statistics": {
+            "total_groups": total_groups,
+            "total_students": total_students,
+            "total_paid": total_paid,
+            "total_unpaid": total_unpaid,
+            "completion_rate": avg_rate
+        }
+    })

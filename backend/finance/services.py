@@ -46,25 +46,34 @@ def generate_monthly_payments(month_date=None):
 
     created_count = 0
 
-    # 1. STUDENT PAYMENTS (Guruh narxi o'zgarishi mumkin, shuning uchun amount'ni saqlaymiz)
-    # User talabi: Boshlanish sanasi kelmaguncha to'lovlar yaratilmasligi kerak
+    # 1. STUDENT PAYMENTS
     active_groups = [g for g in Group.objects.filter(is_faol=True).prefetch_related('students') if g.is_logic_enabled()]
     for group in active_groups:
         for student in group.students.all():
-            # Agar student uchun maxsus narx belgilangan bo'lsa shuni olamiz, aks holda guruh narxini
-            raw_amount = student.custom_fee if student.custom_fee is not None else group.monthly_price
-            payment_amount = floor_amount(raw_amount)  # ✅ Floor: butun songa yaxlitlash
+            # Yangi mantiq: Status bo'yicha narxni aniqlash
+            if student.status == 'discount':
+                # Imtiyozli o'quvchilar uchun 0
+                raw_amount = Decimal('0')
+            elif student.status in ['low_income', 'negotiated']:
+                # Kam ta'minlangan yoki kelishilgan narx - profildagi custom_fee
+                raw_amount = student.custom_fee if student.custom_fee is not None else Decimal('0')
+            else:
+                # Oddiy o'quvchilar - guruh narxi
+                raw_amount = group.monthly_price
+            
+            payment_amount = floor_amount(raw_amount)
             
             _, created = Payment.objects.get_or_create(
                 student=student,
                 group=group,
                 month=month_date,
                 defaults={
-                    'amount': payment_amount, # Snapshot: Floor qilingan individual yoki guruh narxi
+                    'amount': payment_amount,
                     'is_paid': False
                 }
             )
             if created: created_count += 1
+
 
     # 2. EMPLOYEE PAYMENTS
     profiles = StaffProfile.objects.select_related('user').filter(user__is_active=True)
@@ -283,11 +292,7 @@ def confirm_student_payment(request_user, payment, data):
     new_amount = data.get('amount')
     if new_amount is not None:
         payment.amount = Decimal(str(new_amount))
-        student = payment.student
-        student.custom_fee = new_amount
-        if student.status == 'regular':
-            student.status = 'negotiated'
-        student.save()
+
     elif not payment.refund_ignored and payment.month:
         refund = payment.student.calculate_refund_amount(payment.month.year, payment.month.month)
         if float(refund) > 0:
@@ -374,7 +379,10 @@ def get_finance_dashboard_stats(user, month, year):
             "mentors": User.objects.filter(role='mentor', is_active=True).count(),
             "groups": Group.objects.filter(is_faol=True).count(),
             "admins": User.objects.filter(role='admin', is_active=True).count(),
-            "attendance_today": {"absent": Attendance.objects.filter(date=today, is_present=False).count()}
+            "attendance_today": {
+                "absent": Attendance.objects.filter(date=today, is_present=False).filter(**({'group__branch': user.branch} if user.role == 'admin' else {})).count(),
+                "total": Attendance.objects.filter(date=today).filter(**({'group__branch': user.branch} if user.role == 'admin' else {})).count()
+            }
         }
     }
 
@@ -388,34 +396,53 @@ def get_branch_finance_stats(branch_id, month, year):
     groups_count = Group.objects.filter(branch=branch, is_faol=True).count()
     students_count = Student.objects.filter(branch=branch, enrollments__is_active=True).distinct().count()
 
-    expected_income = Group.objects.filter(branch=branch, is_faol=True).annotate(
-        student_count=Count('students', distinct=True),
-        group_expected=F('monthly_price') * F('student_count')
-    ).aggregate(total=Sum('group_expected'))['total'] or 0
+    expected_income = Decimal('0')
+    groups_detail = []
+    
+    active_groups = Group.objects.filter(branch=branch, is_faol=True).prefetch_related('students')
+    
+    for group in active_groups:
+        g_expected = Decimal('0')
+        student_count = group.students.count()
+        
+        for student in group.students.all():
+            if student.status == 'discount':
+                pass # 0 qo'shiladi
+            elif student.status in ['low_income', 'negotiated']:
+                g_expected += student.custom_fee or Decimal('0')
+            else:
+                g_expected += group.monthly_price
+        
+        expected_income += g_expected
+        
+        g_received = Payment.objects.filter(group=group, month__month=month, month__year=year, is_paid=True).aggregate(total=Sum('amount'))['total'] or 0
+        g_debt = Payment.objects.filter(group=group, month__month=month, month__year=year, is_paid=False).aggregate(total=Sum('amount'))['total'] or 0
+        g_refunds = sum(float(student.calculate_refund_amount(year, month, group=group)) for student in group.students.all())
+        
+        groups_detail.append({
+            "id": group.id, 
+            "name": group.name, 
+            "student_count": student_count,
+            "expected_income": float(g_expected),
+            "received_income": float(g_received), 
+            "refund_amount": g_refunds,
+            "real_income": float(g_received) - g_refunds, 
+            "debt": float(g_debt),
+            "mentor": group.mentor.get_full_name() if group.mentor else "Yo'q"
+        })
 
     received_income = FinanceTransaction.objects.filter(branch=branch, date__month=month, date__year=year, transaction_type='income').aggregate(total=Sum('amount'))['total'] or 0
     expenses = FinanceTransaction.objects.filter(branch=branch, date__month=month, date__year=year, transaction_type='expense').aggregate(total=Sum('amount'))['total'] or 0
 
-    groups_detail = []
-    for group in Group.objects.filter(branch=branch, is_faol=True).annotate(student_count=Count('students', distinct=True)):
-        g_received = Payment.objects.filter(group=group, month__month=month, month__year=year, is_paid=True).aggregate(total=Sum('amount'))['total'] or 0
-        g_debt = Payment.objects.filter(group=group, month__month=month, month__year=year, is_paid=False).aggregate(total=Sum('amount'))['total'] or 0
-        g_refunds = sum(float(student.calculate_refund_amount(year, month)) for student in group.students.all())
-        
-        groups_detail.append({
-            "id": group.id, "name": group.name, "student_count": group.student_count,
-            "expected_income": float(group.monthly_price * group.student_count),
-            "received_income": float(g_received), "refund_amount": g_refunds,
-            "real_income": float(g_received) - g_refunds, "debt": float(g_debt),
-            "mentor": group.mentor.get_full_name() if group.mentor else "Yo'q"
-        })
+
 
     return {
         "branch": {"id": branch.id, "name": branch.name},
         "stats": {
             "mentors": mentors_count, "admins": admins_count, "groups": groups_count, "students": students_count,
             "attendance_today": {
-                "absent": Attendance.objects.filter(group__branch=branch, date=today, is_present=False).count()
+                "absent": Attendance.objects.filter(group__branch=branch, date=today, is_present=False).count(),
+                "total": Attendance.objects.filter(group__branch=branch, date=today).count()
             }
         },
         "finance": {

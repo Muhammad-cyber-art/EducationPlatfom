@@ -39,16 +39,28 @@ class GroupSimpleSerializer(serializers.ModelSerializer):
     students_count = serializers.SerializerMethodField()
     branch = BranchSerializer(read_only=True)
     today_attendance_confirmed = serializers.SerializerMethodField()
+    present_count = serializers.SerializerMethodField()
+    absent_count = serializers.SerializerMethodField()
     mentor = MentorListSerializer(read_only=True)
 
     class Meta:
         model = Group
-        fields = ('id', 'name', 'is_faol', 'computed_status', 'color', 'subject','mentor','monthly_price','days','dars_kunlari','dars_vaqti','students_count','branch', 'today_attendance_confirmed')
+        fields = ('id', 'name', 'is_faol', 'computed_status', 'color', 'subject','mentor','monthly_price','days','dars_kunlari','dars_vaqti','students_count','branch', 'today_attendance_confirmed', 'present_count', 'absent_count')
 
     def get_today_attendance_confirmed(self, obj):
         from homework_attends.models import Attendance
         from django.utils import timezone
         return Attendance.objects.filter(group=obj, date=timezone.localdate(), marked_by__isnull=False).exists()
+
+    def get_present_count(self, obj):
+        from homework_attends.models import Attendance
+        from django.utils import timezone
+        return Attendance.objects.filter(group=obj, date=timezone.localdate(), is_present=True).count()
+
+    def get_absent_count(self, obj):
+        from homework_attends.models import Attendance
+        from django.utils import timezone
+        return Attendance.objects.filter(group=obj, date=timezone.localdate(), is_present=False).count()
 
     def get_students_count(self, obj):
         # Faqat is_active=True bo'lgan o'quvchilarni sanaymiz
@@ -130,6 +142,24 @@ class StudentSerializer(serializers.ModelSerializer):
         ).first()
         
         return payment.id if payment else None
+
+    def validate(self, attrs):
+        """
+        Status o'zgarganda custom_fee'ni nazorat qilish.
+        Agar status 'regular' bo'lsa, custom_fee tozalanadi.
+        Agar boshqa status bo'lib, summa kiritilmasa, u avtomatik 0 bo'ladi (eski qiymat qolib ketmasligi uchun).
+        """
+        status = attrs.get('status')
+        # Agar status attrs ichida bo'lsa (ya'ni o'zgarayotgan bo'lsa)
+        if status:
+            if status == 'regular':
+                attrs['custom_fee'] = None
+            elif status in ['discount', 'low_income', 'negotiated']:
+                # Agar summa kiritilmagan bo'lsa (None yoki bo'sh), uni 0 qilamiz
+                if 'custom_fee' not in attrs or attrs.get('custom_fee') is None:
+                    attrs['custom_fee'] = 0
+        return attrs
+
     
     def create(self, validated_data):
         from django.db import transaction
@@ -363,8 +393,10 @@ class GroupSerializer(serializers.ModelSerializer):
         student_ids = list(students_qs.values_list('id', flat=True))
         payments = Payment.objects.filter(
             student_id__in=student_ids,
-            month=month_start
+            month=month_start,
+            group=obj
         ).values('student_id', 'id', 'is_paid')
+
 
         # To'lovlarni dict ga aylantiramiz: {student_id: {id, is_paid}}
         payment_map = {p['student_id']: p for p in payments}
@@ -589,3 +621,26 @@ class WaitingStudentSerializer(serializers.ModelSerializer):
         model = WaitingStudent
         fields = '__all__'
         read_only_fields = ('created_at',)
+
+class StudentGroupListSerializer(serializers.ModelSerializer):
+    current_payment_status = serializers.SerializerMethodField()
+    current_payment_id = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Student
+        fields = (
+            'id', 'full_name', 'phone', 'image', 'color', 
+            'status', 'telegram_id', 'parent_telegram_id',
+            'current_payment_status', 'current_payment_id'
+        )
+
+    def get_current_payment_status(self, obj):
+        payment_map = self.context.get('payment_map', {})
+        payment_info = payment_map.get(obj.id)
+        return payment_info['is_paid'] if payment_info else False
+
+    def get_current_payment_id(self, obj):
+        payment_map = self.context.get('payment_map', {})
+        payment_info = payment_map.get(obj.id)
+        return payment_info['id'] if payment_info else None
+

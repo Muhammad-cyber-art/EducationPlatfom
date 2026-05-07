@@ -9,6 +9,7 @@ from django.http import HttpResponse
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils import get_column_letter
+from datetime import timedelta
 
 from homework_attends.models import Attendance
 from groups.models import Group
@@ -59,6 +60,14 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         # 1. Update existing record
         if attendance_id is not None:
             instance = get_object_or_404(Attendance, id=attendance_id)
+            today = timezone.localdate()
+            if instance.date != today:
+                # Grace period: Tungi 4 gacha kechagi kunni o'zgartirishga ruxsat
+                is_early_morning = timezone.localtime().hour < 4
+                is_yesterday = instance.date == (today - timedelta(days=1))
+                if not (is_early_morning and is_yesterday):
+                    return Response({"detail": f"Faqat bugungi davomatni tahrirlash mumkin. (Sana: {instance.date}, Bugun: {today})"}, status=status.HTTP_400_BAD_REQUEST)
+            
             instance.is_present = is_present
             instance.marked_by = request.user
             instance.save()
@@ -74,12 +83,16 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         except ValueError:
             return Response({"detail": "Sana formati noto'g'ri (YYYY-MM-DD)"}, status=status.HTTP_400_BAD_REQUEST)
 
-        group_id = request.query_params.get('group_id')
         group = get_object_or_404(Group, id=group_id)
         
-        if not group.is_lesson_day(requested_date):
-            return Response({"detail": "Tanlangan sana guruh uchun dars kuni emas"}, status=status.HTTP_400_BAD_REQUEST)
-            
+        # User talabi: Faqat bugungi sana uchun davomat olish mumkin
+        today = timezone.localdate()
+        if requested_date != today:
+            is_early_morning = timezone.localtime().hour < 4
+            is_yesterday = requested_date == (today - timedelta(days=1))
+            if not (is_early_morning and is_yesterday):
+                return Response({"detail": f"Faqat bugungi sana uchun davomat olish ruxsat etilgan. (Tanlangan: {requested_date}, Bugun: {today})"}, status=status.HTTP_400_BAD_REQUEST)
+
         student = get_object_or_404(group.students, id=student_id)
 
         # Duplicate check
@@ -116,8 +129,15 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 
         group = get_object_or_404(Group, id=group_id)
         
-        if not group.is_lesson_day(requested_date):
-            return Response({"detail": "Ushbu sana guruh uchun dars kuni emas"}, status=status.HTTP_400_BAD_REQUEST)
+        # User talabi: Faqat bugungi sana uchun davomat olish mumkin
+        today = timezone.localdate()
+        if requested_date != today:
+            is_early_morning = timezone.localtime().hour < 4
+            is_yesterday = requested_date == (today - timedelta(days=1))
+            if not (is_early_morning and is_yesterday):
+                return Response({"detail": f"Faqat bugungi sana uchun davomat olish ruxsat etilgan. (Tanlangan: {requested_date}, Bugun: {today})"}, status=status.HTTP_400_BAD_REQUEST)
+
+
         
         queryset = bulk_confirm_attendance(group, requested_date, attendances_payload, request.user)
         serializer = AttendanceSerializer(queryset, many=True)
@@ -179,22 +199,23 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                 for col_idx, d in enumerate(date_list, 5):
                     cell = ws.cell(row=row_num, column=col_idx)
                     
-                    if joined_at and d < joined_at:
+                    is_present = att_data.get(student.id, {}).get(str(d))
+                    
+                    if is_present is True:
+                        cell.value = "+"
+                        cell.font = Font(color="008000", bold=True)
+                    elif is_present is False:
+                        cell.value = "K" 
+                        cell.font = Font(color="FF0000", bold=True)
+                    elif joined_at and d < joined_at:
                         cell.value = "-"
                     elif not group.is_lesson_day(d):
                         cell.value = "X" 
                         cell.font = Font(color="808080")
                     else:
-                        is_present = att_data.get(student.id, {}).get(str(d))
-                        if is_present is True:
-                            cell.value = "+"
-                            cell.font = Font(color="008000", bold=True)
-                        elif is_present is False:
-                            cell.value = "K" 
-                            cell.font = Font(color="FF0000", bold=True)
-                        else:
-                            cell.value = "?" 
+                        cell.value = "?" 
                     cell.alignment = center_align
+
 
             response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
             response['Content-Disposition'] = f'attachment; filename="davomat_{group.name}_{year}_{month}.xlsx"'
@@ -210,13 +231,27 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                 date_str = str(d)
                 if joined_at and d < joined_at:
                     status = "not_joined"
+                is_p = att_data.get(student.id, {}).get(date_str)
+                if is_p is not None:
+                    # Agar rekord bo'lsa (dars kuni bo'lmasa ham) uni chiqaramiz
+                    if is_p is True: status = "present"
+                    else: status = "absent"
                 elif not group.is_lesson_day(d):
                     status = "no_lesson"
                 else:
-                    is_p = att_data.get(student.id, {}).get(date_str)
-                    if is_p is True: status = "present"
-                    elif is_p is False: status = "absent"
-                    else: status = "none"
+                    # Dars kuni, lekin rekord yo'q
+
+                    if is_p is True: 
+                        status = "present"
+                    elif is_p is False: 
+                        status = "absent"
+                    else:
+                        # Senior logika: Agar sana o'tib ketgan bo'lsa va davomat olinmagan bo'lsa - "absent" deb hisoblaymiz
+                        if d < timezone.localdate():
+                            status = "absent"
+                        else:
+                            status = "none"
+
                 
                 history.append({"date": date_str, "status": status})
             

@@ -132,10 +132,16 @@ class BotStatisticsView(APIView):
         # Ota-onalarni sanash (parent_telegram_id bo'sh bo'lmaganlar)
         parents_bot = qs.exclude(Q(parent_telegram_id__isnull=True) | Q(parent_telegram_id='')).count()
         
+        unregistered_students = qs.filter(
+            (Q(telegram_id__isnull=True) | Q(telegram_id='')) &
+            (Q(parent_telegram_id__isnull=True) | Q(parent_telegram_id=''))
+        ).count()
+        
         return Response({
             "students_bot_count": students_bot,
             "parents_bot_count": parents_bot,
-            "total_bot_users": students_bot + parents_bot
+            "total_bot_users": students_bot + parents_bot,
+            "unregistered_students": unregistered_students
         })
 
 class ExportUnregisteredStudentsView(APIView):

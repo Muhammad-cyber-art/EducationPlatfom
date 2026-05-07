@@ -1,6 +1,10 @@
-import React from"react";
-import { Users, Check, RotateCw, Search, Lock } from"lucide-react";
-import GroupsStudent from"../GrupsStudent";
+import React, { useState } from "react";
+import { Users, Check, RotateCw, Search, Lock, Plus, Info, CheckCircle2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import api from "../../../tokenUpdater/updater";
+import GroupsStudent from "../GrupsStudent";
+import AddSpecialLessonModal from "./AddSpecialLessonModal";
+
 
 const AttendanceSection = ({
  group_id,
@@ -9,9 +13,10 @@ const AttendanceSection = ({
  filteredStudents,
  selectedDate,
  availableDates,
+ lessonDates = [],
  attendanceData,
  isAttendanceConfirmed,
- canEditAttendanceToday,
+ canEditAttendance,
  isGroupLogicActive,
  isEditing,
  studentSearch,
@@ -22,40 +27,89 @@ const AttendanceSection = ({
  handleConfirmAttendance,
  handleLocalAttendanceChange,
  refetchAttends,
- queryClient
+ queryClient,
+ canTakeAttendance
 }) => {
- return (
- <div className="lux-card-static !p-0 overflow-hidden pb-10 shadow-xl border-[var(--border-glass)]">
- <div className="p-4 sm:p-8 flex items-center justify-between gap-4 border-b border-[var(--border-glass)]">
- <div className="flex items-center gap-3 sm:gap-5">
- <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-[var(--bg-void)] border border-[var(--border-glass)] flex items-center justify-center text-[var(--gold)] shadow-inner">
- <Users size={18} className="sm:size-[22px]" />
- </div>
- <div>
- <h3 className="text-sm sm:text-xl font-bold text-[var(--text-primary)] capitalize tracking-tight flex items-center gap-2">
- Davomat
- {isAttendanceConfirmed && (
- <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-[8px] font-black tracking-widest flex items-center gap-1 mt-0.5 shadow-[0_0_10px_rgba(16,185,129,0.1)]">
- <Check size={10} strokeWidth={3} /> TAYYOR
- </span>
- )}
- </h3>
- <p className="text-[8px] sm:text-[10px] font-bold text-[var(--text-muted)] capitalize tracking-[0.3em] font-sans mt-0.5">
- Sana: <span className="text-[var(--gold)]">{selectedDate}</span>
- </p>
- </div>
- </div>
+  const [isSpecialLessonModalOpen, setIsSpecialLessonModalOpen] = useState(false);
 
- <div className="flex items-center gap-2">
- {canEditAttendanceToday && (
- <button
- onClick={handleConfirmAttendance}
- className="flex items-center justify-center w-10 sm:w-auto sm:px-6 h-10 bg-[var(--gold)] text-black rounded-xl font-bold text-[10px] capitalize tracking-wider transition-opacity hover:opacity-90 active:scale-95"
- title="Tayyor"
- >
- <Check size={18} /> <span className="hidden sm:inline ml-2">Tayyor</span>
- </button>
- )}
+  const { data: specialDates = [] } = useQuery({
+    queryKey: ['special-lessons', group_id],
+    queryFn: async () => {
+      const res = await api.get(`/groups/groups/${group_id}/special-lessons/`);
+      return res.data;
+    }
+  });
+
+  const isSpecialDay = specialDates.includes(selectedDate);
+  const isLessonDay = lessonDates.includes(selectedDate);
+
+  return (
+    <div className="lux-card-static !p-0 overflow-hidden pb-10 shadow-xl border-[var(--border-glass)]">
+      {/* Special Day Banner */}
+      {isSpecialDay && (
+        <div className="bg-emerald-500/10 border-b border-emerald-500/20 px-8 py-3 flex items-center justify-between animate-in slide-in-from-top duration-300">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-500">
+              <Info size={16} />
+            </div>
+            <div>
+              <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">
+                Maxsus dars kuni
+              </p>
+              <p className="text-xs font-bold text-emerald-400/80">
+                {selectedDate} sanasiga qo'shimcha dars kuni belgilangan
+              </p>
+            </div>
+          </div>
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/30">
+            <CheckCircle2 size={12} className="text-emerald-500" />
+            <span className="text-[8px] font-black text-emerald-500 uppercase tracking-widest">Faol</span>
+          </div>
+        </div>
+      )}
+
+      <div className="p-4 sm:p-8 flex items-center justify-between gap-4 border-b border-[var(--border-glass)]">
+        <div className="flex items-center gap-3 sm:gap-5">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-[var(--bg-void)] border border-[var(--border-glass)] flex items-center justify-center text-[var(--gold)] shadow-inner">
+            <Users size={18} className="sm:size-[22px]" />
+          </div>
+          <div>
+            <h3 className="text-sm sm:text-xl font-bold text-[var(--text-primary)] capitalize tracking-tight flex items-center gap-2">
+              Davomat
+              {isAttendanceConfirmed && (
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-[8px] font-black tracking-widest flex items-center gap-1 mt-0.5 shadow-[0_0_10px_rgba(16,185,129,0.1)]">
+                  <Check size={10} strokeWidth={3} /> TAYYOR
+                </span>
+              )}
+            </h3>
+            <p className="text-[8px] sm:text-[10px] font-bold text-[var(--text-muted)] capitalize tracking-[0.3em] font-sans mt-0.5">
+              Sana: <span className="text-[var(--gold)]">{selectedDate}</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {canTakeAttendance && (
+            <button
+              onClick={() => setIsSpecialLessonModalOpen(true)}
+              className="flex items-center justify-center w-10 sm:w-auto sm:px-4 h-10 border border-[var(--gold)]/30 text-[var(--gold)] rounded-xl font-bold text-[9px] capitalize tracking-wider transition-all hover:bg-[var(--gold)]/10 active:scale-95"
+              title="Dars qo'shish"
+            >
+              <Plus size={16} /> <span className="hidden sm:inline ml-2">Dars qo'shish</span>
+            </button>
+          )}
+
+          {canEditAttendance && (
+            <button
+              onClick={handleConfirmAttendance}
+              className="flex items-center justify-center w-10 sm:w-auto sm:px-6 h-10 bg-[var(--gold)] text-black rounded-xl font-bold text-[10px] capitalize tracking-wider transition-opacity hover:opacity-90 active:scale-95"
+              title="Tayyor"
+            >
+              <Check size={18} /> <span className="hidden sm:inline ml-2">Tayyor</span>
+            </button>
+          )}
+
+
  <button
  onClick={() => {
  queryClient.refetchQueries(['group-detail', group_id]);
@@ -102,73 +156,86 @@ const AttendanceSection = ({
  </div>
  )}
 
- {/* DATE PROTOCOLS */}
- <div className="px-8 py-5 border-b border-[var(--border-glass)] flex gap-3 overflow-x-auto scrollbar-hide">
- {availableDates.map((date) => (
- <button
- key={date}
- onClick={() => uiDispatch({ type:"SET_FIELD", field:"selectedDate", value: date })}
- className={`flex flex-col items-center justify-center px-6 py-3 rounded-xl transition-all border whitespace-nowrap min-w-[100px]
- ${selectedDate === date
- ?"bg-[var(--gold)] text-black border-transparent shadow-[var(--gold-glow)] scale-105"
- :"bg-[var(--bg-void)]/40 text-[var(--text-secondary)] border-[var(--border-glass)] hover:border-[var(--gold)]/20"}`}
- >
- <span className="text-[8px] font-black capitalize tracking-[0.2em] mb-1 opacity-60">Sana {date.split('-')[2]}</span>
- <span className="text-xs font-bold tracking-tight">{new Date(date).toLocaleDateString(undefined, { weekday:'short' }).toUpperCase()}</span>
- </button>
- ))}
- </div>
+       {/* DATE PROTOCOLS */}
+       <div className="px-4 sm:px-8 py-3 border-b border-[var(--border-glass)] flex gap-2 overflow-x-auto scrollbar-hide bg-[var(--bg-void)]/10">
+         {availableDates.map((date) => (
+           <button
+             key={date}
+             onClick={() => uiDispatch({ type: "SET_FIELD", field: "selectedDate", value: date })}
+             className={`flex flex-col items-center justify-center px-3 py-1.5 rounded-lg transition-all border whitespace-nowrap min-w-[55px] sm:min-w-[65px]
+             ${selectedDate === date
+               ? "bg-[var(--gold)] text-black border-transparent shadow-[var(--gold-glow)] scale-105"
+               : "bg-[var(--bg-void)]/40 text-[var(--text-secondary)] border-[var(--border-glass)] hover:border-[var(--gold)]/20"}`}
+           >
+             <span className="text-[7px] font-black capitalize tracking-wider opacity-60 leading-none mb-0.5">{date.split('-')[2]}</span>
+             <span className="text-[9px] font-bold tracking-tight leading-none">{new Date(date).toLocaleDateString(undefined, { weekday: 'short' }).toUpperCase()}</span>
+           </button>
+         ))}
+       </div>
 
- {/* DIRECTORY LIST */}
- <div className="md:hidden p-4 space-y-4">
- <GroupsStudent
- students={filteredStudents}
- canEdit={canEditAttendanceToday}
- attendanceData={attendanceData}
- onAttendanceChange={refetchAttends}
- onLocalAttendanceChange={canEditAttendanceToday ? handleLocalAttendanceChange : undefined}
- localOverrides={mergedAttendanceForDate}
- groupId={group_id}
- selectedDate={selectedDate}
- mode="card"
- currentBranchId={branchID}
- markedStudents={markedStudents}
- onToggleMark={(id) => uiDispatch({ type:"TOGGLE_MARK", payload: id })}
- />
- </div>
 
- <div className="hidden md:block overflow-x-auto text-[var(--text-primary)]">
- <table className="w-full text-left">
- <thead>
- <tr className="border-b border-[var(--border-glass)] text-[var(--text-muted)] text-[9px] font-black capitalize tracking-[0.4em]">
- <th className="px-8 py-6 w-16 text-center">#</th>
- <th className="px-8 py-6">O'quvchi</th>
- <th className="px-8 py-6 text-center">To'lov holati</th>
- <th className="px-8 py-6 text-center">Imtiyoz</th>
- <th className="px-8 py-6">Telefon</th>
- <th className="px-8 py-6 text-center">Davomat</th>
- </tr>
- </thead>
- <tbody className="divide-y divide-[var(--border-glass)]">
- <GroupsStudent
- students={filteredStudents}
- canEdit={canEditAttendanceToday}
- attendanceData={attendanceData}
- onAttendanceChange={refetchAttends}
- onLocalAttendanceChange={canEditAttendanceToday ? handleLocalAttendanceChange : undefined}
- localOverrides={mergedAttendanceForDate}
- groupId={group_id}
- selectedDate={selectedDate}
- mode="table"
- currentBranchId={branchID}
- markedStudents={markedStudents}
- onToggleMark={(id) => uiDispatch({ type:"TOGGLE_MARK", payload: id })}
- />
- </tbody>
- </table>
- </div>
- </div>
- );
+  {/* DIRECTORY LIST */}
+  <div className="md:hidden p-4 space-y-4">
+  <GroupsStudent
+  students={filteredStudents}
+  canEdit={canEditAttendance}
+  attendanceData={attendanceData}
+  onAttendanceChange={refetchAttends}
+  onLocalAttendanceChange={canEditAttendance ? handleLocalAttendanceChange : undefined}
+  localOverrides={mergedAttendanceForDate}
+  groupId={group_id}
+  selectedDate={selectedDate}
+  isLessonDay={isLessonDay}
+  mode="card"
+  currentBranchId={branchID}
+  markedStudents={markedStudents}
+  onToggleMark={(id) => uiDispatch({ type:"TOGGLE_MARK", payload: id })}
+  />
+  </div>
+
+  <div className="hidden md:block overflow-x-auto text-[var(--text-primary)]">
+  <table className="w-full text-left">
+  <thead>
+  <tr className="border-b border-[var(--border-glass)] text-[var(--text-muted)] text-[9px] font-black capitalize tracking-[0.4em]">
+  <th className="px-8 py-6 w-16 text-center">#</th>
+  <th className="px-8 py-6">O'quvchi</th>
+  <th className="px-8 py-6 text-center">To'lov holati</th>
+  <th className="px-8 py-6 text-center">Imtiyoz</th>
+  <th className="px-8 py-6">Telefon</th>
+  <th className="px-8 py-6 text-center">Davomat</th>
+  </tr>
+  </thead>
+  <tbody className="divide-y divide-[var(--border-glass)]">
+  <GroupsStudent
+  students={filteredStudents}
+  canEdit={canEditAttendance}
+  attendanceData={attendanceData}
+  onAttendanceChange={refetchAttends}
+  onLocalAttendanceChange={canEditAttendance ? handleLocalAttendanceChange : undefined}
+  localOverrides={mergedAttendanceForDate}
+  groupId={group_id}
+  selectedDate={selectedDate}
+  isLessonDay={isLessonDay}
+  mode="table"
+  currentBranchId={branchID}
+  markedStudents={markedStudents}
+  onToggleMark={(id) => uiDispatch({ type:"TOGGLE_MARK", payload: id })}
+  />
+  </tbody>
+  </table>
+   </div>
+   <AddSpecialLessonModal 
+     isOpen={isSpecialLessonModalOpen} 
+     onClose={() => setIsSpecialLessonModalOpen(false)} 
+     groupId={group_id} 
+     onAdded={() => {
+       queryClient.invalidateQueries(['group-lesson-dates', group_id]);
+       refetchAttends();
+     }}
+   />
+   </div>
+   );
 };
+
 
 export default AttendanceSection;

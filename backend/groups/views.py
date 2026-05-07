@@ -20,7 +20,7 @@ from .serializers import (
     StudentNestedSerializer, AssignAdditionalMentorSerializer,
     RemoveMentorSerializer, MentorAssignmentSerializer,
     MentorListSerializer, WaitingStudentSerializer, MentorSerializer,
-    AdminUserSerializers
+    AdminUserSerializers, StudentGroupListSerializer
 )
 from .permissions import (
     IsAdminOnly, IsGroupOwnerOrSuperAdmin,
@@ -150,11 +150,64 @@ class GroupViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def students(self, request, pk=None):
-        """Guruhdagi o'quvchilar ro'yxati"""
+        """Guruhdagi o'quvchilar ro'yxati (Optimallashtirilgan)"""
         group = self.get_object()
         students = group.students.all()
-        serializer = StudentNestedSerializer(students, many=True)
+        
+        # To'lov ma'lumotlarini bitta so'rovda olish (N+1 muammosini oldini olish)
+        from finance.models import Payment
+        today = timezone.now().date()
+        month_start = today.replace(day=1)
+        
+        student_ids = list(students.values_list('id', flat=True))
+        payments = Payment.objects.filter(
+            student_id__in=student_ids,
+            month=month_start,
+            group=group
+        ).values('student_id', 'id', 'is_paid')
+
+        
+        payment_map = {p['student_id']: p for p in payments}
+        
+        serializer = StudentGroupListSerializer(
+            students, 
+            many=True, 
+            context={'payment_map': payment_map}
+        )
         return Response(serializer.data)
+
+    @action(detail=True, methods=['get'], url_path='lesson-dates')
+    def lesson_dates(self, request, pk=None):
+        """Guruhning berilgan oydagi dars kunlarini qaytaradi (Davomat olingan kunlarni ham qo'shadi)"""
+        group = self.get_object()
+        today = timezone.localdate()
+        year = int(request.query_params.get('year', today.year))
+        month = int(request.query_params.get('month', today.month))
+        
+        # 1. Rejadagi dars kunlari + Maxsus dars kunlari
+        dates = group.get_lesson_dates(year, month)
+        
+        # 2. Rejada bo'lmagan, lekin davomat olingan (tasdiqlangan) kunlarni ham qo'shish
+        from homework_attends.models import Attendance
+        attendance_dates = Attendance.objects.filter(
+            group=group, 
+            date__year=year, 
+            date__month=month,
+            marked_by__isnull=False # Faqat tasdiqlangan davomatlarni olamiz
+        ).values_list('date', flat=True).distinct()
+        
+        all_dates = set(dates) | set(attendance_dates)
+        
+        # Kelajakdagi dars kunlarini chiqarmaymiz
+        final_dates = [d for d in all_dates if d <= today]
+        
+        # Eng yangi sanalar birinchi chiqishi uchun teskari tartibda qaytaramiz
+        return Response([d.strftime('%Y-%m-%d') for d in sorted(final_dates, reverse=True)])
+
+
+
+
+
 
     @action(detail=True, methods=['get'], url_path='additional-mentors')
     def additional_mentors(self, request, pk=None):
@@ -180,6 +233,41 @@ class GroupViewSet(viewsets.ModelViewSet):
         if created:
             return Response({"status": "Mentor tayinlandi"}, status=201)
         return Response({"detail": "Allaqachon tayinlangan"}, status=200)
+
+    @action(detail=True, methods=['post'], url_path='add-special-lesson')
+    def add_special_lesson(self, request, pk=None):
+        """Guruhga qo'shimcha dars kuni qo'shish"""
+        group = self.get_object()
+        date_str = request.data.get('date')
+        
+        if not date_str:
+            return Response({"detail": "Sana (date) majburiy"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        try:
+            lesson_date = timezone.datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return Response({"detail": "Sana formati noto'g'ri (YYYY-MM-DD)"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        from .models import SpecialLessonDay
+        obj, created = SpecialLessonDay.objects.get_or_create(
+            group=group, 
+            date=lesson_date,
+            defaults={'added_by': request.user}
+        )
+        
+        if not created:
+            return Response({"detail": "Ushbu sana allaqachon dars kuni sifatida qo'shilgan"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        return Response({"status": "Qo'shimcha dars kuni qo'shildi", "date": date_str}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='special-lessons')
+    def special_lessons(self, request, pk=None):
+        """Guruhning barcha qo'shimcha dars kunlarini qaytaradi"""
+        group = self.get_object()
+        specials = group.special_lesson_days.all().values_list('date', flat=True)
+        return Response([d.strftime('%Y-%m-%d') for d in specials])
+
+
 
     @action(detail=True, methods=['post'], url_path='remove-additional-mentor', permission_classes=[IsAdminOrSuperAdmin])
     def remove_additional_mentor(self, request, pk=None):
@@ -251,6 +339,47 @@ class StudentViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({"error": str(e)}, status=400)
 
+    @action(detail=False, methods=['get'], url_path='growth_statistics')
+    def growth_statistics(self, request):
+        from django.utils import timezone
+        from archivebase.models import ArchivedStudent
+        from branches.models import Branch
+
+        branch_id = request.query_params.get('branch_id')
+        today = timezone.localdate()
+        data = []
+
+        uz_months = {
+            1: 'Yan', 2: 'Fev', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Iyun',
+            7: 'Iyul', 8: 'Avg', 9: 'Sen', 10: 'Okt', 11: 'Noy', 12: 'Dek'
+        }
+
+        for i in range(5, -1, -1):
+            m = today.month - i
+            y = today.year
+            while m <= 0:
+                m += 12
+                y -= 1
+
+            joined_qs = Student.objects.filter(joined_at__year=y, joined_at__month=m)
+            archived_qs = ArchivedStudent.objects.filter(archived_at__year=y, archived_at__month=m)
+
+            if branch_id:
+                joined_qs = joined_qs.filter(branch_id=branch_id)
+                branch = Branch.objects.filter(id=branch_id).first()
+                if branch:
+                    archived_qs = archived_qs.filter(branch_name=branch.name)
+
+            month_name = f"{uz_months[m]} {y}"
+
+            data.append({
+                "name": month_name,
+                "Kelganlar": joined_qs.count(),
+                "Ketganlar": archived_qs.count()
+            })
+
+        return Response(data)
+
     def destroy(self, request, *args, **kwargs):
         student = self.get_object()
         reason = request.data.get("reason", "O'chirildi")
@@ -317,7 +446,12 @@ class WaitingStudentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.role == 'super_admin': return self.queryset
+        branch_id = self.request.query_params.get('branch_id') or self.request.query_params.get('branch')
+
+        if user.role == 'super_admin':
+            if branch_id:
+                return self.queryset.filter(branch_id=branch_id)
+            return self.queryset
         return self.queryset.filter(branch=user.branch)
 
     @action(detail=True, methods=['post'], url_path='assign-to-group')

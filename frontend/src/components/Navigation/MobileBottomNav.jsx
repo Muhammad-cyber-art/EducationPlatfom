@@ -90,7 +90,7 @@ export default function MobileBottomNav() {
 
  return (
  <>
- <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-[var(--bg-panel)]/95 backdrop-blur-xl border-t border-[var(--border-glass)] flex items-center justify-between px-2 z-50">
+ <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-[var(--bg-panel)] border-t border-[var(--border-glass)] flex items-center justify-between px-2 z-50">
  {menuItems.map((item) => {
  const linkTo = getLinkWithBranch(item.path);
  const isActive = location.pathname === item.path || (item.path !=="/admin" && location.pathname.startsWith(item.path));

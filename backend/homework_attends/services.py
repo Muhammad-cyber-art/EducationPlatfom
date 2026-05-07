@@ -6,25 +6,35 @@ from .models import Attendance, Homework, HomeworkSubmission, MockTest, MockTest
 from groups.models import Group, Student
 
 def get_or_create_attendance_records(group, requested_date):
-    """Dars kuni uchun davomat yozuvlarini olish yoki yaratish"""
-    is_lesson_day = group.is_lesson_day(requested_date)
-    if not is_lesson_day:
-        return Attendance.objects.none()
+    """Davomat yozuvlarini olish yoki yaratish (istalgan kun uchun)"""
+    # 1. Shu kunda guruhda faol bo'lgan studentlarni aniqlash
+    # (GroupEnrollment orqali aniqroq filter qilamiz)
+    from groups.models import GroupEnrollment
+    active_enrollments = GroupEnrollment.objects.filter(
+        group=group,
+        joined_at__date__lte=requested_date,
+        is_active=True
+    ).select_related('student')
     
+    active_student_ids = set(active_enrollments.values_list('student_id', flat=True))
+    
+    # 2. Mavjud davomat yozuvlarini olish
     queryset = Attendance.objects.filter(group=group, date=requested_date)
-    active_students = group.students.filter(joined_at__date__lte=requested_date)
-
-    if queryset.count() < active_students.count():
-        existing_student_ids = queryset.values_list('student_id', flat=True)
+    existing_student_ids = set(queryset.values_list('student_id', flat=True))
+    
+    # 3. Yetishmayotgan yozuvlarni yaratish
+    missing_ids = active_student_ids - existing_student_ids
+    if missing_ids:
         new_records = [
-            Attendance(student=student, group=group, date=requested_date, is_present=True)
-            for student in active_students if student.id not in existing_student_ids
+            Attendance(student_id=sid, group=group, date=requested_date, is_present=True)
+            for sid in missing_ids
         ]
-        if new_records:
-            Attendance.objects.bulk_create(new_records)
+        Attendance.objects.bulk_create(new_records)
         queryset = Attendance.objects.filter(group=group, date=requested_date)
     
-    return queryset.filter(student__joined_at__date__lte=requested_date).select_related('student').order_by('student__full_name')
+    # Faqat o'sha kunda guruhda bo'lgan studentlarni qaytaramiz
+    return queryset.filter(student_id__in=active_student_ids).select_related('student').order_by('student__full_name')
+
 
 def generate_weekly_attendance_report(group, today=None):
     """Haftalik davomat hisobotini yaratish"""
@@ -89,9 +99,14 @@ def bulk_confirm_attendance(group, requested_date, attendances_payload, user):
 
     with transaction.atomic():
         for item in attendances_payload:
-            student_id = item.get('student_id')
+            try:
+                raw_student_id = item.get('student_id')
+                if raw_student_id is None: continue
+                student_id = int(raw_student_id) # Type safety
+            except (ValueError, TypeError):
+                continue
+                
             is_present = item.get('is_present', True)
-            if student_id is None: continue
 
             if student_id in attendance_map:
                 attendance = attendance_map[student_id]
@@ -101,6 +116,7 @@ def bulk_confirm_attendance(group, requested_date, attendances_payload, user):
                     to_update.append(attendance)
                 updated_ids.append(attendance.id)
             else:
+                # Agar rekord bazada yo'q bo'lsa (masalan, kutilmagan student)
                 to_create.append(Attendance(
                     student_id=student_id,
                     group=group,
@@ -109,30 +125,36 @@ def bulk_confirm_attendance(group, requested_date, attendances_payload, user):
                     marked_by=user
                 ))
 
+
         if to_update:
             Attendance.objects.bulk_update(to_update, ['is_present', 'marked_by'])
         if to_create:
             created_objs = Attendance.objects.bulk_create(to_create)
             updated_ids.extend([obj.id for obj in created_objs])
 
-    # Xabarnomalarni yuborish (Async or Fallback)
-    try:
-        from telegram_bot.tasks import send_attendance_notifications_task
-        send_attendance_notifications_task.delay(updated_ids)
-    except Exception:
-        import threading
-        from telegram_bot.signals import send_attendance_notification
-        def fallback_notifications():
-            atts = Attendance.objects.filter(id__in=updated_ids)
-            for a in atts: 
-                try:
-                    send_attendance_notification(a, async_send=False)
-                    import time
-                    time.sleep(0.05)
-                except: pass
-        threading.Thread(target=fallback_notifications).start()
+    # Xabarnomalarni yuborishni fonda bajaramiz (API tez qaytishi uchun)
+    import threading
+    def background_notifications(ids):
+        try:
+            # 1. Celery orqali urinib ko'ramiz
+            from telegram_bot.tasks import send_attendance_notifications_task
+            send_attendance_notifications_task.delay(ids)
+        except Exception:
+            # 2. Agar Celery bo'lmasa, oddiy thread + loop
+            try:
+                from telegram_bot.signals import send_attendance_notification
+                atts = Attendance.objects.filter(id__in=ids)
+                for a in atts:
+                    try:
+                        send_attendance_notification(a, async_send=False)
+                    except: pass
+            except: pass
+
+    if updated_ids:
+        threading.Thread(target=background_notifications, args=(updated_ids,)).start()
 
     return Attendance.objects.filter(group=group, date=requested_date).select_related('student').order_by('student__full_name')
+
 
 def get_monthly_attendance_data(group, month, year):
     """Oylik davomat ma'lumotlarini yig'ish"""

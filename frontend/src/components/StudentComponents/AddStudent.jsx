@@ -102,7 +102,7 @@ const StudentAdd = () => {
  const query = cleanPhone.length >= 7 ? phone : full_name;
  setSearching(true);
  try {
- const response = await api.get(`/groups/students/search/?q=${encodeURIComponent(query)}`);
+ const response = await api.get(`/groups/students/?search=${encodeURIComponent(query)}`);
  setSearchResults(safeArray(response.data));
  } catch (error) {
  console.error("Qidiruvda xatolik:", error);
