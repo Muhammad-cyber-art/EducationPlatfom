@@ -37,7 +37,7 @@ import AllPayments from"../components/SuperAdmin/Finance/AllPayments";
 import PaymentHistory from"../components/SuperAdmin/Finance/PaymentsStory";
 import StaffPaymentsLayout from"../components/SuperAdmin/Finance/StaffPaymentsLayout";
 import StaffPayments from"../components/SuperAdmin/Finance/StaffPayments";
-import StaffPaymentDetails from"../components/SuperAdmin/Finance/StaffPaymentDetils";
+import StaffPaymentDetails from"../components/SuperAdmin/Finance/StaffPaymentDetails";
 import BranchFinance from"../components/SuperAdmin/Finance/BranchDetails";
 import UtilityPayments from"../components/SuperAdmin/Finance/UtilityPayments";
 

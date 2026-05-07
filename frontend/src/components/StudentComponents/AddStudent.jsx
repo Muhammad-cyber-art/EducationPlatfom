@@ -238,9 +238,9 @@ const StudentAdd = () => {
  </button>
  <div className="h-0.5 w-12 bg-[var(--gold)] opacity-30"></div>
  </div>
- <h1 className="gold-text !text-4xl">YANGI <br /> O'QUVCHI</h1>
+ <h1 className="gold-text !text-4xl">Yangi <br /> O'quvchi</h1>
  <p className="text-[10px] font-black text-[var(--text-muted)] capitalize tracking-[0.4em] mt-3">
- {hasGroupId ? `GURUH ID: #${paramGroupId}` :"GURUH TANLANMAGAN"}
+ {hasGroupId ? `Guruh ID: #${paramGroupId}` :"Guruh tanlanmagan"}
  </p>
  </div>
 
@@ -253,7 +253,7 @@ const StudentAdd = () => {
  ) : (
  <div className="text-center opacity-40">
  <Camera size={48} className="mx-auto mb-4" />
- <span className="text-[10px] font-black capitalize tracking-widest">RASM YUKLASH</span>
+ <span className="text-[10px] font-black capitalize tracking-widest">Rasm yuklash</span>
  </div>
  )}
  <input type="file" accept="image/*" onChange={handleImageChange} className="absolute inset-0 opacity-0 cursor-pointer" />
@@ -271,7 +271,7 @@ const StudentAdd = () => {
  <div className="lux-card lg:mt-6">
  <div className="flex items-center gap-3 mb-5 border-b border-[var(--border-glass)] pb-4">
  <FileText size={18} className="text-[var(--gold)]" />
- <h2 className="!text-white capitalize tracking-widest text-sm">QO'SHIMCHA MA'LUMOTLAR</h2>
+ <h2 className="!text-white capitalize tracking-widest text-sm">Qo'shimcha ma'lumotlar</h2>
  </div>
  <textarea
  name="notes"
@@ -293,7 +293,7 @@ const StudentAdd = () => {
  </div>
  <div>
  <h2 className="!text-white !text-lg capitalize font-black">Shaxsiy ma'lumotlar</h2>
- <p className="text-[10px] text-[var(--text-muted)] font-black capitalize tracking-widest mt-1">ASOSIY MA'LUMOTLAR</p>
+ <p className="text-[10px] text-[var(--text-muted)] font-black capitalize tracking-widest mt-1">Asosiy ma'lumotlar</p>
  </div>
  </div>
 
@@ -302,7 +302,7 @@ const StudentAdd = () => {
  <div className="md:col-span-2">
  <label className="text-[10px] font-black text-[var(--text-muted)] capitalize tracking-widest mb-3 block">Guruhni tanlang *</label>
  <select name="group" value={formData.group} onChange={handleChange} required className="lux-input !bg-[var(--bg-void)]">
- <option value="">GURUHLAR YUKLANMOQDA...</option>
+ <option value="">Guruhlar yuklanmoqda...</option>
  {groups.map(g => (
  <option key={g.id} value={g.id}>{g.name} — {g.subject}</option>
  ))}
@@ -314,13 +314,13 @@ const StudentAdd = () => {
  <label className="text-[10px] font-black text-[var(--text-muted)] capitalize tracking-widest mb-1.5 block">To'liq ism-sharifi *</label>
  <div className="lux-input-group">
  <User size={16} />
- <input name="full_name" value={formData.full_name} onChange={handleChange} required placeholder="ALISHER NAVOIY" className="lux-input !bg-[var(--bg-void)] capitalize font-bold" />
+ <input name="full_name" value={formData.full_name} onChange={handleChange} required placeholder="Alisher Navoiy" className="lux-input !bg-[var(--bg-void)] capitalize font-bold" />
  </div>
  </div>
 
  <div className="lux-input-group relative">
  <Phone size={16} />
- <input name="phone" value={formData.phone} onChange={handleChange} required placeholder="+998 90 123 45 67" className="lux-input !bg-[var(--bg-void)]" />
+ <input name="phone" value={formData.phone} onChange={handleChange} required placeholder="+998 90 123 45 67" className="lux-input !py-4 !pl-12 text-sm font-bold w-full capitalize" />
  {searching && (
  <div className="absolute right-4 top-1/2 -translate-y-1/2">
  <div className="w-4 h-4 border-2 border-[var(--gold)] border-t-transparent rounded-full animate-spin"></div>
@@ -336,7 +336,7 @@ const StudentAdd = () => {
  </p>
  <p className="text-[9px] text-[var(--text-muted)] leading-relaxed">
  Loyiha mantiqidan kelib chiqib: Agar bu o'quvchi allaqachon mavjud bo'lsa, <b>"Biriktirish"</b> ni bosing.
- Agar ismi o'xshash boshqa inson bo'lsa, pastdagi <b>"O'QUVCHINI SAQLASH"</b> tugmasi orqali yangi rekord yarating.
+ Agar ismi o'xshash boshqa inson bo'lsa, pastdagi <b>"O'quvchini saqlash"</b> tugmasi orqali yangi rekord yarating.
  </p>
  {searchResults.map(student => {
  const cleanPhoneInput = formData.phone.replace(/\D/g,'');
@@ -379,7 +379,7 @@ const StudentAdd = () => {
  checked={enrollmentToggles[student.id] !== false}
  onChange={(e) => setEnrollmentToggles(prev => ({ ...prev, [student.id]: e.target.checked }))}
  />
- <div className="w-9 h-5 bg-white/10 rounded-full peer peer-checked:bg-amber-500/80 transition-all after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4 shadow-xl"></div>
+ <div className="w-9 h-5 bg-white/10 rounded-full peer-checked:bg-amber-500/80 transition-all after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4 shadow-xl"></div>
  </label>
  </div>
 
@@ -415,7 +415,7 @@ const StudentAdd = () => {
  </div>
  <div>
  <h2 className="!text-white !text-lg capitalize font-black">Ota-ona ma'lumotlari</h2>
- <p className="text-[10px] text-[var(--text-muted)] font-black capitalize tracking-widest mt-1">BOG'LANISH UCHUN</p>
+ <p className="text-[10px] text-[var(--text-muted)] font-black capitalize tracking-widest mt-1">Bog'lanish uchun</p>
  </div>
  </div>
 
@@ -424,21 +424,21 @@ const StudentAdd = () => {
  <label className="text-[10px] font-black text-[var(--text-muted)] capitalize tracking-widest mb-1.5 block">Ota-onasi (F.I.SH)</label>
  <div className="lux-input-group">
  <User size={16} />
- <input name="parent_name" value={formData.parent_name} onChange={handleChange} placeholder="OTASI YOKI ONASI" className="lux-input !bg-[var(--bg-void)] capitalize" />
+ <input name="parent_name" value={formData.parent_name} onChange={handleChange} placeholder="Otasi yoki onasi" className="lux-input !bg-[var(--bg-void)] capitalize" />
  </div>
  </div>
  <div className="space-y-2">
  <label className="text-[10px] font-black text-[var(--text-muted)] capitalize tracking-widest mb-1.5 block">Qo'shimcha telefon</label>
  <div className="lux-input-group">
  <Phone size={16} />
- <input name="parent_phone" value={formData.parent_phone} onChange={handleChange} placeholder="+998 9X XXX XX XX" className="lux-input !bg-[var(--bg-void)]" />
+ <input name="parent_phone" value={formData.parent_phone} onChange={handleChange} placeholder="+998 9X XXX XX XX" className="lux-input !bg-[var(--bg-void)] capitalize" />
  </div>
  </div>
  <div className="md:col-span-2 space-y-2">
  <label className="text-[10px] font-black text-[var(--text-muted)] capitalize tracking-widest mb-1.5 block">Yashash manzili</label>
  <div className="lux-input-group">
  <MapPin size={16} />
- <input name="address" value={formData.address} onChange={handleChange} placeholder="MANZILNI KIRITING" className="lux-input !bg-[var(--bg-void)]" />
+ <input name="address" value={formData.address} onChange={handleChange} placeholder="Manzilni kiriting" className="lux-input !bg-[var(--bg-void)] capitalize" />
  </div>
  </div>
  </div>
@@ -452,7 +452,7 @@ const StudentAdd = () => {
  </div>
  <div>
  <h2 className="!text-white !text-lg capitalize font-black">To'lov va Status</h2>
- <p className="text-[10px] text-[var(--text-muted)] font-black capitalize tracking-widest mt-1">MOLIYAVIY STRATEGIYA</p>
+ <p className="text-[10px] text-[var(--text-muted)] font-black capitalize tracking-widest mt-1">Moliyaviy strategiya</p>
  </div>
  </div>
 
@@ -460,10 +460,10 @@ const StudentAdd = () => {
  <div>
  <label className="text-[10px] font-black text-[var(--text-muted)] capitalize tracking-widest mb-3 block">O'quvchi holati</label>
  <select name="status" value={formData.status} onChange={handleChange} className="lux-input !bg-[var(--bg-void)]">
- <option value="regular">ODDIY</option>
- <option value="discount">IMTIYOZLI</option>
- <option value="low_income">KAM TA'MINLANGAN</option>
- <option value="negotiated">KELISHILGAN NARX</option>
+ <option value="regular">Oddiy</option>
+ <option value="discount">Imtiyozli</option>
+ <option value="low_income">Kam ta'minlangan</option>
+ <option value="negotiated">Kelishilgan narx</option>
  </select>
  </div>
  <div>
@@ -509,14 +509,14 @@ const StudentAdd = () => {
  onClick={() => navigate(-1)}
  className="lux-btn !px-10 !border-[var(--border-glass)] !text-[var(--text-secondary)] hover:!text-white font-black capitalize text-[10px]"
  >
- BEKOR QILISH
+ Bekor qilish
  </button>
  <button
  type="submit"
  disabled={loading}
  className="lux-btn lux-btn-primary !px-16 !h-16 shadow-[0_10px_40px_rgba(184,134,11,0.2)] text-[11px] font-black capitalize tracking-widest"
  >
- {loading ?"SAQLANMOQDA..." :"O'QUVCHINI SAQLASH"}
+ {loading ?"Saqlanmoqda..." :"O'quvchini saqlash"}
  {!loading && <Plus size={18} className="ml-2" />}
  </button>
  </div>

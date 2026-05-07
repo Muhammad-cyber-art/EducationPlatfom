@@ -8,6 +8,7 @@ from .views import (
 
 router = DefaultRouter()
 router.register(r'groups', GroupViewSet, basename='group')
+router.register(r'nested_groups', GroupSimpleViewSet, basename='nested_group')
 router.register(r'students', StudentViewSet, basename='student')
 router.register(r'nested_mentors', MentorViewSet, basename='nested_mentor')
 router.register(r'mentors', MentorListViewSet, basename='mentor')  # Yangi oddiy mentors list

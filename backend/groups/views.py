@@ -313,9 +313,10 @@ class StudentViewSet(viewsets.ModelViewSet):
     def transfer_group(self, request, pk=None):
         student = self.get_object()
         new_group_id = request.data.get('new_group_id')
+        from_group_id = request.data.get('from_group_id')
         reason = request.data.get('reason', "Guruhdan guruhga o'tkazildi")
         try:
-            transfer_student_to_group(student, new_group_id, request.user, reason)
+            transfer_student_to_group(student, new_group_id, request.user, reason, from_group_id=from_group_id)
             return Response({"status": "success", "message": "Ko'chirildi"}, status=200)
         except Exception as e:
             return Response({"error": str(e)}, status=400)
@@ -328,6 +329,18 @@ class StudentViewSet(viewsets.ModelViewSet):
         transfers = student.transfers.all()
         serializer = GroupTransferSerializer(transfers, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['post'], url_path='bulk-delete')
+    def bulk_delete(self, request):
+        student_ids = request.data.get('student_ids', [])
+        if not student_ids:
+            return Response({"error": "Talabalar tanlanmagan"}, status=400)
+        
+        students = self.get_queryset().filter(id__in=student_ids)
+        count = students.count()
+        students.delete()
+        
+        return Response({"status": "success", "message": f"{count} ta o'quvchi o'chirildi"}, status=200)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdminOrSuperAdmin])
     def merge(self, request, pk=None):
@@ -464,6 +477,18 @@ class WaitingStudentViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({"error": str(e)}, status=400)
 
+    @action(detail=False, methods=['post'], url_path='bulk-delete')
+    def bulk_delete(self, request):
+        student_ids = request.data.get('student_ids', [])
+        if not student_ids:
+            return Response({"error": "Talabalar tanlanmagan"}, status=400)
+        
+        students = self.get_queryset().filter(id__in=student_ids)
+        count = students.count()
+        students.delete()
+        
+        return Response({"status": "success", "message": f"{count} ta o'quvchi o'chirildi"}, status=200)
+
 class AdminViewSet(viewsets.ReadOnlyModelViewSet):
     """Adminlar ro'yxati (ReadOnly)"""
     from django.contrib.auth import get_user_model
@@ -489,9 +514,22 @@ class GroupSimpleViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.role == 'super_admin': return self.queryset
-        if user.role == 'admin': return self.queryset.filter(branch=user.branch)
-        return self.queryset.filter(mentor=user)
+        qs = self.queryset
+        branch_id = self.request.query_params.get('branch_id')
+        
+        if branch_id:
+            qs = qs.filter(branch_id=branch_id)
+            
+        if user.role == 'super_admin': return qs
+        if user.role == 'admin':
+            allowed = [user.branch.id] if user.branch else []
+            allowed.extend(user.branch_accesses.values_list('branch_id', flat=True))
+            return qs.filter(branch_id__in=allowed)
+            
+        if user.role == 'mentor':
+            return qs.filter(Q(mentor=user) | Q(additional_mentors__mentor=user)).distinct()
+            
+        return qs.none()
 
 class MentorListViewSet(viewsets.ReadOnlyModelViewSet):
     """Mentorlar ro'yxati (oddiy)"""

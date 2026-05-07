@@ -178,6 +178,60 @@ class EmployeePaymentViewSet(viewsets.ModelViewSet):
             
         return Response({"status": "success", "data": EmployeePaymentSerializer(payment).data})
 
+    @action(detail=True, methods=['post'], url_path='recalculate')
+    def recalculate(self, request, pk=None):
+        """Xodim maoshini qayta hisoblash (masalan, o'quvchilar soni o'zgarganda)"""
+        payment = self.get_object()
+        if payment.is_paid:
+            return Response({"error": "To'langan maoshni qayta hisoblab bo'lmaydi"}, status=400)
+        
+        try:
+            payment.recalculate_salary()
+            payment.save()
+            return Response({
+                "status": "success",
+                "message": "Maosh muvaffaqiyatli qayta hisoblandi",
+                "data": EmployeePaymentSerializer(payment).data
+            })
+        except Exception as e:
+            logger.error(f"Recalculate error: {e}")
+            return Response({"error": str(e)}, status=400)
+
+    @action(detail=True, methods=['post'], url_path='add-advance')
+    def add_advance(self, request, pk=None):
+        """Ushbu oydagi maosh uchun avans qo'shish"""
+        payment = self.get_object()
+        amount = request.data.get('amount')
+        description = request.data.get('description', '')
+
+        if not amount:
+            return Response({"error": "Avans summasini kiritish shart"}, status=400)
+
+        try:
+            with transaction.atomic():
+                EmployeeAdvance.objects.create(
+                    employee=payment.employee,
+                    month=payment.month,
+                    amount=Decimal(str(amount)),
+                    description=description,
+                    marked_by=request.user
+                )
+                
+                # To'lanmagan bo'lsa, ayirmalarni yangilaymiz
+                if not payment.is_paid:
+                    payment.deductions = F('deductions') + Decimal(str(amount))
+                    payment.save()
+                    payment.refresh_from_db()
+
+            return Response({
+                "status": "success",
+                "message": "Avans muvaffaqiyatli qo'shildi",
+                "data": EmployeePaymentSerializer(payment).data
+            })
+        except Exception as e:
+            logger.error(f"Add advance error: {e}")
+            return Response({"error": str(e)}, status=400)
+
 class StaffProfileViewSet(viewsets.ModelViewSet):
     """Xodimlar profili va maosh sozlamalari"""
     queryset = StaffProfile.objects.select_related('user').all()

@@ -65,10 +65,14 @@ def unenroll_student_from_group(group, student_id, request_user):
                 student.save()
             return "active_elsewhere"
 
-def transfer_student_to_group(student, new_group_id, request_user, reason):
+def transfer_student_to_group(student, new_group_id, request_user, reason, from_group_id=None):
     """O'quvchini bir guruhdan boshqasiga o'tkazish"""
     new_group = get_object_or_404(Group, id=new_group_id)
-    old_group = student.group
+    
+    if from_group_id:
+        old_group = get_object_or_404(Group, id=from_group_id)
+    else:
+        old_group = student.group
 
     if not old_group:
         raise ValueError("O'quvchi hozirda bironta guruhda emas")
@@ -81,6 +85,14 @@ def transfer_student_to_group(student, new_group_id, request_user, reason):
         today = timezone.now().date()
         current_month_start = today.replace(day=1)
 
+        # 0. Snapshot fees
+        old_group_fee = floor_amount(
+            student.custom_fee if student.custom_fee is not None else old_group.monthly_price
+        )
+        new_group_fee = floor_amount(
+            student.custom_fee if student.custom_fee is not None else new_group.monthly_price
+        )
+
         # 1. Enrollmentlar bilan ishlash
         GroupEnrollment.objects.filter(student=student, group=old_group).delete()
         GroupEnrollment.objects.get_or_create(student=student, group=new_group)
@@ -92,10 +104,6 @@ def transfer_student_to_group(student, new_group_id, request_user, reason):
             month=current_month_start
         ).first()
 
-        new_monthly_amount = floor_amount(
-            student.custom_fee if student.custom_fee is not None else new_group.monthly_price
-        )
-
         if old_payment:
             existing_new = Payment.objects.filter(
                 student=student, group=new_group, month=current_month_start
@@ -103,7 +111,7 @@ def transfer_student_to_group(student, new_group_id, request_user, reason):
             if not existing_new:
                 old_payment.group = new_group
                 if not old_payment.is_paid:
-                    old_payment.amount = new_monthly_amount
+                    old_payment.amount = new_group_fee
                 old_payment.save()
             else:
                 if old_payment.is_paid and not existing_new.is_paid:
@@ -116,7 +124,7 @@ def transfer_student_to_group(student, new_group_id, request_user, reason):
                 student=student,
                 group=new_group,
                 month=current_month_start,
-                defaults={'amount': new_monthly_amount, 'is_paid': False}
+                defaults={'amount': new_group_fee, 'is_paid': False}
             )
 
         # 3. Transfer log
@@ -126,13 +134,16 @@ def transfer_student_to_group(student, new_group_id, request_user, reason):
             to_group=new_group,
             transfer_date=today,
             reason=reason,
-            marked_by=request_user
+            marked_by=request_user,
+            old_group_fee=old_group_fee,
+            new_group_fee=new_group_fee
         )
 
-        # 4. Student model yangilash
-        student.group = new_group
-        student.branch = new_group.branch
-        student.save()
+        # 4. Student model yangilash (agar student.group shu eski guruh bo'lsa yoki umuman bo'lmasa)
+        if student.group == old_group or not student.group:
+            student.group = new_group
+            student.branch = new_group.branch
+            student.save()
         
     return True
 

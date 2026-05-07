@@ -1,7 +1,10 @@
 import { useNavigate } from "react-router-dom";
 import api from "../../tokenUpdater/updater";
 import toast from "react-hot-toast";
-import { Smartphone, Check, X as XIcon, User, Send, ShieldCheck, HelpCircle } from "lucide-react";
+import { Smartphone, Check, X as XIcon, User, Send, ShieldCheck, HelpCircle, ArrowRightLeft, Trash2 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import StudentTransferModal from "./GroupDetails/StudentTransferModal";
+import { useState } from "react";
 
 export default function GroupsStudent({
   students,
@@ -19,16 +22,41 @@ export default function GroupsStudent({
   onToggleMark
 }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [studentToTransfer, setStudentToTransfer] = useState(null);
+
+  const handleOpenTransfer = (student) => {
+    setStudentToTransfer(student);
+    setTransferModalOpen(true);
+  };
+
+  const handleTransferSuccess = () => {
+    // Guruh ma'lumotlarini yangilash
+    queryClient.invalidateQueries({ queryKey: ['group-detail', String(groupId)] });
+    queryClient.invalidateQueries({ queryKey: ['group-detail', Number(groupId)] });
+    if (onAttendanceChange) onAttendanceChange();
+  };
   const isConfirmMode = Boolean(onLocalAttendanceChange);
 
   const handleToggle = async (attendanceId, currentStatus, studentId) => {
     if (!groupId) return;
 
-    // 3-state toggle: undefined (Yellow) -> true (Green) -> false (Red) -> undefined (Yellow)
+    // Senior toggle logic:
     let nextStatus;
-    if (currentStatus === undefined) nextStatus = true;
-    else if (currentStatus === true) nextStatus = false;
-    else nextStatus = undefined;
+    if (isLessonDay) {
+      // Dars kunlari faqat 2 holat: Keldi (true) <-> Kelmagan (false)
+      nextStatus = currentStatus === false ? true : false;
+    } else {
+      // Dam olish kunlari 3 holat: ? (undefined) -> Keldi (true) -> Kelmagan (false) -> ?
+      if (currentStatus === undefined) {
+        nextStatus = true;
+      } else if (currentStatus === true) {
+        nextStatus = false;
+      } else {
+        nextStatus = undefined;
+      }
+    }
 
     if (isConfirmMode) {
       onLocalAttendanceChange(studentId, nextStatus);
@@ -36,21 +64,29 @@ export default function GroupsStudent({
     }
 
     try {
-      const payload = { is_present: nextStatus };
+      const payload = { 
+        is_present: nextStatus,
+        student_id: studentId,
+        date: selectedDate
+      };
+      
       if (attendanceId) {
         payload.id = attendanceId;
-      } else {
-        payload.student_id = studentId;
-        payload.date = selectedDate;
       }
 
-      await api.post(`/homework_attends/attendances/?group_id=${groupId}`, payload);
+      // Agar status undefined bo'lsa va allaqachon rekord bo'lsa - o'chirib tashlaymiz
+      if (nextStatus === undefined && attendanceId) {
+        await api.delete(`/homework_attends/attendances/${attendanceId}/?group_id=${groupId}`);
+      } else if (nextStatus !== undefined) {
+        await api.post(`/homework_attends/attendances/?group_id=${groupId}`, payload);
+      }
+      
       if (onAttendanceChange) onAttendanceChange();
       
       const msg = nextStatus === true ? "Keldi" : nextStatus === false ? "Kelmagan" : "O'chirildi";
       toast.success(msg, { id: 'attend-success' });
     } catch (error) {
-      toast.error("Xatolik yuz berdi");
+      toast.error(error.response?.data?.detail || "Xatolik yuz berdi");
     }
   };
 
@@ -58,17 +94,25 @@ export default function GroupsStudent({
     <>
       {students.map((item, index) => {
         const studentAttendance = attendanceData?.find(a => Number(a.student_id) === Number(item.id));
-        const todayStr = new Date().toLocaleDateString('sv-SE');
-        const isPastDate = selectedDate < todayStr;
         
-        // Logic for default state: 
-        // If it's a regular lesson day, default is Present (true).
-        // If it's NOT a regular lesson day (extra), default is Unmarked (undefined).
+        // Default state logic:
+        // If it's a lesson day (scheduled or special), default is true (Green)
+        // If it's not a lesson day, default is undefined (Yellow / ?)
         const defaultState = isLessonDay ? true : undefined;
 
-        const isPresent = item.id in localOverrides
-          ? localOverrides[item.id]
-          : (studentAttendance ? studentAttendance.is_present : defaultState);
+        let isPresent;
+        if (item.id in localOverrides) {
+          isPresent = localOverrides[item.id];
+        } else if (studentAttendance) {
+          // AGAR dars kuni bo'lmasa va mentor hali tasdiqlamagan bo'lsa (?) ko'rsatamiz
+          if (!isLessonDay && !studentAttendance.marked_by) {
+            isPresent = undefined;
+          } else {
+            isPresent = studentAttendance.is_present;
+          }
+        } else {
+          isPresent = defaultState;
+        }
 
         const attId = studentAttendance?.id;
 
@@ -160,11 +204,11 @@ export default function GroupsStudent({
                       ? 'bg-emerald-500 text-black shadow-emerald-500/20'
                       : isPresent === false
                         ? 'bg-red-500 text-white shadow-red-500/20'
-                        : 'bg-amber-500 text-black shadow-amber-500/20 border border-amber-600/30'
+                        : 'bg-[var(--bg-void)]/50 text-[var(--text-muted)] border border-[var(--border-glass)]'
                       }`}
                   >
-                    {isPresent === true ? <Check size={14} /> : isPresent === false ? <XIcon size={14} /> : <HelpCircle size={14} />}
-                    <span>{isPresent === true ? 'Keldi' : isPresent === false ? "Yo'q" : 'Tanlash'}</span>
+                    {isPresent === true ? <Check size={14} /> : isPresent === false ? <XIcon size={14} /> : <span className="text-[12px] font-bold">?</span>}
+                    <span>{isPresent === true ? 'Keldi' : isPresent === false ? "Yo'q" : '?'}</span>
                   </button>
                 ) : (
                   <div className="flex justify-center">
@@ -173,10 +217,19 @@ export default function GroupsStudent({
                     ) : isPresent === false ? (
                       <XIcon size={16} className="text-red-500" />
                     ) : (
-                      <HelpCircle size={16} className="text-amber-500" />
+                      <span className="text-[14px] font-bold text-[var(--text-muted)]">?</span>
                     )}
                   </div>
                 )}
+              </td>
+              <td className="px-4 py-3 text-center">
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleOpenTransfer(item); }}
+                  className="p-2 bg-[var(--gold-dim)] text-[var(--gold)] rounded-lg border border-[var(--gold)]/20 hover:scale-110 active:scale-95 transition-all outline-none"
+                  title="Guruhdan guruhga ko'chirish"
+                >
+                  <ArrowRightLeft size={14} />
+                </button>
               </td>
             </tr>
           );
@@ -221,11 +274,11 @@ export default function GroupsStudent({
                       ? 'bg-emerald-500 text-black shadow-emerald-500/20'
                       : isPresent === false
                         ? 'bg-red-500 text-white shadow-red-500/20'
-                        : 'bg-amber-500 text-black shadow-amber-500/20 border border-amber-600/30'
+                        : 'bg-[var(--bg-void)]/50 text-[var(--text-muted)] border border-[var(--border-glass)]'
                       }`}
                   >
-                    {isPresent === true ? <Check size={14} /> : isPresent === false ? <XIcon size={14} /> : <HelpCircle size={14} />}
-                    {isPresent === undefined ? <span>TANLASH</span> : <span>{isPresent ? "KLD" : "YO'Q"}</span>}
+                    {isPresent === true ? <Check size={14} /> : isPresent === false ? <XIcon size={14} /> : <span className="text-[12px] font-bold">?</span>}
+                    <span>{isPresent === true ? 'Keldi' : isPresent === false ? "Yo'q" : '?'}</span>
                   </button>
                 ) : (
                   <div className="flex items-center gap-2">
@@ -234,15 +287,33 @@ export default function GroupsStudent({
                     ) : isPresent === false ? (
                       <XIcon size={16} className="text-red-500" />
                     ) : (
-                      <HelpCircle size={16} className="text-amber-500" />
+                      <span className="text-[14px] font-bold text-[var(--text-muted)]">?</span>
                     )}
                   </div>
                 )}
+
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleOpenTransfer(item); }}
+                  className="w-10 h-10 bg-[var(--gold-dim)] text-[var(--gold)] rounded-xl border border-[var(--gold)]/20 flex items-center justify-center hover:scale-105 transition-all"
+                  title="Guruhdan guruhga ko'chirish"
+                >
+                  <ArrowRightLeft size={16} />
+                </button>
               </div>
             </div>
           </div>
         );
       })}
+
+      {studentToTransfer && (
+        <StudentTransferModal
+          isOpen={transferModalOpen}
+          onClose={() => setTransferModalOpen(false)}
+          student={studentToTransfer}
+          currentGroupId={groupId}
+          onTransferSuccess={handleTransferSuccess}
+        />
+      )}
     </>
   );
 }

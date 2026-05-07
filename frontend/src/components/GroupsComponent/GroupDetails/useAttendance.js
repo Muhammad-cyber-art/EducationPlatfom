@@ -33,23 +33,29 @@ export const useAttendance = (group_id, selectedDate, groupStudents, userData) =
     return attendanceData.some(a => a.marked_by !== null);
   }, [attendanceData]);
 
-  const handleConfirmAttendance = async () => {
+  const handleConfirmAttendance = async (isLessonDay = true) => {
     const students = groupStudents || [];
     if (students.length === 0) return;
 
     const attendances = students.map((s) => {
       const studentId = Number(s.id);
       const localValue = mergedAttendanceForDate[studentId];
+      const existing = attendanceData.find(a => Number(a.student_id) === studentId);
       
-      let is_present = true;
+      let is_present;
       if (localValue !== undefined) {
         is_present = localValue;
       } else {
-        const existing = attendanceData.find(a => Number(a.student_id) === studentId);
-        is_present = existing ? existing.is_present : true;
+        // Agar dars kuni bo'lmasa va bazadagi rekord hali mentor tomonidan 
+        // tasdiqlanmagan bo'lsa (marked_by null), uni "undefined" deb hisoblaymiz.
+        if (!isLessonDay && existing && !existing.marked_by) {
+          is_present = undefined;
+        } else {
+          is_present = existing ? existing.is_present : (isLessonDay ? true : undefined);
+        }
       }
       return { student_id: studentId, is_present };
-    });
+    }).filter(a => a.is_present !== undefined);
 
     const tId = toast.loading("Saqlanmoqda...");
     try {
