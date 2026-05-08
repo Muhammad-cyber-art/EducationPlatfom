@@ -7,6 +7,22 @@ from django.utils import timezone
 from finance.models import Payment
 User = get_user_model()
 
+
+def _safe_attendance_metrics(group):
+    """Attendance jadvali yoki query xato bersa ham serializer yiqilmasin."""
+    try:
+        from homework_attends.models import Attendance
+        from django.utils import timezone
+        today = timezone.localdate()
+        qs = Attendance.objects.filter(group=group, date=today)
+        return {
+            "confirmed": qs.filter(marked_by__isnull=False).exists(),
+            "present": qs.filter(is_present=True).count(),
+            "absent": qs.filter(is_present=False).count(),
+        }
+    except Exception:
+        return {"confirmed": False, "present": 0, "absent": 0}
+
 # Oddiy mentorlar ro'yxati uchun serializer
 class MentorListSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
@@ -48,19 +64,13 @@ class GroupSimpleSerializer(serializers.ModelSerializer):
         fields = ('id', 'name', 'group_type', 'is_faol', 'computed_status', 'color', 'subject','mentor','monthly_price','days','dars_kunlari','dars_vaqti','students_count','branch', 'today_attendance_confirmed', 'present_count', 'absent_count')
 
     def get_today_attendance_confirmed(self, obj):
-        from homework_attends.models import Attendance
-        from django.utils import timezone
-        return Attendance.objects.filter(group=obj, date=timezone.localdate(), marked_by__isnull=False).exists()
+        return _safe_attendance_metrics(obj)["confirmed"]
 
     def get_present_count(self, obj):
-        from homework_attends.models import Attendance
-        from django.utils import timezone
-        return Attendance.objects.filter(group=obj, date=timezone.localdate(), is_present=True).count()
+        return _safe_attendance_metrics(obj)["present"]
 
     def get_absent_count(self, obj):
-        from homework_attends.models import Attendance
-        from django.utils import timezone
-        return Attendance.objects.filter(group=obj, date=timezone.localdate(), is_present=False).count()
+        return _safe_attendance_metrics(obj)["absent"]
 
     def get_students_count(self, obj):
         # Faqat is_active=True bo'lgan o'quvchilarni sanaymiz
@@ -276,9 +286,7 @@ class GroupShortSerializer(serializers.ModelSerializer):
         )
 
     def get_today_attendance_confirmed(self, obj):
-        from homework_attends.models import Attendance
-        from django.utils import timezone
-        return Attendance.objects.filter(group=obj, date=timezone.localdate(), marked_by__isnull=False).exists()
+        return _safe_attendance_metrics(obj)["confirmed"]
 class MentorNestedSerializer(serializers.ModelSerializer):
     # Branch ob'ektini to'liq ko'rinishi
     branch = BranchSerializer(read_only=True) 
@@ -464,9 +472,7 @@ class GroupSerializer(serializers.ModelSerializer):
         return result
 
     def get_today_attendance_confirmed(self, obj):
-        from homework_attends.models import Attendance
-        from django.utils import timezone
-        return Attendance.objects.filter(group=obj, date=timezone.localdate(), marked_by__isnull=False).exists()
+        return _safe_attendance_metrics(obj)["confirmed"]
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         request = self.context.get('request')

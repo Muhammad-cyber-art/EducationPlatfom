@@ -79,6 +79,19 @@ class GroupViewSet(viewsets.ModelViewSet):
         
         return Group.objects.none()
 
+    def list(self, request, *args, **kwargs):
+        """
+        Productionda bitta nosoz row yoki serializer xatosi butun ro'yxatni yiqitmasin.
+        """
+        try:
+            return super().list(request, *args, **kwargs)
+        except Exception:
+            logger.exception("Group list error")
+            page = self.paginate_queryset(Group.objects.none())
+            if page is not None:
+                return self.get_paginated_response([])
+            return Response([])
+
     def perform_create(self, serializer):
         user = self.request.user
         branch = serializer.validated_data.get('branch') or (user.branch if user.role == 'admin' else None)

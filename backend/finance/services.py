@@ -24,6 +24,31 @@ def _to_decimal(value):
     except Exception:
         return Decimal('0')
 
+
+def _safe_attendance_stats_for_branch(branch, today):
+    """Attendance query xato bersa ham finance statistikasi yiqilmasin."""
+    try:
+        return {
+            "absent": Attendance.objects.filter(group__branch=branch, date=today, is_present=False).count(),
+            "total": Attendance.objects.filter(group__branch=branch, date=today).count(),
+        }
+    except Exception:
+        logger.exception("Attendance branch statistikasi xatoligi: branch_id=%s", getattr(branch, "id", None))
+        return {"absent": 0, "total": 0}
+
+
+def _safe_attendance_stats_for_user(user, today):
+    """Dashboard attendance hisobida fallback."""
+    try:
+        filters = {'group__branch': user.branch} if user.role == 'admin' else {}
+        return {
+            "absent": Attendance.objects.filter(date=today, is_present=False).filter(**filters).count(),
+            "total": Attendance.objects.filter(date=today).filter(**filters).count(),
+        }
+    except Exception:
+        logger.exception("Attendance user statistikasi xatoligi: user_id=%s", getattr(user, "id", None))
+        return {"absent": 0, "total": 0}
+
 def generate_monthly_student_payments(month_date=None):
     """
     Har oy barcha faol guruhlardagi studentlar uchun payment yaratadi
@@ -399,6 +424,8 @@ def get_finance_dashboard_stats(user, month, year):
         if prev == 0: return 100.0 if curr > 0 else (-100.0 if curr < 0 else 0.0)
         return round(((curr - prev) / abs(prev)) * 100, 1)
 
+    attendance_today = _safe_attendance_stats_for_user(user, today)
+
     return {
         "total_income": float(total_income),
         "total_expense": float(total_expense),
@@ -414,10 +441,7 @@ def get_finance_dashboard_stats(user, month, year):
             "mentors": User.objects.filter(role='mentor', is_active=True).count(),
             "groups": Group.objects.filter(is_faol=True).count(),
             "admins": User.objects.filter(role='admin', is_active=True).count(),
-            "attendance_today": {
-                "absent": Attendance.objects.filter(date=today, is_present=False).filter(**({'group__branch': user.branch} if user.role == 'admin' else {})).count(),
-                "total": Attendance.objects.filter(date=today).filter(**({'group__branch': user.branch} if user.role == 'admin' else {})).count()
-            }
+            "attendance_today": attendance_today
         }
     }
 
@@ -526,10 +550,7 @@ def get_branch_finance_stats(branch_id, month, year):
             "branch": {"id": branch.id, "name": branch.name},
             "stats": {
                 "mentors": mentors_count, "admins": admins_count, "groups": groups_count, "students": students_count,
-                "attendance_today": {
-                    "absent": Attendance.objects.filter(group__branch=branch, date=today, is_present=False).count(),
-                    "total": Attendance.objects.filter(group__branch=branch, date=today).count()
-                }
+                "attendance_today": _safe_attendance_stats_for_branch(branch, today)
             },
             "finance": {
                 "expected_income": float(expected_income), "received_income": float(received_income),
