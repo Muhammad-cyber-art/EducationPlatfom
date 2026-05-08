@@ -34,6 +34,26 @@ from homework_attends.models import Attendance
 
 logger = logging.getLogger(__name__)
 
+
+def _parse_month_year(query_params):
+    """Parse and validate month/year query params with safe defaults."""
+    today = timezone.localdate()
+    raw_month = query_params.get('month', today.month)
+    raw_year = query_params.get('year', today.year)
+
+    try:
+        month = int(raw_month)
+        year = int(raw_year)
+    except (TypeError, ValueError):
+        raise ValueError("month va year raqam bo'lishi kerak")
+
+    if not 1 <= month <= 12:
+        raise ValueError("month 1 dan 12 gacha bo'lishi kerak")
+    if not 2000 <= year <= 2100:
+        raise ValueError("year noto'g'ri formatda")
+
+    return month, year
+
 # --- Pagination ---
 
 class StandardResultsSetPagination(PageNumberPagination):
@@ -323,16 +343,15 @@ class FinanceDashboardView(APIView):
     module_name = 'finance'
 
     def get(self, request):
-        today = timezone.localdate()
-        month = int(request.query_params.get('month', today.month))
-        year = int(request.query_params.get('year', today.year))
-        
         try:
+            month, year = _parse_month_year(request.query_params)
             data = get_finance_dashboard_stats(request.user, month, year)
             return Response(data)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=400)
         except Exception as e:
-            logger.error(f"Dashboard error: {e}")
-            return Response({"error": str(e)}, status=500)
+            logger.exception("Dashboard error")
+            return Response({"error": "Dashboard ma'lumotlarini olishda xatolik yuz berdi"}, status=500)
 
 class BranchFinanceDetailView(APIView):
     """Filial bo'yicha batafsil moliya"""
@@ -340,16 +359,29 @@ class BranchFinanceDetailView(APIView):
     module_name = 'finance'
 
     def get(self, request, branch_id):
-        today = timezone.localdate()
-        month = int(request.query_params.get('month', today.month))
-        year = int(request.query_params.get('year', today.year))
-
         try:
+            if request.user.role == 'admin' and request.user.branch_id != int(branch_id):
+                return Response({"error": "Siz faqat o'z filialingiz statistikalarini ko'ra olasiz"}, status=403)
+            month, year = _parse_month_year(request.query_params)
             data = get_branch_finance_stats(branch_id, month, year)
             return Response(data)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=400)
         except Exception as e:
-            logger.error(f"Branch stats error: {e}")
-            return Response({"error": str(e)}, status=500)
+            logger.exception("Branch stats error")
+            return Response({
+                "branch": {"id": int(branch_id), "name": "Noma'lum filial"},
+                "stats": {
+                    "mentors": 0, "admins": 0, "groups": 0, "students": 0,
+                    "attendance_today": {"absent": 0, "total": 0}
+                },
+                "finance": {
+                    "expected_income": 0.0, "received_income": 0.0,
+                    "expenses": 0.0, "net_profit": 0.0
+                },
+                "groups": [],
+                "warning": "Filial statistikasi vaqtincha to'liq emas"
+            }, status=200)
 
 class AbsentTodayStudentsView(APIView):
     """Bugun darsga kelmagan o'quvchilar ro'yxati"""
