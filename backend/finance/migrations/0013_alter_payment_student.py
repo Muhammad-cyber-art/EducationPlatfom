@@ -4,6 +4,15 @@ import django.db.models.deletion
 from django.db import migrations, models
 
 
+def cleanup_null_student_payments(apps, schema_editor):
+    """
+    Legacy bazada student=NULL bo'lgan paymentlar qolgan.
+    0013 da student ni NOT NULL qilishdan oldin ularni tozalaymiz.
+    """
+    Payment = apps.get_model('finance', 'Payment')
+    Payment.objects.filter(student__isnull=True).delete()
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -12,6 +21,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(cleanup_null_student_payments, migrations.RunPython.noop),
         migrations.AlterField(
             model_name='payment',
             name='student',
