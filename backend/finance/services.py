@@ -394,67 +394,110 @@ def get_finance_dashboard_stats(user, month, year):
     }
 
 def get_branch_finance_stats(branch_id, month, year):
-    """Filial uchun moliya statistikasini yig'ish"""
-    branch = get_object_or_404(Branch, id=branch_id)
-    today = timezone.localdate()
+    """Filial uchun moliya statistikasini yig'ish (Optimallashgan)"""
+    try:
+        branch = get_object_or_404(Branch, id=branch_id)
+        today = timezone.localdate()
 
-    mentors_count = User.objects.filter(branch=branch, role='mentor', is_active=True).count()
-    admins_count = User.objects.filter(branch=branch, role='admin', is_active=True).count()
-    groups_count = Group.objects.filter(branch=branch, is_faol=True).count()
-    students_count = Student.objects.filter(branch=branch, enrollments__is_active=True).distinct().count()
+        # Statistikani yig'ish
+        mentors_count = User.objects.filter(branch=branch, role='mentor', is_active=True).count()
+        admins_count = User.objects.filter(branch=branch, role='admin', is_active=True).count()
+        groups_count = Group.objects.filter(branch=branch, is_faol=True).count()
+        students_count = Student.objects.filter(branch=branch, enrollments__is_active=True).distinct().count()
 
-    expected_income = Decimal('0')
-    groups_detail = []
-    
-    active_groups = Group.objects.filter(branch=branch, is_faol=True).prefetch_related('students')
-    
-    for group in active_groups:
-        g_expected = Decimal('0')
-        student_count = group.students.count()
+        expected_income = Decimal('0')
+        groups_detail = []
         
-        for student in group.students.all():
-            if student.status == 'discount':
-                pass # 0 qo'shiladi
-            elif student.status in ['low_income', 'negotiated']:
-                g_expected += student.custom_fee or Decimal('0')
-            else:
-                g_expected += group.monthly_price
+        # N+1 muammosini oldini olish uchun prefetch ishlatamiz
+        active_groups = Group.objects.filter(branch=branch, is_faol=True).select_related('mentor').prefetch_related(
+            'students',
+            'enrollments',
+            'students__enrollments'
+        )
         
-        expected_income += g_expected
+        for group in active_groups:
+            g_expected = Decimal('0')
+            # group.students.all() o'rniga enrollments dan foydalanamiz (tezroq)
+            group_enrollments = group.enrollments.filter(is_active=True).select_related('student')
+            student_count = group_enrollments.count()
+            
+            for enrollment in group_enrollments:
+                student = enrollment.student
+                if student.status == 'discount':
+                    pass
+                elif student.status in ['low_income', 'negotiated']:
+                    g_expected += student.custom_fee or Decimal('0')
+                else:
+                    g_expected += group.monthly_price
+            
+            expected_income += g_expected
+            
+            # To'lovlarni bitta aggregate da olamiz
+            payments_stats = Payment.objects.filter(
+                group=group, 
+                month__month=month, 
+                month__year=year
+            ).aggregate(
+                received=Sum('amount', filter=Q(is_paid=True)),
+                debt=Sum('amount', filter=Q(is_paid=False))
+            )
+            
+            g_received = payments_stats['received'] or 0
+            g_debt = payments_stats['debt'] or 0
+            
+            # Refundlarni hisoblash (bu hali ham biroz sekin, lekin prefetch yordam beradi)
+            g_refunds = 0
+            for enrollment in group_enrollments:
+                try:
+                    refund = enrollment.student.calculate_refund_amount(year, month, group=group)
+                    g_refunds += float(refund)
+                except Exception:
+                    continue
+            
+            groups_detail.append({
+                "id": group.id, 
+                "name": group.name, 
+                "student_count": student_count,
+                "expected_income": float(g_expected),
+                "received_income": float(g_received), 
+                "refund_amount": g_refunds,
+                "real_income": float(g_received) - g_refunds, 
+                "debt": float(g_debt),
+                "mentor": group.mentor.get_full_name() if group.mentor else "Yo'q"
+            })
+
+        # Umumiy tranzaksiyalar
+        received_income = FinanceTransaction.objects.filter(
+            branch=branch, 
+            date__month=month, 
+            date__year=year, 
+            transaction_type='income'
+        ).aggregate(total=Sum('amount'))['total'] or 0
         
-        g_received = Payment.objects.filter(group=group, month__month=month, month__year=year, is_paid=True).aggregate(total=Sum('amount'))['total'] or 0
-        g_debt = Payment.objects.filter(group=group, month__month=month, month__year=year, is_paid=False).aggregate(total=Sum('amount'))['total'] or 0
-        g_refunds = sum(float(student.calculate_refund_amount(year, month, group=group)) for student in group.students.all())
-        
-        groups_detail.append({
-            "id": group.id, 
-            "name": group.name, 
-            "student_count": student_count,
-            "expected_income": float(g_expected),
-            "received_income": float(g_received), 
-            "refund_amount": g_refunds,
-            "real_income": float(g_received) - g_refunds, 
-            "debt": float(g_debt),
-            "mentor": group.mentor.get_full_name() if group.mentor else "Yo'q"
-        })
+        expenses = FinanceTransaction.objects.filter(
+            branch=branch, 
+            date__month=month, 
+            date__year=year, 
+            transaction_type='expense'
+        ).aggregate(total=Sum('amount'))['total'] or 0
 
-    received_income = FinanceTransaction.objects.filter(branch=branch, date__month=month, date__year=year, transaction_type='income').aggregate(total=Sum('amount'))['total'] or 0
-    expenses = FinanceTransaction.objects.filter(branch=branch, date__month=month, date__year=year, transaction_type='expense').aggregate(total=Sum('amount'))['total'] or 0
-
-
-
-    return {
-        "branch": {"id": branch.id, "name": branch.name},
-        "stats": {
-            "mentors": mentors_count, "admins": admins_count, "groups": groups_count, "students": students_count,
-            "attendance_today": {
-                "absent": Attendance.objects.filter(group__branch=branch, date=today, is_present=False).count(),
-                "total": Attendance.objects.filter(group__branch=branch, date=today).count()
-            }
-        },
-        "finance": {
-            "expected_income": float(expected_income), "received_income": float(received_income),
-            "expenses": float(expenses), "net_profit": float(received_income) - float(expenses)
-        },
-        "groups": groups_detail
-    }
+        return {
+            "branch": {"id": branch.id, "name": branch.name},
+            "stats": {
+                "mentors": mentors_count, "admins": admins_count, "groups": groups_count, "students": students_count,
+                "attendance_today": {
+                    "absent": Attendance.objects.filter(group__branch=branch, date=today, is_present=False).count(),
+                    "total": Attendance.objects.filter(group__branch=branch, date=today).count()
+                }
+            },
+            "finance": {
+                "expected_income": float(expected_income), "received_income": float(received_income),
+                "expenses": float(expenses), "net_profit": float(received_income) - float(expenses)
+            },
+            "groups": groups_detail
+        }
+    except Exception as e:
+        logger.error(f"Error in get_branch_finance_stats: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise e
+
