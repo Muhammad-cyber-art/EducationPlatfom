@@ -47,7 +47,7 @@ const StudentGroupsSection = ({
  {showGroupMenu === group.id && (
  <div className="absolute right-0 top-full mt-2 w-48 bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-xl shadow-2xl z-50 overflow-hidden animate-in zoom-in-95 duration-100 origin-top-right">
  <button
- onClick={(e) => { e.stopPropagation(); dispatch({ type:'TOGGLE_TRANSFER_MODAL', payload: true }); dispatch({ type:'TOGGLE_MENU', payload: false }); }}
+ onClick={(e) => { e.stopPropagation(); dispatch({ type:'TOGGLE_TRANSFER_MODAL', payload: true, group: group }); dispatch({ type:'TOGGLE_MENU', payload: false }); }}
  className="w-full flex items-center gap-2.5 px-4 py-3 text-[10px] font-bold text-[var(--text-primary)] capitalize tracking-wider hover:bg-[var(--gold)] hover:text-black transition-colors"
  >
  <LogIn size={14} /> Guruhni ko'chirish

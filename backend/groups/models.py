@@ -12,7 +12,11 @@ color_validator = RegexValidator(
 )
 
 class Group(models.Model):
-    # Yangi field uchun tanlovlar (choices)
+    GROUP_TYPES = [
+        ('standard', 'Standart'),
+        ('advanced', 'Advanced'),
+    ]
+
     DAYS_TYPES = [
         ('odd', 'Toq kunlar'),
         ('even', 'Juft kunlar'),
@@ -21,6 +25,12 @@ class Group(models.Model):
     color = models.CharField(max_length=7, default="#ffffff", validators=[color_validator])
 
     name = models.CharField(max_length=200)
+    group_type = models.CharField(
+        max_length=20, 
+        choices=GROUP_TYPES, 
+        default='standard',
+        verbose_name="Guruh turi"
+    )
     monthly_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     branch = models.ForeignKey(
         Branch,

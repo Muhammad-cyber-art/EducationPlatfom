@@ -3,7 +3,7 @@ import toast from'react-hot-toast';
 import { X, ArrowRightLeft, CheckCircle2, AlertCircle, Loader2 } from'lucide-react';
 import { safeArray } from'../../utils/safeArray';
 
-const TransferStudentModal = ({ isOpen, onClose, student, currentBranchId, api, onSuccess }) => {
+const TransferStudentModal = ({ isOpen, onClose, student, fromGroup, currentBranchId, api, onSuccess }) => {
  const [groups, setGroups] = useState([]);
  const [selectedGroupId, setSelectedGroupId] = useState('');
  const [loading, setLoading] = useState(false);
@@ -18,7 +18,7 @@ const TransferStudentModal = ({ isOpen, onClose, student, currentBranchId, api, 
  // O'quvchining hozirgi guruhini ro'yxatdan chiqarib tashlaymiz
  const groupsArray = safeArray(res.data);
  const availableGroups = groupsArray.filter(
- g => g.id !== student?.group?.id
+ g => g.id !== (fromGroup?.id || student?.group?.id)
  );
  setGroups(availableGroups);
  })
@@ -33,7 +33,8 @@ const TransferStudentModal = ({ isOpen, onClose, student, currentBranchId, api, 
  setLoading(true);
  try {
  await api.post(`/groups/students/${student.id}/transfer-group/`, {
- new_group_id: selectedGroupId
+ new_group_id: selectedGroupId,
+ from_group_id: fromGroup?.id || student?.group?.id
  });
  toast.success("O'quvchi muvaffaqiyatli ko'chirildi!");
  onSuccess();
@@ -81,7 +82,7 @@ const TransferStudentModal = ({ isOpen, onClose, student, currentBranchId, api, 
  <h4 className="text-base md:text-lg font-medium text-[var(--text-primary)]">{student?.full_name}</h4>
  <div className="mt-2 flex items-center gap-2 text-sm text-[var(--text-secondary)]">
  <span className="px-2 py-0.5 bg-[var(--bg-panel)] rounded text-[var(--text-primary)] border border-[var(--border-glass)]">
- Eski: {student?.group?.name ||"Guruhsiz"}
+ Eski: {fromGroup?.name || student?.group?.name || "Guruhsiz"}
  </span>
  </div>
  </div>

@@ -15,8 +15,8 @@
  --text-primary: #ffffff;
  --text-secondary: #777777;
  --text-muted: #444444;
- --input-bg: transparent;
- --input-border: rgba(255, 255, 255, 0.08);
+ --input-bg: var(--bg-void);
+ --input-border: rgba(255, 255, 255, 0.1);
 
  --gold: #b8860b;
  --gold-dim: rgba(184, 134, 11, 0.08);
@@ -560,23 +560,46 @@ h2 {
 }
 
 /* INPUTS - VERY CLEAN */
-.lux-input {
- background: var(--input-bg);
- border: 1px solid var(--input-border);
- padding: 13px 18px;
- border-radius: 18px;
- color: var(--text-primary);
- font-family: inherit;
- font-size: 14px;
- width: 100%;
- outline: none;
- transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
-}
+ .lux-input {
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  padding: 13px 18px;
+  border-radius: 18px;
+  color: var(--text-primary) !important;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  width: 100%;
+  outline: none;
+  transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+ }
 
 .lux-input:focus {
  border-color: var(--gold);
  background: rgba(184, 134, 11, 0.05);
  box-shadow: 0 0 0 4px rgba(184, 134, 11, 0.1);
+}
+
+/* Force native option styling visibility */
+select option {
+  background-color: #0a0a0a !important;
+  color: #ffffff !important;
+}
+
+/* Force Date Input color and icon visibility */
+input[type="date"] {
+ color: var(--text-primary) !important;
+ font-weight: 800 !important;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+ cursor: pointer;
+ opacity: 0.6;
+ transition: opacity 0.3s;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+ opacity: 1;
 }
 
 /* Responsive Input Group with Icons */
@@ -829,7 +852,7 @@ select {
 }
 
 select option {
-  background-color: #ffffff !important;
-  color: #000000 !important;
+  background-color: #0a0a0a !important;
+  color: #ffffff !important;
   padding: 10px;
 }

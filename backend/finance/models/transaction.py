@@ -19,6 +19,7 @@ class FinanceTransaction(models.Model):
         ('rent', 'Ijara'),
         ('refund', 'Qaytarilgan pul (Dars qoldirgani uchun)'),
         ('student_extra', 'O\'quvchi qo\'shimcha to\'lovi'),
+        ('owner_withdrawal', 'Super Admin olib ketdi'),
         ('other', 'Boshqa'),
     ]
 

@@ -56,7 +56,15 @@ class StudentPaymentViewSet(viewsets.ModelViewSet):
     module_name = 'finance'
     
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['is_paid', 'month', 'group', 'student']
+    filterset_fields = {
+        'is_paid': ['exact'],
+        'month': ['exact'],
+        'group': ['exact'],
+        'student': ['exact'],
+        'payment_method': ['exact'],
+        'paid_at': ['exact', 'date', 'gte', 'lte'],
+        'student__branch': ['exact']
+    }
     search_fields = ['student__full_name', 'student__phone', 'group__name']
     ordering_fields = ['month', 'paid_at', 'created_at']
     ordering = ['-month', '-id']
@@ -112,6 +120,26 @@ class StudentPaymentViewSet(viewsets.ModelViewSet):
             })
         except Exception as e:
             return Response({"error": str(e)}, status=400)
+
+    @action(detail=True, methods=['post'], url_path='verify')
+    def verify(self, request, pk=None):
+        payment = self.get_object()
+        if not payment.is_paid:
+            return Response({"detail": "Faqat to'langan to'lovlarni tasdiqlash mumkin"}, status=400)
+        
+        if request.user.role != 'super_admin':
+            return Response({"detail": "Faqat super admin tasdiqlay oladi"}, status=403)
+            
+        payment.is_verified = True
+        payment.verified_by = request.user
+        payment.verified_at = timezone.now()
+        payment.save()
+        
+        return Response({
+            "status": "success",
+            "message": "To'lov muvaffaqiyatli tasdiqlandi (imzo qo'yildi)",
+            "data": PaymentSerializer(payment).data
+        })
 
     @action(detail=False, methods=['get'], url_path='student-history/(?P<student_id>[^/.]+)')
     def student_history(self, request, student_id=None):
@@ -308,19 +336,10 @@ class FinanceDashboardView(APIView):
 
 class BranchFinanceDetailView(APIView):
     """Filial bo'yicha batafsil moliya"""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasModulePermission]
+    module_name = 'finance'
 
     def get(self, request, branch_id):
-        user = request.user
-        if user.role == 'admin':
-            allowed = [user.branch_id]
-            if hasattr(user, 'branch_accesses'):
-                allowed.extend(user.branch_accesses.values_list('branch_id', flat=True))
-            if int(branch_id) not in allowed:
-                return Response({"error": "Ruxsat yo'q"}, status=403)
-        elif user.role != 'super_admin':
-            return Response({"error": "Ruxsat yo'q"}, status=403)
-
         today = timezone.localdate()
         month = int(request.query_params.get('month', today.month))
         year = int(request.query_params.get('year', today.year))

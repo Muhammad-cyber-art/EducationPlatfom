@@ -28,8 +28,19 @@ const GroupCard = React.memo(({ group, readOnly, currentBranchId }) => {
  <div
  onClick={() => !colorCh && navigate(`${group.id}?branch=${currentBranchId}`)}
  className="lux-card-static !p-0 overflow-hidden cursor-pointer relative"
- style={{ borderTop: `2px solid ${selectedColor}` }}
+ style={{ borderTop: `3px solid ${group.group_type === 'advanced' ? '#16a34a' : '#38bdf8'}` }}
  >
+  {/* Type ribbon - diagonal top-left corner */}
+  <div className="absolute top-0 left-0 z-20 pointer-events-none overflow-hidden w-24 h-24">
+    <div className={`absolute -top-1 -left-8 w-32 py-1.5 text-white text-[7px] font-black uppercase tracking-widest text-center shadow-lg rotate-[-45deg] origin-center translate-x-[10px] translate-y-[18px] ${
+      group.group_type === 'advanced'
+        ? 'bg-gradient-to-r from-[#14532d] via-[#16a34a] to-[#14532d]'
+        : 'bg-gradient-to-r from-[#0284c7] via-[#38bdf8] to-[#0284c7]'
+    }`}>
+      {group.group_type === 'advanced' ? 'Advanced' : 'Standard'}
+    </div>
+  </div>
+
  {/* Premium Color Flag */}
  <div
  className="absolute top-0 left-6 w-8 h-12 z-10 shadow-lg"
@@ -53,8 +64,12 @@ const GroupCard = React.memo(({ group, readOnly, currentBranchId }) => {
  <div className="p-4 sm:p-6">
  <div className="flex justify-between items-start mb-4 sm:mb-6">
  <div
- className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center border border-[var(--border-glass)] bg-[var(--bg-void)]/40 text-[var(--gold)]"
- style={{ color: selectedColor, boxShadow: `0 8px 30px ${selectedColor}20` }}
+ className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center border bg-[var(--bg-void)]/40 ${
+    group.group_type === 'advanced'
+      ? 'border-green-700/50 shadow-[0_0_20px_rgba(22,163,74,0.35)] text-green-400'
+      : 'border-sky-400/40 shadow-[0_0_15px_rgba(56,189,248,0.25)] text-sky-400'
+  }`}
+ style={{ boxShadow: group.group_type === 'advanced' ? '0 8px 30px rgba(22,163,74,0.3)' : '0 8px 25px rgba(56,189,248,0.2)' }}
  >
  <Users size={20} className="sm:w-6 sm:h-6" />
  </div>
@@ -73,9 +88,18 @@ const GroupCard = React.memo(({ group, readOnly, currentBranchId }) => {
  <h3 className="text-sm sm:text-base font-bold text-[var(--text-primary)] capitalize tracking-tight transition-colors line-clamp-1">
  {group.name}
  </h3>
- <p className="text-[9px] sm:text-[10px] font-black text-[var(--text-gold)] capitalize tracking-[0.2em] mt-1 opacity-70">
+ <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+ <p className="text-[9px] sm:text-[10px] font-black text-[var(--text-gold)] capitalize tracking-[0.2em] opacity-70">
  {group.subject_name || group.subject ||'Kurs nomi'}
  </p>
+ <span className={`shrink-0 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest border ${
+   group.group_type === 'advanced'
+      ? 'bg-green-900/40 text-green-300 border-green-700/60 shadow-[0_0_10px_rgba(22,163,74,0.4)]'
+      : 'bg-sky-500/15 text-sky-300 border-sky-400/40 shadow-[0_0_8px_rgba(56,189,248,0.2)]'
+  }`}>
+    {group.group_type === 'advanced' ? '🟢 Advanced' : '🔷 Standart'}
+ </span>
+ </div>
  </div>
 
  <div className="grid grid-cols-2 gap-3 sm:gap-4 py-4 sm:py-5 border-y border-[var(--border-glass)]">

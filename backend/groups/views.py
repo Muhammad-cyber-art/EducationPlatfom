@@ -134,6 +134,59 @@ class GroupViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({"error": str(e)}, status=400)
 
+    @action(detail=True, methods=['post'], url_path='bulk-unenroll')
+    def bulk_unenroll(self, request, pk=None):
+        group = self.get_object()
+        student_ids = request.data.get('student_ids', [])
+        
+        if not isinstance(student_ids, list):
+            return Response({"error": "student_ids list bo'lishi kerak"}, status=400)
+            
+        results = []
+        errors = []
+        
+        for sid in student_ids:
+            try:
+                unenroll_student_from_group(group, sid, request.user)
+                results.append(sid)
+            except Exception as e:
+                errors.append({"student_id": sid, "error": str(e)})
+                
+        return Response({
+            "status": f"{len(results)} ta o'quvchi muvaffaqiyatli chiqarildi",
+            "results": results,
+            "errors": errors
+        }, status=200)
+
+    @action(detail=True, methods=['post'], url_path='bulk-archive')
+    def bulk_archive(self, request, pk=None):
+        from archivebase.services import move_student_to_archive
+        group = self.get_object()
+        student_ids = request.data.get('student_ids', [])
+        
+        if not isinstance(student_ids, list):
+            return Response({"error": "student_ids list bo'lishi kerak"}, status=400)
+            
+        results = []
+        errors = []
+        
+        for sid in student_ids:
+            try:
+                student = Student.objects.filter(id=sid).first()
+                if student:
+                    move_student_to_archive(student, request.user, reason=f"{group.name} guruhidan butunlay o'chirildi (Bulk Archive)")
+                    results.append(sid)
+                else:
+                    errors.append({"student_id": sid, "error": "O'quvchi topilmadi"})
+            except Exception as e:
+                errors.append({"student_id": sid, "error": str(e)})
+                
+        return Response({
+            "status": f"{len(results)} ta o'quvchi butunlay arxivlandi",
+            "results": results,
+            "errors": errors
+        }, status=200)
+
     @action(detail=True, methods=['post'])
     def add_student(self, request, pk=None):
         group = self.get_object()
@@ -169,10 +222,13 @@ class GroupViewSet(viewsets.ModelViewSet):
         
         payment_map = {p['student_id']: p for p in payments}
         
+        # Enrollment sanalarini olish
+        enrollment_map = {e.student_id: e.joined_at for e in group.enrollments.all()}
+        
         serializer = StudentGroupListSerializer(
             students, 
             many=True, 
-            context={'payment_map': payment_map}
+            context={'payment_map': payment_map, 'enrollment_map': enrollment_map}
         )
         return Response(serializer.data)
 
@@ -304,7 +360,11 @@ class StudentViewSet(viewsets.ModelViewSet):
         user = self.request.user
         qs = super().get_queryset()
         if user.role == 'super_admin': return qs
-        if user.role == 'admin': return qs.filter(branch=user.branch)
+        if user.role == 'admin':
+            allowed = [user.branch.id] if user.branch else []
+            if hasattr(user, 'branch_accesses'):
+                allowed.extend(user.branch_accesses.values_list('branch_id', flat=True))
+            return qs.filter(branch_id__in=allowed)
         if user.role == 'mentor':
             return qs.filter(Q(group__mentor=user) | Q(groups__mentor=user) | Q(groups__additional_mentors__mentor=user)).distinct()
         return Student.objects.none()
@@ -421,7 +481,8 @@ class MentorViewSet(viewsets.ModelViewSet):
         branch_id = self.request.query_params.get('branch_id')
 
         if branch_id:
-            qs = qs.filter(branch_id=branch_id)
+            # Ham asosiy branchi, ham BranchAccess orqali biriktirilgan branchi bo'yicha qidiramiz
+            qs = qs.filter(Q(branch_id=branch_id) | Q(branch_accesses__branch_id=branch_id)).distinct()
 
         if user.role == 'admin':
             allowed = [user.branch_id] if user.branch_id else []
@@ -440,13 +501,27 @@ class StudentNestedView(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         user = self.request.user
         qs = self.queryset
-        if user.role == 'super_admin': return qs
+        branch_id = self.request.query_params.get('branch_id')
+
+        if user.role == 'super_admin':
+            if branch_id:
+                qs = qs.filter(branch_id=branch_id)
+            return qs
+            
         if user.role == 'admin':
             allowed = [user.branch_id] if user.branch_id else []
             allowed.extend(user.branch_accesses.values_list('branch_id', flat=True))
-            return qs.filter(branch_id__in=allowed)
+            qs = qs.filter(branch_id__in=allowed)
+            if branch_id:
+                qs = qs.filter(branch_id=branch_id)
+            return qs
+            
         if user.role == 'mentor':
-            return qs.filter(Q(group__mentor=user) | Q(group__additional_mentors__mentor=user)).distinct()
+            qs = qs.filter(Q(group__mentor=user) | Q(group__additional_mentors__mentor=user)).distinct()
+            if branch_id:
+                qs = qs.filter(branch_id=branch_id)
+            return qs
+            
         return Student.objects.none()
 
 class WaitingStudentViewSet(viewsets.ModelViewSet):
@@ -460,12 +535,22 @@ class WaitingStudentViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         branch_id = self.request.query_params.get('branch_id') or self.request.query_params.get('branch')
+        qs = self.queryset
 
         if user.role == 'super_admin':
             if branch_id:
-                return self.queryset.filter(branch_id=branch_id)
-            return self.queryset
-        return self.queryset.filter(branch=user.branch)
+                return qs.filter(branch_id=branch_id)
+            return qs
+
+        if user.role == 'admin':
+            allowed = [user.branch_id] if user.branch_id else []
+            allowed.extend(user.branch_accesses.values_list('branch_id', flat=True))
+            qs = qs.filter(branch_id__in=allowed)
+            if branch_id:
+                qs = qs.filter(branch_id=branch_id)
+            return qs
+
+        return qs.filter(branch=user.branch)
 
     @action(detail=True, methods=['post'], url_path='assign-to-group')
     def assign_to_group(self, request, pk=None):
@@ -543,9 +628,19 @@ class MentorListViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.role == 'super_admin': return self.queryset
+        branch_id = self.request.query_params.get('branch_id')
+        qs = self.queryset
+
+        if branch_id:
+            # Faqat tanlangan branchga aloqador mentorlar (asosiy yoki ruxsati bor)
+            qs = qs.filter(Q(branch_id=branch_id) | Q(branch_accesses__branch_id=branch_id)).distinct()
+
+        if user.role == 'super_admin': 
+            return qs
+            
         if user.role == 'admin':
             allowed = [user.branch_id] if user.branch_id else []
             allowed.extend(user.branch_accesses.values_list('branch_id', flat=True))
-            return self.queryset.filter(Q(branch_id__in=allowed) | Q(branch_accesses__branch_id__in=allowed)).distinct()
-        return self.queryset.filter(id=user.id)
+            return qs.filter(Q(branch_id__in=allowed) | Q(branch_accesses__branch_id__in=allowed)).distinct()
+            
+        return qs.filter(id=user.id)

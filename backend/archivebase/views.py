@@ -78,6 +78,40 @@ class ArchivedStudentViewSet(mixins.DestroyModelMixin, viewsets.ReadOnlyModelVie
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+    @action(detail=False, methods=['post'], url_path='bulk-restore')
+    def bulk_restore(self, request):
+        """Ko'plab o'quvchilarni bir vaqtda arxivdan tiklash"""
+        user = request.user
+        if user.role not in ['super_admin', 'admin']:
+            return Response({"error": "Faqat adminlar tiklashi mumkin"}, status=403)
+            
+        ids = request.data.get('ids', [])
+        results = []
+        errors = []
+        
+        for sid in ids:
+            try:
+                archived = ArchivedStudent.objects.filter(id=sid).first()
+                if archived:
+                    student = restore_student_from_archive(archived.id, user)
+                    archived.delete()
+                    results.append(sid)
+            except Exception as e:
+                errors.append({"id": sid, "error": str(e)})
+                
+        return Response({"status": f"{len(results)} ta o'quvchi tiklandi", "results": results, "errors": errors})
+
+    @action(detail=False, methods=['post'], url_path='bulk-delete')
+    def bulk_delete(self, request):
+        """Ko'plab o'quvchilarni bir vaqtda arxivdan butunlay o'chirish"""
+        user = request.user
+        if user.role not in ['super_admin', 'admin']:
+            return Response({"error": "Faqat adminlar o'chira oladi"}, status=403)
+            
+        ids = request.data.get('ids', [])
+        ArchivedStudent.objects.filter(id__in=ids).delete()
+        return Response({"status": "O'quvchilar arxivdan butunlay o'chirildi"})
+
 class ArchivedStaffViewSet(mixins.DestroyModelMixin, viewsets.ReadOnlyModelViewSet):
     queryset = ArchivedStaff.objects.all().order_by('-archived_at')
     serializer_class = ArchivedStaffSerializer
@@ -137,6 +171,40 @@ class ArchivedStaffViewSet(mixins.DestroyModelMixin, viewsets.ReadOnlyModelViewS
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+    @action(detail=False, methods=['post'], url_path='bulk-restore')
+    def bulk_restore(self, request):
+        """Ko'plab xodimlarni bir vaqtda arxivdan tiklash"""
+        user = request.user
+        if user.role != 'super_admin':
+            return Response({"error": "Faqat super_admin xodimlarni tiklashi mumkin"}, status=403)
+            
+        ids = request.data.get('ids', [])
+        results = []
+        errors = []
+        
+        for sid in ids:
+            try:
+                archived = ArchivedStaff.objects.filter(id=sid).first()
+                if archived:
+                    staff = restore_staff_from_archive(archived.id, user)
+                    archived.delete()
+                    results.append(sid)
+            except Exception as e:
+                errors.append({"id": sid, "error": str(e)})
+                
+        return Response({"status": f"{len(results)} ta xodim tiklandi", "results": results})
+
+    @action(detail=False, methods=['post'], url_path='bulk-delete')
+    def bulk_delete(self, request):
+        """Ko'plab xodimlarni bir vaqtda arxivdan butunlay o'chirish"""
+        user = request.user
+        if user.role != 'super_admin':
+            return Response({"error": "Faqat super_admin o'chira oladi"}, status=403)
+            
+        ids = request.data.get('ids', [])
+        ArchivedStaff.objects.filter(id__in=ids).delete()
+        return Response({"status": "Xodimlar arxivdan butunlay o'chirildi"})
+
 class ArchivedGroupViewSet(mixins.DestroyModelMixin, viewsets.ReadOnlyModelViewSet):
     """Arxivlangan guruhlar"""
     queryset = ArchivedGroup.objects.all().order_by('-archived_at')
@@ -188,6 +256,40 @@ class ArchivedGroupViewSet(mixins.DestroyModelMixin, viewsets.ReadOnlyModelViewS
                 {"error": f"Tiklashda xato: {str(e)}"},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+    @action(detail=False, methods=['post'], url_path='bulk-restore')
+    def bulk_restore(self, request):
+        """Ko'plab guruhlarni bir vaqtda arxivdan tiklash"""
+        user = request.user
+        if user.role != 'super_admin':
+            return Response({"error": "Faqat super_admin guruhlarni tiklashi mumkin"}, status=403)
+            
+        ids = request.data.get('ids', [])
+        results = []
+        errors = []
+        
+        for sid in ids:
+            try:
+                archived = ArchivedGroup.objects.filter(id=sid).first()
+                if archived:
+                    group = restore_group_from_archive(archived.id, user)
+                    archived.delete()
+                    results.append(sid)
+            except Exception as e:
+                errors.append({"id": sid, "error": str(e)})
+                
+        return Response({"status": f"{len(results)} ta guruh tiklandi", "results": results})
+
+    @action(detail=False, methods=['post'], url_path='bulk-delete')
+    def bulk_delete(self, request):
+        """Ko'plab guruhlarni bir vaqtda arxivdan butunlay o'chirish"""
+        user = request.user
+        if user.role != 'super_admin':
+            return Response({"error": "Faqat super_admin o'chira oladi"}, status=403)
+            
+        ids = request.data.get('ids', [])
+        ArchivedGroup.objects.filter(id__in=ids).delete()
+        return Response({"status": "Guruhlar arxivdan butunlay o'chirildi"})
 
 
 class PaymentArchiveViewSet(viewsets.ModelViewSet):

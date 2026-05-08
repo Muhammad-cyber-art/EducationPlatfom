@@ -165,7 +165,8 @@ export const useMentorProfile = () => {
  const perms = userData.permissions || {};
  const isSuperAdmin = userRole ==="super_admin";
  const isAdmin = userRole ==="admin";
- const canEditMentor = (isSuperAdmin || isAdmin || perms.teachers === true) && userRole !=="mentor";
+ const isOwnProfile = userRole ==="mentor" && Number(realMentorId) === Number(user_info?.user_id);
+ const canEditMentor = (isSuperAdmin || isAdmin || perms.teachers === true) && !isOwnProfile;
 
  return {
  state,

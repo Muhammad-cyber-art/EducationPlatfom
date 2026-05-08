@@ -64,11 +64,35 @@ export const useArchive = (debouncedSearch, activeBranchId) => {
  }
  });
 
+ const bulkRestoreMutation = useMutation({
+   mutationFn: ({ type, ids }) => api.post(`/archive/${type}/bulk-restore/`, { ids }),
+   onSuccess: (_, { type }) => {
+     queryClient.invalidateQueries([`archived-${type}`]);
+     toast.success("Tanlanganlar tiklandi.");
+   },
+   onError: (error) => {
+     toast.error(error.response?.data?.error || "Xatolik yuz berdi!");
+   }
+ });
+
+ const bulkDeleteMutation = useMutation({
+   mutationFn: ({ type, ids }) => api.post(`/archive/${type}/bulk-delete/`, { ids }),
+   onSuccess: (_, { type }) => {
+     queryClient.invalidateQueries([`archived-${type}`]);
+     toast.success("Tanlanganlar butunlay o'chirildi.");
+   },
+   onError: (error) => {
+     toast.error(error.response?.data?.error || "Xatolik yuz berdi!");
+   }
+ });
+
  return {
  studentsQuery,
  staffQuery,
  groupsQuery,
  restoreMutation,
- deleteMutation
+ deleteMutation,
+ bulkRestoreMutation,
+ bulkDeleteMutation
  };
 };

@@ -51,7 +51,7 @@ export default function AdminPageFirst() {
  const { data: branchData, isLoading: financeLoading, isError: isFinanceError } = useQuery({
  queryKey: ['branch-finance', currentBranchId],
  queryFn: () => api.get(`/finance/statistics/branch-finance/${currentBranchId}/`).then(res => res.data),
- enabled: !!currentBranchId && hasFinancePerm,
+ enabled: !!currentBranchId,
  staleTime: 1000 * 60 * 5,
  });
 
@@ -146,8 +146,7 @@ export default function AdminPageFirst() {
  />
  </div>
 
- {/* Main Content - Only visible if has finance permission */}
- {hasFinancePerm && (
+ {/* Main Content - Finance Statistics */}
  <div className="lux-grid-main">
  {/* Top Performers / Group List */}
  <div className="lux-card" style={{ minHeight:'420px', display:'flex', flexDirection:'column' }}>
@@ -234,7 +233,6 @@ export default function AdminPageFirst() {
  {/* Optional sidebar or extra info if needed, or leave empty to keep grid balanced if lux-grid-main assumes 2 cols */}
  </div>
  </div>
- )}
 
  {/* ABSENT STUDENTS MODAL */}
  <AbsentStudentsModal

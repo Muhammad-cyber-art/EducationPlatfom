@@ -88,20 +88,24 @@ def move_student_to_archive(student, archived_by, reason: str = "") -> ArchivedS
     return archived
 
 @transaction.atomic
-def move_student_to_waiting_hall(student, archived_by, reason: str = ""):
+def move_student_to_waiting_hall(student, archived_by, reason: str = "", branch=None):
     """O'quvchini oxirgi guruhidan chiqarganda kutish zaliga o'tkazish"""
     from groups.models import WaitingStudent
     
-    # 1. Arxivga saqlaymiz (To'lovlar va tarix yo'qolmasligi uchun)
+    # 1. Branch ni oldindan olib qo'yamiz (o'chirishdan oldin)
+    # Lazy loading muammosini oldini olish uchun
+    target_branch = branch or student.branch
+
+    # 2. Arxivga saqlaymiz (To'lovlar va tarix yo'qolmasligi uchun)
     # Maxsus prefix qo'shamizki, Arxiv ro'yxatida ko'rinmasin
     hidden_reason = f"[WAITING_HALL] {reason}"
     archived = move_student_to_archive(student, archived_by, hidden_reason)
     
-    # 2. Kutish zalida yangi record ochamiz
+    # 3. Kutish zalida yangi record ochamiz
     waiting = WaitingStudent.objects.create(
         full_name=student.full_name,
         phone=student.phone,
-        branch=student.branch,
+        branch=target_branch,
         notes=f"{reason} | Oldingi ID: {student.id}"
     )
     return waiting, archived
@@ -197,7 +201,7 @@ def move_group_to_archive(group, archived_by, reason: str = "") -> ArchivedGroup
         else:
             # Talaba faqat shu guruhda bo'lsa, uni kutish zaliga o'tkazamiz
             # Bu funksiya ham arxivlaydi, ham kutish zaliga qo'shadi
-            move_student_to_waiting_hall(student, archived_by, f"Guruh arxivlangani uchun: {reason}")
+            move_student_to_waiting_hall(student, archived_by, f"Guruh arxivlangani uchun: {reason}", branch=group.branch)
 
     # 2. DIQQAT: O'quvchilar arxivlangandan keyin ham guruhga bog'langan 
     # qandaydir to'lovlar qolgan bo'lsa (masalan, tizimda adashib qolganlari),

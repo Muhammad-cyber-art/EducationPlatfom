@@ -36,6 +36,29 @@ class Payment(models.Model):
     payer_name = models.CharField(max_length=100, null=True, blank=True)
     payer_phone = models.CharField(max_length=20, null=True, blank=True)
     payer_card_mask = models.CharField(max_length=20, null=True, blank=True)
+    
+    # Yangi: To'lov turi va tasdiqlari
+    PAYMENT_METHODS = [
+        ('cash', 'Naqd'),
+        ('click', 'Click / Card'),
+        ('payme', 'Payme'),
+        ('other', 'Boshqa'),
+    ]
+    payment_method = models.CharField(max_length=10, choices=PAYMENT_METHODS, default='cash')
+    receipt_image = models.ImageField(upload_to='receipts/', null=True, blank=True)
+    is_receiptless = models.BooleanField(default=False, verbose_name="Chek yo'q")
+    notes = models.TextField(blank=True, null=True)
+
+    # Super Admin tasdig'i (Verification)
+    is_verified = models.BooleanField(default=False, verbose_name="Tasdiqlangan")
+    verified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='verified_student_payments'
+    )
+    verified_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         unique_together = ('student', 'group', 'month')
@@ -46,11 +69,15 @@ class Payment(models.Model):
     def __str__(self):
         return f"{self.student.full_name} - {self.group.name} - {self.month.strftime('%B %Y') if self.month else 'No month'}"
 
-    def mark_as_paid(self, admin_user):
+    def mark_as_paid(self, admin_user, method='cash', receipt=None, notes=None, is_receiptless=False):
         if not self.is_paid:
             self.is_paid = True
             self.marked_by = admin_user
             self.paid_at = timezone.now()
+            self.payment_method = method
+            self.is_receiptless = is_receiptless
+            if receipt: self.receipt_image = receipt
+            if notes: self.notes = notes
             self.save()
             
             # ✅ Centralized Finance Ledger ga yozish
@@ -65,7 +92,7 @@ class Payment(models.Model):
                     'marked_by': admin_user,
                     'branch': self.student.branch,
                     'title': f"To'lov: {self.student.full_name}",
-                    'description': f"{self.group.name} guruhi uchun {self.month.strftime('%Y-%m')} oyi to'lovi",
+                    'description': f"{self.group.name} guruhi uchun {self.month.strftime('%Y-%m')} oyi to'lovi. Usul: {self.get_payment_method_display()}. {'(Cheksiz)' if self.is_receiptless else ''} {self.notes or ''}",
                 }
             )
     def save(self, *args, **kwargs):

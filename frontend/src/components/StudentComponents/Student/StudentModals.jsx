@@ -60,6 +60,7 @@ const StudentModals = ({
  isOpen={isTransferModalOpen}
  onClose={() => dispatch({ type:'TOGGLE_TRANSFER_MODAL', payload: false })}
  student={studentData}
+ fromGroup={state.transferFromGroup}
  currentBranchId={studentData?.branch_id}
  api={api}
  onSuccess={() => {

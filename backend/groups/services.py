@@ -31,7 +31,7 @@ def enroll_student_to_group(group, student_id, create_payment=True):
                 base_price = student.custom_fee if student.custom_fee is not None else group.monthly_price
                 final_amount = floor_amount(base_price)
 
-                Payment.objects.get_or_create(
+                p_obj, p_created = Payment.objects.get_or_create(
                     student=student,
                     group=group,
                     month=month_start,
@@ -40,6 +40,9 @@ def enroll_student_to_group(group, student_id, create_payment=True):
                         'is_paid': False
                     }
                 )
+                if not p_created and not p_obj.is_paid:
+                    p_obj.amount = final_amount
+                    p_obj.save()
             return enrollment, True
         return enrollment, False
 
@@ -54,14 +57,30 @@ def unenroll_student_from_group(group, student_id, request_user):
     with transaction.atomic():
         enrollment.delete()
         
-        remaining_groups = student.groups.all()
-        if remaining_groups.count() == 0:
+        # QuerySet keshlanib qolmasligi uchun bevosita DB dan tekshiramiz
+        has_other_groups = GroupEnrollment.objects.filter(student=student).exists()
+        
+        if not has_other_groups:
+            # Oxirgi guruhi bo'lsa - Arxivga o'tkazamiz va Waiting Hall ga qo'shamiz
             from archivebase.services import move_student_to_waiting_hall
-            move_student_to_waiting_hall(student, request_user, reason=f"{group.name} guruhidan chiqarildi")
+            move_student_to_waiting_hall(student, request_user, reason=f"{group.name} guruhidan chiqarildi", branch=group.branch)
             return "waiting_hall"
         else:
-            if student.group == group:
-                student.group = remaining_groups.first()
+            # Boshqa guruhlari bo'lsa ham, ushbu filial kutish zaliga nusxa qo'shamiz (User talabi)
+            from groups.models import WaitingStudent
+            WaitingStudent.objects.create(
+                full_name=student.full_name,
+                phone=student.phone,
+                branch=group.branch,
+                notes=f"{group.name} guruhidan chiqarildi | Tizimda boshqa guruhlarda faol"
+            )
+            
+            # Legacy fieldlarni va branchni qolgan guruhlardan biriga yangilaymiz
+            next_enrollment = GroupEnrollment.objects.filter(student=student).first()
+            if next_enrollment:
+                student.group = next_enrollment.group
+                # Branchni ham qolgan guruhga moslaymiz
+                student.branch = next_enrollment.group.branch
                 student.save()
             return "active_elsewhere"
 
@@ -104,28 +123,37 @@ def transfer_student_to_group(student, new_group_id, request_user, reason, from_
             month=current_month_start
         ).first()
 
+        existing_new = Payment.objects.filter(
+            student=student, group=new_group, month=current_month_start
+        ).first()
+
         if old_payment:
-            existing_new = Payment.objects.filter(
-                student=student, group=new_group, month=current_month_start
-            ).first()
             if not existing_new:
                 old_payment.group = new_group
                 if not old_payment.is_paid:
                     old_payment.amount = new_group_fee
                 old_payment.save()
             else:
+                # Yangi guruh uchun to'lov mavjud bo'lsa
                 if old_payment.is_paid and not existing_new.is_paid:
                     existing_new.is_paid = True
                     existing_new.amount = old_payment.amount
-                    existing_new.save()
+                elif not existing_new.is_paid:
+                    # Agar to'lanmagan bo'lsa, narxni yangilab qo'yamiz (Senior Fix)
+                    existing_new.amount = new_group_fee
+                
+                existing_new.save()
                 old_payment.delete()
         else:
-            Payment.objects.get_or_create(
+            p_obj, p_created = Payment.objects.get_or_create(
                 student=student,
                 group=new_group,
                 month=current_month_start,
                 defaults={'amount': new_group_fee, 'is_paid': False}
             )
+            if not p_created and not p_obj.is_paid:
+                p_obj.amount = new_group_fee
+                p_obj.save()
 
         # 3. Transfer log
         GroupTransfer.objects.create(
@@ -198,25 +226,40 @@ def assign_waiting_student_to_group(waiting_student, group_id, request_user):
         from archivebase.models import ArchivedStudent
         from archivebase.services import restore_student_from_archive
         
-        # Arxivdan tekshirish
-        archived = ArchivedStudent.objects.filter(
+        # 1. Avval faol o'quvchilar orasidan qidiramiz (Dublikatni oldini olish uchun)
+        student = Student.objects.filter(
             full_name=waiting_student.full_name,
-            metadata__phone=waiting_student.phone
-        ).order_by('-archived_at').first()
+            phone=waiting_student.phone
+        ).first()
 
-        if archived:
-            student = restore_student_from_archive(archived.id, request_user)
-            student.group = group
-            student.save()
-            archived.delete()
+        if student:
+            # O'quvchi allaqachon mavjud bo'lsa, uning guruhini yangilab qo'yamiz (agar bo'sh bo'lsa)
+            if not student.group:
+                student.group = group
+                student.branch = group.branch
+                student.save()
         else:
-            student = Student.objects.create(
-                branch=group.branch,
-                group=group,
+            # 2. Arxivdan qidiramiz
+            archived = ArchivedStudent.objects.filter(
                 full_name=waiting_student.full_name,
-                phone=waiting_student.phone,
-                notes=waiting_student.notes
-            )
+                metadata__phone=waiting_student.phone
+            ).order_by('-archived_at').first()
+
+            if archived:
+                student = restore_student_from_archive(archived.id, request_user)
+                student.group = group
+                student.branch = group.branch
+                student.save()
+                archived.delete()
+            else:
+                # 3. Mutlaqo yangi o'quvchi
+                student = Student.objects.create(
+                    branch=group.branch,
+                    group=group,
+                    full_name=waiting_student.full_name,
+                    phone=waiting_student.phone,
+                    notes=waiting_student.notes
+                )
         
         # Many-to-Many link
         GroupEnrollment.objects.get_or_create(student=student, group=group)

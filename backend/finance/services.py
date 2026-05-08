@@ -300,7 +300,14 @@ def confirm_student_payment(request_user, payment, data):
             payment.amount = floor_amount(current_amount - Decimal(str(refund)))
     
     payment.save()
-    payment.mark_as_paid(request_user)
+    
+    # Yangi maydonlarni extract qilamiz
+    method = data.get('payment_method', 'cash')
+    receipt = data.get('receipt_image')
+    notes = data.get('notes')
+    is_receiptless = str(data.get('is_receiptless', False)).lower() in ['true', '1', 'yes']
+    
+    payment.mark_as_paid(request_user, method=method, receipt=receipt, notes=notes, is_receiptless=is_receiptless)
     
     # Mentor oyligini qayta hisoblash
     try:

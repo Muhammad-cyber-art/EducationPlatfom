@@ -100,16 +100,23 @@ const AllPayments = () => {
  <p className="text-[9px] text-[var(--text-muted)] font-bold capitalize tracking-wider">Platformaning moliyaviy integratsiyasi</p>
  </div>
  </div>
- <div className="flex items-center gap-3">
- <button
- onClick={handleDownloadMonthlyReport}
- disabled={isDownloading}
- className="flex items-center gap-2 h-10 px-6 bg-[var(--gold)] text-black rounded-xl font-bold text-[10px] capitalize tracking-wider transition-opacity hover:opacity-90 active:scale-95 disabled:opacity-50"
- >
- {isDownloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
- <span>Hisobotni Yuklash</span>
- </button>
- </div>
+    <div className="flex items-center gap-3">
+      <button
+        onClick={() => navigate('kassa')}
+        className="flex items-center gap-2 h-10 px-6 bg-[var(--bg-void)] border border-[var(--gold)]/30 text-[var(--gold)] rounded-xl font-bold text-[10px] capitalize tracking-wider transition-all hover:bg-[var(--gold)] hover:text-black active:scale-95 shadow-[0_5px_15px_rgba(184,134,11,0.1)]"
+      >
+        <Wallet size={16} />
+        <span>Kassa Tizimi</span>
+      </button>
+      <button
+        onClick={handleDownloadMonthlyReport}
+        disabled={isDownloading}
+        className="flex items-center gap-2 h-10 px-6 bg-[var(--gold)] text-black rounded-xl font-bold text-[10px] capitalize tracking-wider transition-opacity hover:opacity-90 active:scale-95 disabled:opacity-50"
+      >
+        {isDownloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+        <span>Hisobotni Yuklash</span>
+      </button>
+    </div>
  </div>
 
  {/* PRIMARY INTELLIGENCE CARD */}

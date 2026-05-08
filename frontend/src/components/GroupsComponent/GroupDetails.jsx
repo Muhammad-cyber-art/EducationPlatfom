@@ -36,7 +36,6 @@ const initialUIState = {
   isViewAllModalOpen: false,
   activeAddMentor: null,
   selectedDate: new Date().toLocaleDateString('sv-SE'),
-  availableDates: [],
   markedStudents: JSON.parse(localStorage.getItem('marked_students') || '{}'),
   studentSearch: ""
 };
@@ -55,6 +54,14 @@ function uiReducer(state, action) {
       else newMarked[action.payload] = true;
       localStorage.setItem('marked_students', JSON.stringify(newMarked));
       return { ...state, markedStudents: newMarked };
+    case "CLEAR_MARKS":
+      localStorage.removeItem('marked_students');
+      return { ...state, markedStudents: {} };
+    case "SELECT_ALL_MARKS":
+      const allMarked = {};
+      action.payload.forEach(s => { allMarked[s.id] = true; });
+      localStorage.setItem('marked_students', JSON.stringify(allMarked));
+      return { ...state, markedStudents: allMarked };
     default:
       return state;
   }
@@ -74,7 +81,7 @@ export default function GroupDetailPage() {
 
   const {
     isHomeworkModalOpen, isMockTestModalOpen, isAddMentorModalOpen, isViewAllModalOpen,
-    isStorageOpen, isEditing, editData, showMenu, selectedDate, availableDates, studentSearch
+    isStorageOpen, isEditing, editData, showMenu, selectedDate, studentSearch
   } = uiState;
 
   // Data & Permissions
@@ -133,8 +140,12 @@ export default function GroupDetailPage() {
   };
 
   const { data: mentorsRaw } = useQuery({
-    queryKey: ['mentors-list-simple'],
-    queryFn: () => api.get(`/groups/mentors/`).then(res => res.data),
+    queryKey: ['mentors-list-simple', groupinfo?.branch?.id || groupinfo?.branch_id],
+    queryFn: () => {
+      const b_id = groupinfo?.branch?.id || groupinfo?.branch_id;
+      return api.get(`/groups/mentors/${b_id ? `?branch_id=${b_id}` : ''}`).then(res => res.data);
+    },
+    enabled: !!groupinfo?.id,
     staleTime: 1000 * 60 * 10,
   });
   const mentors = mentorsRaw?.results || mentorsRaw || [];
@@ -153,19 +164,15 @@ export default function GroupDetailPage() {
   });
   const mockTests = mockTestsRaw?.results || mockTestsRaw || [];
 
-  useEffect(() => {
-    if (lessonDates) {
-      let dates = [...lessonDates];
-      // Bugungi sana dars kunlari ro'yxatida bo'lmasa, uni qo'shib qo'yamiz (istalgan kunda davomat qilish uchun)
-      if (!dates.includes(todayStr)) {
-        dates = [todayStr, ...dates].sort((a, b) => b.localeCompare(a));
-      }
-
-      uiDispatch({ type: "SET_FIELD", field: "availableDates", value: dates });
-      // Bugungi sanani tanlaymiz (agar u mavjud bo'lsa)
-      uiDispatch({ type: "SET_FIELD", field: "selectedDate", value: todayStr });
+  const availableDates = useMemo(() => {
+    if (!lessonDates) return [todayStr];
+    let dates = [...lessonDates];
+    // Bugungi sana dars kunlari ro'yxatida bo'lmasa, uni qo'shib qo'yamiz
+    if (!dates.includes(todayStr)) {
+      dates = [todayStr, ...dates].sort((a, b) => b.localeCompare(a));
     }
-  }, [lessonDates]);
+    return dates;
+  }, [lessonDates, todayStr]);
 
 
 
@@ -236,7 +243,15 @@ export default function GroupDetailPage() {
       )}
       {isHomeworkModalOpen && <HomeworkModal isOpen={true} onClose={() => uiDispatch({ type: "SET_FIELD", field: "isHomeworkModalOpen", value: false })} groupId={group_id} />}
       {isMockTestModalOpen && <AddMockTestModal isOpen={true} onClose={() => uiDispatch({ type: "SET_FIELD", field: "isMockTestModalOpen", value: false })} groupId={group_id} />}
-      {isAddMentorModalOpen && <AddMentorModal isOpen={true} onClose={() => uiDispatch({ type: "SET_FIELD", field: "isAddMentorModalOpen", value: false })} groupId={group_id} currentMentors={groupinfo.additional_mentors || []} />}
+      {isAddMentorModalOpen && (
+        <AddMentorModal 
+          isOpen={true} 
+          onClose={() => uiDispatch({ type: "SET_FIELD", field: "isAddMentorModalOpen", value: false })} 
+          groupId={group_id} 
+          branchId={groupinfo?.branch?.id || groupinfo?.branch_id}
+          currentMentors={groupinfo.additional_mentors || []} 
+        />
+      )}
       {isStorageOpen && <HomeworkStorageModal isOpen={true} onClose={() => uiDispatch({ type: "SET_FIELD", field: "isStorageOpen", value: false })} groupId={group_id} />}
 
       <ResourcesModal

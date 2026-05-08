@@ -6,7 +6,7 @@ import { useQueryClient } from"@tanstack/react-query";
 import toast from"react-hot-toast";
 import { safeArray } from"../../utils/safeArray";
 
-export default function AddMentorModal({ groupId, isOpen, onClose, currentMentors = [] }) {
+export default function AddMentorModal({ groupId, branchId, isOpen, onClose, currentMentors = [] }) {
  const [mentors, setMentors] = useState([]);
  const [loading, setLoading] = useState(false);
  const [submitting, setSubmitting] = useState(null); // Qaysi mentor qo'shilayotganini saqlaydi
@@ -18,7 +18,8 @@ export default function AddMentorModal({ groupId, isOpen, onClose, currentMentor
  useEffect(() => {
  if (isOpen) {
  setLoading(true);
- api.get("/groups/mentors/")
+  const url = branchId ? `/groups/mentors/?branch_id=${branchId}` : "/groups/mentors/";
+  api.get(url)
  .then((res) => {
  // Allaqachon guruhda bor mentorlarni filtrlab tashlash
  const currentIds = currentMentors.map(m => m.mentor || m.id);

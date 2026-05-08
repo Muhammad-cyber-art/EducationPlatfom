@@ -45,7 +45,7 @@ class GroupSimpleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Group
-        fields = ('id', 'name', 'is_faol', 'computed_status', 'color', 'subject','mentor','monthly_price','days','dars_kunlari','dars_vaqti','students_count','branch', 'today_attendance_confirmed', 'present_count', 'absent_count')
+        fields = ('id', 'name', 'group_type', 'is_faol', 'computed_status', 'color', 'subject','mentor','monthly_price','days','dars_kunlari','dars_vaqti','students_count','branch', 'today_attendance_confirmed', 'present_count', 'absent_count')
 
     def get_today_attendance_confirmed(self, obj):
         from homework_attends.models import Attendance
@@ -160,7 +160,38 @@ class StudentSerializer(serializers.ModelSerializer):
                     attrs['custom_fee'] = 0
         return attrs
 
-    
+    def update(self, instance, validated_data):
+        from finance.utils import floor_amount
+        from finance.models import Payment
+        from django.db import transaction
+
+        old_group = instance.group
+        new_group = validated_data.get('group', old_group)
+        
+        with transaction.atomic():
+            instance = super().update(instance, validated_data)
+            
+            # Agar guruh yoki custom_fee o'zgargan bo'lsa, joriy oy to'lovini yangilash
+            # Eslatma: transfer-group action'i services.py orqali ishlaydi, 
+            # bu yerda esa Profile edit dagi o'zgarishlarni ushlaymiz.
+            if new_group:
+                today = timezone.now().date()
+                month_start = today.replace(day=1)
+                
+                # Joriy oy uchun to'lovni qidiramiz
+                payment = Payment.objects.filter(
+                    student=instance,
+                    group=new_group,
+                    month=month_start
+                ).first()
+                
+                if payment and not payment.is_paid:
+                    base_price = instance.custom_fee if instance.custom_fee is not None else new_group.monthly_price
+                    payment.amount = floor_amount(base_price)
+                    payment.save()
+            
+        return instance
+
     def create(self, validated_data):
         from django.db import transaction
         from .models import GroupEnrollment
@@ -172,7 +203,13 @@ class StudentSerializer(serializers.ModelSerializer):
         create_payment = validated_data.pop('create_payment', True)
         
         # 1. Branch aniqlash
-        branch = validated_data.get('branch')
+        branch_id = validated_data.pop('branch_id', None)
+        branch = None
+        
+        if branch_id:
+            from branches.models import Branch
+            branch = Branch.objects.filter(id=branch_id).first()
+            
         if not branch:
             if group:
                 branch = group.branch
@@ -227,6 +264,7 @@ class GroupShortSerializer(serializers.ModelSerializer):
         fields = (
             'id', 
             'name', 
+            'group_type',
             'subject', 
             'days',
             'dars_kunlari', 
@@ -319,7 +357,7 @@ class GroupNestedSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Group
-        fields = ('id', 'name', 'subject','monthly_price', 'days', 'mentor', 'admin', 'is_faol')
+        fields = ('id', 'name', 'group_type', 'subject','monthly_price', 'days', 'mentor', 'admin', 'is_faol')
 
 class StudentNestedSerializer(serializers.ModelSerializer):
     group = GroupNestedSerializer(read_only=True)
@@ -360,7 +398,7 @@ class GroupSerializer(serializers.ModelSerializer):
     class Meta:
         model = Group
         fields = (
-            'id', 'name', 'monthly_price', 'branch', 'branch_id', 'days',
+            'id', 'name', 'group_type', 'monthly_price', 'branch', 'branch_id', 'days',
             'dars_kunlari', 'dars_vaqti', 'subject',
             'mentor', 'mentor_id', 'color',
             'admin', 'start_date', 'computed_status',
@@ -404,6 +442,10 @@ class GroupSerializer(serializers.ModelSerializer):
         result = []
         for student in students_qs:
             payment_info = payment_map.get(student.id)
+            # Enrollment sanasini olish
+            enrollment = student.enrollments.filter(group=obj).first()
+            joined_at = enrollment.joined_at if enrollment else student.joined_at
+
             result.append({
                 'id': student.id,
                 'full_name': student.full_name,
@@ -417,6 +459,7 @@ class GroupSerializer(serializers.ModelSerializer):
                 'parent_telegram_id': student.parent_telegram_id,
                 'current_payment_status': payment_info['is_paid'] if payment_info else False,
                 'current_payment_id': payment_info['id'] if payment_info else None,
+                'joined_at': joined_at,
             })
         return result
 
@@ -631,7 +674,7 @@ class StudentGroupListSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'full_name', 'phone', 'image', 'color', 
             'status', 'telegram_id', 'parent_telegram_id',
-            'current_payment_status', 'current_payment_id'
+            'current_payment_status', 'current_payment_id', 'joined_at'
         )
 
     def get_current_payment_status(self, obj):
@@ -643,4 +686,10 @@ class StudentGroupListSerializer(serializers.ModelSerializer):
         payment_map = self.context.get('payment_map', {})
         payment_info = payment_map.get(obj.id)
         return payment_info['id'] if payment_info else None
+
+    joined_at = serializers.SerializerMethodField()
+
+    def get_joined_at(self, obj):
+        enrollment_map = self.context.get('enrollment_map', {})
+        return enrollment_map.get(obj.id)
 

@@ -39,7 +39,8 @@ import StaffPaymentsLayout from"../components/SuperAdmin/Finance/StaffPaymentsLa
 import StaffPayments from"../components/SuperAdmin/Finance/StaffPayments";
 import StaffPaymentDetails from"../components/SuperAdmin/Finance/StaffPaymentDetails";
 import BranchFinance from"../components/SuperAdmin/Finance/BranchDetails";
-import UtilityPayments from"../components/SuperAdmin/Finance/UtilityPayments";
+import UtilityPayments from "../components/SuperAdmin/Finance/UtilityPayments";
+import Kassa from "../components/SuperAdmin/Finance/Kassa";
 
 export const SuperAdminRoutes = (
  <Route path="/super_admin" element={<SuperAdminLayout />}>
@@ -53,6 +54,7 @@ export const SuperAdminRoutes = (
  <Route path="staff/:staff_id" element={<StaffPaymentDetails />} />
  </Route>
  <Route path="utility-payments" element={<UtilityPayments />} />
+ <Route path="kassa" element={<Kassa />} />
  <Route path="branch-details/:b_id" element={<BranchFinance />} />
  </Route>
 

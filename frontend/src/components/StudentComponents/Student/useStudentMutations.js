@@ -27,10 +27,17 @@ export const useStudentMutations = (student_id, dispatch, navigate) => {
  });
 
  const paymentMutation = useMutation({
- mutationFn: async ({ id, amount, ignore_refund }) => {
- const payload = amount ? { amount } : {};
- if (ignore_refund !== undefined) payload.ignore_refund = ignore_refund;
- return await api.post(`/finance/student-payments/${id}/confirm/`, payload);
+  mutationFn: async ({ id, amount, ignore_refund, payment_method, receipt_image, notes, is_receiptless }) => {
+    const formData = new FormData();
+    if (amount) formData.append('amount', amount);
+    if (ignore_refund !== undefined) formData.append('ignore_refund', ignore_refund);
+    if (payment_method) formData.append('payment_method', payment_method);
+    if (receipt_image) formData.append('receipt_image', receipt_image);
+    if (notes) formData.append('notes', notes);
+    if (is_receiptless !== undefined) formData.append('is_receiptless', is_receiptless);
+    return await api.post(`/finance/student-payments/${id}/confirm/`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
  },
  onSuccess: () => {
  queryClient.invalidateQueries(['payments-all']);

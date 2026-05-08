@@ -24,7 +24,8 @@ class PaymentSerializer(serializers.ModelSerializer):
             'id', 'student', 'student_name', 'group', 'group_name', 
             'month', 'amount', 'is_paid', 'paid_at', 'marked_by',
             'lessons_count', 'daily_price', 'absences_count', 'refund_amount',
-            'refund_ignored'
+            'refund_ignored', 'payment_method', 'receipt_image', 'is_receiptless', 'notes',
+            'is_verified', 'verified_by', 'verified_at'
         ]
 
     def get_lessons_count(self, obj):

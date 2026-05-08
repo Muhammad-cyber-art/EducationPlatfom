@@ -64,12 +64,12 @@ export default function GroupsStudent({
     }
 
     try {
-      const payload = { 
+      const payload = {
         is_present: nextStatus,
         student_id: studentId,
         date: selectedDate
       };
-      
+
       if (attendanceId) {
         payload.id = attendanceId;
       }
@@ -80,9 +80,9 @@ export default function GroupsStudent({
       } else if (nextStatus !== undefined) {
         await api.post(`/homework_attends/attendances/?group_id=${groupId}`, payload);
       }
-      
+
       if (onAttendanceChange) onAttendanceChange();
-      
+
       const msg = nextStatus === true ? "Keldi" : nextStatus === false ? "Kelmagan" : "O'chirildi";
       toast.success(msg, { id: 'attend-success' });
     } catch (error) {
@@ -94,11 +94,12 @@ export default function GroupsStudent({
     <>
       {students.map((item, index) => {
         const studentAttendance = attendanceData?.find(a => Number(a.student_id) === Number(item.id));
-        
-        // Default state logic:
-        // If it's a lesson day (scheduled or special), default is true (Green)
-        // If it's not a lesson day, default is undefined (Yellow / ?)
-        const defaultState = isLessonDay ? true : undefined;
+
+        // Senior Fix: O'quvchi guruhga qo'shilgan sanadan oldingi darslarni ko'rsatmaslik
+        const joinDateStr = item.joined_at ? item.joined_at.split('T')[0] : null;
+        const isJoinedLater = joinDateStr && selectedDate < joinDateStr;
+
+        const defaultState = (isLessonDay && !isJoinedLater) ? true : undefined;
 
         let isPresent;
         if (item.id in localOverrides) {
