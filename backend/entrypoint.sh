@@ -1,4 +1,5 @@
 #!/bin/sh
+set -e
 
 # Database tayyor bo'lishini kutish
 if [ "$DB_ENGINE" = "postgresql" ]; then

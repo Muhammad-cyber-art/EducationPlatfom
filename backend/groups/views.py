@@ -61,23 +61,28 @@ class GroupViewSet(viewsets.ModelViewSet):
         return GroupSerializer
 
     def get_queryset(self):
-        user = self.request.user
-        qs = super().get_queryset()
-        branch_id = self.request.query_params.get('branch_id')
+        try:
+            user = self.request.user
+            qs = super().get_queryset()
+            branch_id = self.request.query_params.get('branch_id')
 
-        if user.role == 'super_admin':
-            return qs.filter(branch_id=branch_id) if branch_id else qs
-        
-        if user.role == 'admin':
-            allowed = [user.branch.id] if user.branch else []
-            allowed.extend(user.branch_accesses.values_list('branch_id', flat=True))
-            qs = qs.filter(branch_id__in=allowed)
-            return qs.filter(branch_id=branch_id) if branch_id else qs
-        
-        if user.role == 'mentor':
-            return qs.filter(Q(mentor=user) | Q(additional_mentors__mentor=user)).distinct()
-        
-        return Group.objects.none()
+            if user.role == 'super_admin':
+                return qs.filter(branch_id=branch_id) if branch_id else qs
+
+            if user.role == 'admin':
+                allowed = [user.branch.id] if user.branch else []
+                if hasattr(user, 'branch_accesses'):
+                    allowed.extend(user.branch_accesses.values_list('branch_id', flat=True))
+                qs = qs.filter(branch_id__in=allowed)
+                return qs.filter(branch_id=branch_id) if branch_id else qs
+
+            if user.role == 'mentor':
+                return qs.filter(Q(mentor=user) | Q(additional_mentors__mentor=user)).distinct()
+
+            return Group.objects.none()
+        except Exception:
+            logger.exception("Group queryset error")
+            return Group.objects.none()
 
     def list(self, request, *args, **kwargs):
         """

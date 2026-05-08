@@ -351,7 +351,25 @@ class FinanceDashboardView(APIView):
             return Response({"error": str(e)}, status=400)
         except Exception as e:
             logger.exception("Dashboard error")
-            return Response({"error": "Dashboard ma'lumotlarini olishda xatolik yuz berdi"}, status=500)
+            return Response({
+                "total_income": 0.0,
+                "total_expense": 0.0,
+                "net_profit": 0.0,
+                "total_debt": 0.0,
+                "income_trend": 0.0,
+                "expense_trend": 0.0,
+                "profit_trend": 0.0,
+                "branches": [],
+                "top_groups": [],
+                "stats": {
+                    "students": 0,
+                    "mentors": 0,
+                    "groups": 0,
+                    "admins": 0,
+                    "attendance_today": {"absent": 0, "total": 0}
+                },
+                "warning": "Dashboard ma'lumotlari vaqtincha to'liq emas"
+            }, status=200)
 
 class BranchFinanceDetailView(APIView):
     """Filial bo'yicha batafsil moliya"""
