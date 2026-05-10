@@ -29,28 +29,58 @@ const Kassa = () => {
         branch: "",
         method: "",
         search: "",
-        date: new Date().toISOString().split('T')[0]
+        date: "" // Bo'sh bo'lsa - joriy oy (User talabi: bir oylik ma'lumot)
     });
 
     const fetchKassaData = async () => {
         try {
             setLoading(true);
+            
+            let date_gte = undefined;
+            let date_lte = undefined;
+
+            if (filters.date) {
+                // Tanlangan sana bo'yicha (faqat shu kun)
+                date_gte = filters.date;
+                date_lte = filters.date;
+            } else {
+                // Tanlangan sana yo'q bo'lsa - joriy oy (User talabi: bir oylik ma'lumot)
+                const now = new Date();
+                const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+                const end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+                date_gte = start;
+                date_lte = end;
+            }
+
             const params = {
                 is_paid: true,
                 payment_method: filters.method || undefined,
                 search: filters.search || undefined,
-                paid_at__date: filters.date || undefined,
                 student__branch: filters.branch || undefined
             };
+
+            if (filters.date) {
+                params.paid_at__date = filters.date;
+            } else {
+                params.paid_at__date__gte = date_gte;
+                params.paid_at__date__lte = date_lte;
+            }
 
             const payRes = await api.get("/finance/student-payments/", { params });
             setPayments(payRes.data.results || payRes.data);
 
             const transParams = {
                 transaction_type: 'expense',
-                date: filters.date || undefined,
                 branch: filters.branch || undefined
             };
+
+            if (filters.date) {
+                transParams.date = filters.date;
+            } else {
+                transParams.date__gte = date_gte;
+                transParams.date__lte = date_lte;
+            }
+
             const transRes = await api.get("/finance/transactions/", { params: transParams });
             setWithdrawals((transRes.data.results || transRes.data).filter(t => t.category === 'owner_withdrawal' || t.category === 'other'));
 
@@ -136,7 +166,8 @@ const Kassa = () => {
     const totalWithdrawn = withdrawals.reduce((sum, w) => sum + Number(w.amount), 0);
 
     return (
-        <div className="space-y-8 animate-lux-fade pb-10 relative">
+        <>
+            <div className="space-y-8 animate-lux-fade pb-10 relative">
             <div className="fixed inset-0 pointer-events-none -z-10">
                 <div className="absolute top-0 right-1/4 w-[500px] h-[500px] bg-[var(--gold)]/5 rounded-full blur-[120px]"></div>
             </div>
@@ -258,13 +289,20 @@ const Kassa = () => {
 
                     {(filters.search || filters.branch || filters.method) && (
                         <button 
-                            onClick={() => setFilters({ branch: "", method: "", search: "", date: new Date().toISOString().split('T')[0] })}
+                            onClick={() => setFilters({ branch: "", method: "", search: "", date: "" })}
                             className="w-12 h-12 flex items-center justify-center bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-lg"
-                            title="Filtrlarni tozalash"
+                            title="Filtrlarni tozalash (Oyga qaytish)"
                         >
                             <FilterX size={18} />
                         </button>
                     )}
+
+                    <button 
+                        onClick={() => setFilters({ ...filters, date: new Date().toISOString().split('T')[0] })}
+                        className={`px-4 h-12 flex items-center justify-center border rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${filters.date === new Date().toISOString().split('T')[0] ? 'bg-[var(--gold)] text-black border-[var(--gold)]' : 'bg-white/5 text-[var(--gold)] border-[var(--gold)]/20 hover:bg-white/10'}`}
+                    >
+                        Bugun
+                    </button>
                 </div>
             </div>
 
@@ -327,7 +365,15 @@ const Kassa = () => {
                                                     {p.payment_method === 'cash' ? 'Naqd (Cash)' : 'Click / Card'}
                                                 </div>
                                             </td>
-                                            <td className="px-8 py-6 text-base font-black text-white tabular-nums tracking-tight">{formatCurrency(p.amount)}</td>
+                                            <td className="px-8 py-6">
+                                                <div className="text-base font-black text-white tabular-nums tracking-tight">{formatCurrency(p.amount)}</div>
+                                                {p.refund_amount > 0 && !p.refund_ignored && (
+                                                    <div className="mt-1 text-[9px] font-bold text-emerald-400">Refund: -{formatCurrency(p.refund_amount)}</div>
+                                                )}
+                                                {p.refund_amount > 0 && p.refund_ignored && (
+                                                    <div className="mt-1 text-[9px] font-bold text-amber-400">Refund bekor</div>
+                                                )}
+                                            </td>
                                             <td className="px-8 py-6">
                                                 <div className="flex items-center gap-3">
                                                     <div className={`w-8 h-8 rounded-xl flex items-center justify-center border ${p.is_verified ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-white/5 text-[var(--gold)] border-white/10'}`}>
@@ -444,6 +490,12 @@ const Kassa = () => {
                                         <div className="space-y-1">
                                             <p className="text-[8px] text-[var(--text-muted)] font-black uppercase tracking-widest">To'lov summasi</p>
                                             <p className="text-lg font-black text-white tabular-nums">{formatCurrency(item.amount)}</p>
+                                            {item.refund_amount > 0 && !item.refund_ignored && (
+                                                <p className="text-[9px] font-bold text-emerald-400">Refund: -{formatCurrency(item.refund_amount)}</p>
+                                            )}
+                                            {item.refund_amount > 0 && item.refund_ignored && (
+                                                <p className="text-[9px] font-bold text-amber-400">Refund bekor</p>
+                                            )}
                                         </div>
                                         <div className="flex gap-2">
                                             {get_user_info()?.role === 'super_admin' && !item.is_verified && (
@@ -487,10 +539,11 @@ const Kassa = () => {
                     ))}
                 </div>
             </div>
+            </div> {/* Closing space-y-8 animate-lux-fade */}
 
             {/* PRO WITHDRAW MODAL (ADVANCED PROTOCOL) */}
             {showWithdrawModal && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setShowWithdrawModal(false)}></div>
                     <form 
                         onSubmit={handleWithdraw} 
@@ -620,7 +673,7 @@ const Kassa = () => {
 
             {/* DETAIL MODAL */}
             {showDetailModal && selectedPayment && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowDetailModal(false)}></div>
                     <div className="relative w-full max-w-lg bg-[var(--bg-void)] border border-[var(--border-glass)] rounded-[2.5rem] shadow-2xl overflow-hidden animate-lux-pop">
                         <div className="p-8 border-b border-[var(--border-glass)] flex items-center justify-between bg-gradient-to-r from-[var(--gold)]/10 to-transparent">
@@ -634,8 +687,31 @@ const Kassa = () => {
                             <div className="grid grid-cols-2 gap-6 font-bold text-sm">
                                 <div><p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">O'quvchi</p>{selectedPayment.student_name}</div>
                                 <div className="text-right"><p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">Guruh</p><span className="text-[var(--gold)]">{selectedPayment.group_name}</span></div>
-                                <div><p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">Summa</p>{formatCurrency(selectedPayment.amount)}</div>
+                                <div><p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">To'langan Summa</p>{formatCurrency(selectedPayment.amount)}</div>
                                 <div className="text-right"><p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">Metod</p>{selectedPayment.payment_method}</div>
+                                {/* Refund ma'lumoti */}
+                                {selectedPayment.refund_amount > 0 && !selectedPayment.refund_ignored && (
+                                    <>
+                                        <div className="col-span-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                                            <div className="flex justify-between items-center">
+                                                <div>
+                                                    <p className="text-[9px] text-emerald-400 uppercase tracking-widest mb-1">Refund (Qaytarilgan)</p>
+                                                    <p className="text-lg font-black text-emerald-400">-{formatCurrency(selectedPayment.refund_amount)}</p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">Oylik to'lov</p>
+                                                    <p className="text-sm font-bold text-white">{formatCurrency(Number(selectedPayment.amount) + Number(selectedPayment.refund_amount))}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                                {selectedPayment.refund_amount > 0 && selectedPayment.refund_ignored && (
+                                    <div className="col-span-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+                                        <p className="text-[9px] text-amber-400 uppercase tracking-widest mb-1">Refund Status</p>
+                                        <p className="text-sm font-black text-amber-400">Refund bekor qilingan (Hisoblanmadi)</p>
+                                    </div>
+                                )}
                             </div>
                             {selectedPayment.notes && <div className="p-4 bg-white/5 rounded-xl text-xs italic text-gray-400">"{selectedPayment.notes}"</div>}
                         </div>
@@ -648,7 +724,7 @@ const Kassa = () => {
                     </div>
                 </div>
             )}
-        </div>
+        </>
     );
 };
 

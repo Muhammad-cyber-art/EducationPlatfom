@@ -28,7 +28,7 @@ const BranchPattern = () => {
  refetchOnWindowFocus: false,
  });
 
- const branches = branchesData || [];
+ const branches = Array.isArray(branchesData) ? branchesData : [];
  const activeBranch = branches.find(b => b.id === activeBranchId);
 
  useEffect(() => {

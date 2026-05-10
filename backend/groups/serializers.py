@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from decimal import Decimal
 from .models import Group, Student ,MentorGroupAssignment, WaitingStudent
 from django.contrib.auth import get_user_model
 from branches.serializers import BranchSerializer
@@ -196,7 +197,14 @@ class StudentSerializer(serializers.ModelSerializer):
                 ).first()
                 
                 if payment and not payment.is_paid:
-                    base_price = instance.custom_fee if instance.custom_fee is not None else new_group.monthly_price
+                    # User talabi: Advanced guruhda negotiated statusi o'tmaydi
+                    if new_group.group_type == 'advanced' and instance.status == 'negotiated':
+                        base_price = new_group.monthly_price
+                    elif instance.status in ['low_income', 'negotiated']:
+                        base_price = instance.custom_fee if instance.custom_fee is not None else Decimal('0')
+                    else:
+                        base_price = new_group.monthly_price
+                        
                     payment.amount = floor_amount(base_price)
                     payment.save()
             
@@ -248,7 +256,14 @@ class StudentSerializer(serializers.ModelSerializer):
                 if create_payment:
                     today = timezone.now().date()
                     month_start = today.replace(day=1)
-                    base_price = student.custom_fee if student.custom_fee is not None else group.monthly_price
+                    # User talabi: Advanced guruhda negotiated statusi o'tmaydi
+                    if group.group_type == 'advanced' and student.status == 'negotiated':
+                        base_price = group.monthly_price
+                    elif student.status in ['low_income', 'negotiated']:
+                        base_price = student.custom_fee if student.custom_fee is not None else Decimal('0')
+                    else:
+                        base_price = group.monthly_price
+                    
                     final_amount = floor_amount(base_price)
 
                     Payment.objects.get_or_create(

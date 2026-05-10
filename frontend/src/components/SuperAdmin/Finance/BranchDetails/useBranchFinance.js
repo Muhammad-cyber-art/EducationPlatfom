@@ -9,10 +9,32 @@ export const useBranchFinance = () => {
  const [data, setData] = useState(null);
  const [error, setError] = useState(null);
 
+ const today = new Date();
+ const [selectedYear, setSelectedYear] = useState(today.getFullYear());
+ const [selectedMonth, setSelectedMonth] = useState(today.getMonth() + 1);
+
+ const formatMonthLabel = (year, month) =>
+ `${year}-${String(month).padStart(2,'0')}`;
+
+ const goPrevMonth = () => {
+ const d = new Date(selectedYear, selectedMonth - 1, 1);
+ d.setMonth(d.getMonth() - 1);
+ setSelectedYear(d.getFullYear());
+ setSelectedMonth(d.getMonth() + 1);
+ };
+
+ const goCurrentMonth = () => {
+ const now = new Date();
+ setSelectedYear(now.getFullYear());
+ setSelectedMonth(now.getMonth() + 1);
+ };
+
  const fetchBranchFinance = async () => {
  try {
  setLoading(true);
- const response = await api.get(`/finance/statistics/branch-finance/${b_id}/`);
+ const response = await api.get(`/finance/statistics/branch-finance/${b_id}/`, {
+ params: { year: selectedYear, month: selectedMonth }
+ });
  setData(response.data);
  setError(null);
  } catch (err) {
@@ -25,7 +47,7 @@ export const useBranchFinance = () => {
 
  useEffect(() => {
  fetchBranchFinance();
- }, [b_id]);
+ }, [b_id, selectedYear, selectedMonth]);
 
  const formatNumber = (num) => {
  if (!num) return'0';
@@ -46,6 +68,13 @@ export const useBranchFinance = () => {
  stats: data?.stats,
  finance: data?.finance,
  branch: data?.branch,
- groups: data?.groups
+ groups: data?.groups,
+ selectedYear,
+ selectedMonth,
+ setSelectedYear,
+ setSelectedMonth,
+ goPrevMonth,
+ goCurrentMonth,
+ formatMonthLabel,
  };
 };

@@ -1,3 +1,5 @@
+import calendar
+from datetime import date
 from django.utils import timezone
 from django.db import transaction
 from django.db.models import Sum, Q, F, Count
@@ -13,6 +15,15 @@ import logging
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
+
+
+def apply_calculated_salary_to_employee_payment(profile, month_date, emp_payment):
+    """
+    StaffProfile.calculate_salary_for_month natijasini EmployeePayment ga yozadi.
+    """
+    salary = profile.calculate_salary_for_month(month_date)
+    emp_payment.salary_base = salary
+    emp_payment.attendance_deductions = {}
 
 
 def _to_decimal(value):
@@ -85,12 +96,15 @@ def generate_monthly_payments(month_date=None):
     active_groups = [g for g in Group.objects.filter(is_faol=True).prefetch_related('students') if g.is_logic_enabled()]
     for group in active_groups:
         for student in group.students.all():
-            # Yangi mantiq: Status bo'yicha narxni aniqlash
+            # Yangi mantiq: Status va Guruh turi bo'yicha narxni aniqlash
             if student.status == 'discount':
-                # Imtiyozli o'quvchilar uchun 0
+                # Imtiyozli o'quvchilar har doim 0 (ikki toifada ham)
                 raw_amount = Decimal('0')
+            elif student.status == 'negotiated' and group.group_type == 'advanced':
+                # User talabi: Advanced guruhda kelishilgan narx statusi o'tmaydi -> to'liq narx
+                raw_amount = group.monthly_price
             elif student.status in ['low_income', 'negotiated']:
-                # Kam ta'minlangan yoki kelishilgan narx - profildagi custom_fee
+                # Standart guruhda yoki low_income bo'lsa - profildagi custom_fee
                 raw_amount = student.custom_fee if student.custom_fee is not None else Decimal('0')
             else:
                 # Oddiy o'quvchilar - guruh narxi
@@ -128,94 +142,10 @@ def generate_monthly_payments(month_date=None):
 
     return created_count
 
-def calculate_employee_salary(profile, month_date):
-    """Xodim maoshini hisoblash (Mavjud foyiz logikasi buzilmadi, floor qo'shildi)"""
-    if profile.salary_type == 'fixed':
-        return floor_amount(profile.fixed_salary)
-    
-    elif profile.salary_type == 'percentage':
-        # Mentor uchun o'z guruhlaridan tushum
-        if profile.user.role == 'mentor':
-            total_income = Decimal('0')
-            # Mentorning barcha guruhlarini (faol va nofaol) inobatga olamiz, chunki tarixiy to'lovlar bo'lishi mumkin
-            mentor_groups = Group.objects.filter(mentor=profile.user)
-            
-            for group in mentor_groups:
-                # O'sha oydagi ushbu guruhga tushgan barcha TASDIQLANGAN to'lovlar
-                payments = Payment.objects.filter(
-                    group=group,
-                    month__year=month_date.year,
-                    month__month=month_date.month,
-                    is_paid=True
-                ).select_related('student')
-                
-                for payment in payments:
-                    student = payment.student
-                    student_revenue = Decimal(str(payment.amount))
-                    
-                    # Refundni aynan SHU guruh uchun hisoblaymiz (agar bekor qilinmagan bo'lsa)
-                    if getattr(payment, 'refund_ignored', False):
-                        refund = Decimal('0')
-                    else:
-                        refund = Decimal(str(student.calculate_refund_amount(month_date.year, month_date.month, group=group)))
-                    total_income += (student_revenue - refund)
-
-                    # Portal orqali qo'shimcha tushum/chiqim (specific for this student in this group)
-                    extra_txs = FinanceTransaction.objects.filter(
-                        student=student,
-                        group=group,
-                        category='student_extra',
-                        date__year=month_date.year,
-                        date__month=month_date.month
-                    )
-                    for tx in extra_txs:
-                        tx_amount = Decimal(str(tx.amount))
-                        if tx.transaction_type == 'income':
-                            total_income += tx_amount
-                        else:
-                            total_income -= tx_amount
-        # Admin uchun o'z filialidan tushum
-        elif profile.user.role == 'admin' and profile.user.branch:
-            total_income = Decimal(str(
-                Payment.objects.filter(
-                    group__branch=profile.user.branch,
-                    month__month=month_date.month,
-                    month__year=month_date.year,
-                    is_paid=True
-                ).aggregate(total=Sum('amount'))['total'] or 0
-            ))
-        else:
-            total_income = Decimal('0')
-        
-        commission = total_income * (Decimal(str(profile.commission_percentage)) / Decimal('100'))
-        return floor_amount(commission)
-    elif profile.salary_type == 'student_count':
-        # Mentorning barcha guruhlaridagi faol o'quvchilar sonini hisoblash
-        from groups.models import GroupEnrollment
-        import calendar
-        
-        last_day_num = calendar.monthrange(month_date.year, month_date.month)[1]
-        last_day = month_date.replace(day=last_day_num)
-        
-        # Mentor guruhlari
-        mentor_groups = Group.objects.filter(mentor=profile.user)
-        
-        # O'quvchilar soni (Duplikatsiz)
-        total_students = GroupEnrollment.objects.filter(
-            group__in=mentor_groups,
-            joined_at__date__lte=last_day,
-            is_active=True
-        ).values('student_id').distinct().count()
-        
-        salary = Decimal(str(total_students)) * Decimal(str(profile.per_student_amount))
-        return floor_amount(salary)
-    
-    return Decimal('0')
-
 def process_absence_refunds(month_date=None):
     """
-    O'quvchilarning qoldirgan darslari uchun (agar > 4 ta bo'lsa) refund yaratadi.
-    Endi bir o'quvchi bir nechta guruh uchun alohida refund olishi mumkin.
+    O'quvchilarning o'tib bo'lgan darslarda qoldirgan kunlari uchun refund tranzaksiyasi yaratadi
+    (har bir qoldirish uchun kunlik narx; bitta o'quvchi bir nechta guruh uchun alohida).
     """
     if month_date is None:
         month_date = timezone.localdate().replace(day=1)
@@ -305,14 +235,20 @@ def handle_custom_payment(request_user, data):
                     emp_payment = EmployeePayment.objects.filter(employee=mentor, month=payment_month, is_paid=False).first()
                     
                     if emp_payment:
-                        emp_payment.salary_base = profile.calculate_salary_for_month(payment_month)
+                        apply_calculated_salary_to_employee_payment(profile, payment_month, emp_payment)
                         emp_payment.save()
                     else:
-                        EmployeePayment.objects.get_or_create(
+                        emp_payment, _ = EmployeePayment.objects.get_or_create(
                             employee=mentor,
                             month=payment_month,
-                            defaults={'salary_base': profile.calculate_salary_for_month(payment_month), 'is_paid': False}
+                            defaults={
+                                'salary_base': Decimal('0'),
+                                'is_paid': False,
+                                'attendance_deductions': {},
+                            },
                         )
+                        apply_calculated_salary_to_employee_payment(profile, payment_month, emp_payment)
+                        emp_payment.save()
                     mentor_salary_updated = True
         except Exception as salary_err:
             logger.error(f"Mentor salary recalculate error: {salary_err}")
@@ -321,27 +257,85 @@ def handle_custom_payment(request_user, data):
 
 def confirm_student_payment(request_user, payment, data):
     """O'quvchi to'lovini tasdiqlash va tegishli amallarni bajarish"""
+    import logging
+    from finance.utils import floor_amount
+    logger = logging.getLogger(__name__)
+
     ignore_refund = str(data.get('ignore_refund', False)).lower() in ['true', '1', 'yes']
     payment.refund_ignored = ignore_refund
-    
-    new_amount = data.get('amount')
-    if new_amount is not None:
-        payment.amount = Decimal(str(new_amount))
 
-    elif not payment.refund_ignored and payment.month:
-        refund = payment.student.calculate_refund_amount(payment.month.year, payment.month.month)
-        if float(refund) > 0:
-            current_amount = Decimal(str(payment.amount or payment.group.monthly_price))
-            payment.amount = floor_amount(current_amount - Decimal(str(refund)))
+    # Asosiy summa - guruh oylik narxidan
+    base_amount = payment.group.monthly_price if payment.group else Decimal('0')
     
+    # User talabi: Advanced guruhda negotiated statusi o'tmaydi
+    is_advanced = payment.group and payment.group.group_type == 'advanced'
+    student_status = payment.student.status if payment.student else 'regular'
+
+    # Agar standart guruh bo'lsa va kelishilgan narx bo'lsa - shaxsiy narxni olamiz
+    if not is_advanced and student_status in ['low_income', 'negotiated']:
+        base_amount = payment.student.custom_fee if payment.student.custom_fee is not None else Decimal('0')
+    # Low income advanced bo'lsa ham o'z kuchida qolishi mumkin (user faqat negotiatedni aytdi, 
+    # lekin xavfsizlik uchun low_income ni ham advancedda tekshiramiz agar kerak bo'lsa)
+    elif is_advanced and student_status == 'low_income':
+        base_amount = payment.student.custom_fee if payment.student.custom_fee is not None else Decimal('0')
+
+    # Imtiyozli o'quvchilar uchun kelgan kunlarga qarab hisoblash
+    calculation_note = None
+    try:
+        if payment.student and hasattr(payment.student, 'status') and payment.student.status == 'discount' and payment.month:
+            target_group = payment.group
+            if target_group:
+                lessons_count = len(target_group.get_lesson_dates(payment.month.year, payment.month.month))
+                if lessons_count > 0:
+                    absences = payment.student.get_absences_count(payment.month.year, payment.month.month, group=target_group)
+                    attended_days = lessons_count - absences
+                    if attended_days > 0:
+                        daily_price = floor_amount(target_group.monthly_price / lessons_count)
+                        base_amount = floor_amount(daily_price * attended_days)
+                        calculation_note = f"Kelgan kunlar: {attended_days}/{lessons_count}. Kunlik narx: {daily_price}. Jami: {base_amount}"
+                    else:
+                        base_amount = floor_amount(target_group.monthly_price)
+                        calculation_note = f"Kelgan kunlar: {attended_days}/{lessons_count}. Jami: {base_amount}"
+    except Exception as e:
+        logger.error(f"Discount student calculation error: {str(e)}")
+
+    # Refund hisoblash - ignore_refund flagga qarab
+    calculated_refund = Decimal('0')
+    try:
+        if not payment.refund_ignored and payment.month and payment.student:
+            calculated_refund = payment.student.calculate_refund_amount(
+                payment.month.year,
+                payment.month.month,
+                group=payment.group,
+            )
+            if float(calculated_refund) > 0:
+                base_amount = floor_amount(base_amount - Decimal(str(calculated_refund)))
+                payment.refund_amount = Decimal(str(calculated_refund))
+    except Exception as e:
+        logger.error(f"Refund calculation error: {str(e)}")
+
+    # Frontend dan kelgan amount ni e'tiborsiz qoldiramiz, o'zimiz hisoblaymiz
+    final_amount = base_amount
+    payment.amount = final_amount
     payment.save()
-    
+
     # Yangi maydonlarni extract qilamiz
     method = data.get('payment_method', 'cash')
     receipt = data.get('receipt_image')
-    notes = data.get('notes')
+    notes = data.get('notes', '')
     is_receiptless = str(data.get('is_receiptless', False)).lower() in ['true', '1', 'yes']
-    
+
+    # Discount va refund ma'lumotlarini notes ga qo'shamiz
+    notes_parts = []
+    if notes:
+        notes_parts.append(notes)
+    if calculation_note:
+        notes_parts.append(calculation_note)
+    if calculated_refund and float(calculated_refund) > 0:
+        notes_parts.append(f"Refund: {calculated_refund} UZS (oylik: {payment.group.monthly_price if payment.group else 0})")
+
+    notes = " | ".join(notes_parts) if notes_parts else None
+
     payment.mark_as_paid(request_user, method=method, receipt=receipt, notes=notes, is_receiptless=is_receiptless)
     
     # Mentor oyligini qayta hisoblash
@@ -354,7 +348,7 @@ def confirm_student_payment(request_user, payment, data):
                 if payment_month:
                     emp_payment = EmployeePayment.objects.filter(employee=mentor, month=payment_month, is_paid=False).first()
                     if emp_payment:
-                        emp_payment.salary_base = profile.calculate_salary_for_month(payment_month)
+                        apply_calculated_salary_to_employee_payment(profile, payment_month, emp_payment)
                         emp_payment.save()
     except Exception as salary_err:
         logger.error(f"Mentor salary recalculate error: {salary_err}")
@@ -385,21 +379,29 @@ def get_finance_dashboard_stats(user, month, year):
 
     branches_data = []
     if user.role == 'super_admin':
-        for branch in Branch.objects.all():
-            b_income = _to_decimal(
-                FinanceTransaction.objects.filter(
-                    branch=branch, date__month=month, date__year=year, transaction_type='income'
-                ).aggregate(total=Sum('amount'))['total']
-            )
-            b_expense = _to_decimal(
-                FinanceTransaction.objects.filter(
-                    branch=branch, date__month=month, date__year=year, transaction_type='expense'
-                ).aggregate(total=Sum('amount'))['total']
-            )
-            branches_data.append({
-                "id": branch.id, "name": branch.name,
-                "income": float(b_income), "expense": float(b_expense), "profit": float(b_income - b_expense)
-            })
+        # N+1 muammosini hal qilish: barcha filiallar uchun tranzaksiyalarni bitta so'rovda guruhlab olamiz
+        branch_stats_qs = FinanceTransaction.objects.filter(
+            date__month=month, 
+            date__year=year
+        ).values('branch_id', 'transaction_type').annotate(total=Sum('amount'))
+
+        # Filiallar xaritasini yaratamiz
+        all_branches = Branch.objects.all().values('id', 'name')
+        branch_map = {b['id']: {"id": b['id'], "name": b['name'], "income": 0.0, "expense": 0.0, "profit": 0.0} for b in all_branches}
+
+        for stat in branch_stats_qs:
+            b_id = stat['branch_id']
+            if b_id in branch_map:
+                val = float(stat['total'] or 0)
+                if stat['transaction_type'] == 'income':
+                    branch_map[b_id]['income'] = val
+                else:
+                    branch_map[b_id]['expense'] = val
+        
+        for b_id in branch_map:
+            branch_map[b_id]['profit'] = branch_map[b_id]['income'] - branch_map[b_id]['expense']
+        
+        branches_data = list(branch_map.values())
 
     top_groups_qs = Group.objects.filter(is_faol=True)
     if user.role == 'admin': top_groups_qs = top_groups_qs.filter(branch=user.branch)
@@ -426,6 +428,17 @@ def get_finance_dashboard_stats(user, month, year):
 
     attendance_today = _safe_attendance_stats_for_user(user, today)
 
+    # Statistika uchun filtrlarni aniqlash (Admin uchun faqat o'z filiali)
+    stats_filters = {}
+    enrollment_filters = {'is_active': True}
+    if user.role == 'admin':
+        stats_filters['branch'] = user.branch
+        enrollment_filters['group__branch'] = user.branch
+
+    # Student countni optimallashtirish: Student o'rniga Enrollmentdan sanaymiz (tezroq)
+    from groups.models import GroupEnrollment
+    students_count = GroupEnrollment.objects.filter(**enrollment_filters).values('student').distinct().count()
+
     return {
         "total_income": float(total_income),
         "total_expense": float(total_expense),
@@ -437,10 +450,10 @@ def get_finance_dashboard_stats(user, month, year):
         "branches": branches_data,
         "top_groups": [{"name": g.name, "profit": float(g.group_income or 0), "student_count": g.st_count} for g in top_groups_data],
         "stats": {
-            "students": Student.objects.filter(enrollments__is_active=True).distinct().count(),
-            "mentors": User.objects.filter(role='mentor', is_active=True).count(),
-            "groups": Group.objects.filter(is_faol=True).count(),
-            "admins": User.objects.filter(role='admin', is_active=True).count(),
+            "students": students_count,
+            "mentors": User.objects.filter(role='mentor', is_active=True, **stats_filters).count(),
+            "groups": Group.objects.filter(is_faol=True, **stats_filters).count(),
+            "admins": User.objects.filter(role='admin', is_active=True, **stats_filters).count(),
             "attendance_today": attendance_today
         }
     }
@@ -460,65 +473,78 @@ def get_branch_finance_stats(branch_id, month, year):
         expected_income = Decimal('0')
         groups_detail = []
         
-        # N+1 muammosini oldini olish uchun prefetch ishlatamiz
+        # 1. Barcha to'lovlarni bitta so'rovda guruhlab olamiz
+        payment_stats_qs = Payment.objects.filter(
+            group__branch=branch,
+            month__month=month,
+            month__year=year
+        ).values('group_id').annotate(
+            received=Sum('amount', filter=Q(is_paid=True)),
+            debt=Sum('amount', filter=Q(is_paid=False))
+        )
+        payment_map = {p['group_id']: p for p in payment_stats_qs}
+
+        # 2. Guruhlar va ulardagi studentlar sonini/holatini olamiz
+        # Note: expected_income student statusiga bog'liq bo'lgani uchun uni baribir loopda hisoblash xavfsizroq, 
+        # lekin prefetch_related orqali DB so'rovlarini kamaytiramiz.
         active_groups = Group.objects.filter(branch=branch, is_faol=True).select_related('mentor').prefetch_related(
-            'students',
-            'enrollments',
-            'students__enrollments'
+            'enrollments__student'
         )
         
+        expected_income = Decimal('0')
+        groups_detail = []
+
         for group in active_groups:
             try:
                 g_expected = Decimal('0')
-                # group.students.all() o'rniga enrollments dan foydalanamiz (tezroq)
-                group_enrollments = group.enrollments.filter(is_active=True).select_related('student')
-                student_count = group_enrollments.count()
+                # Faqat faol enrollmentlarni filtrlaymiz
+                group_enrollments = [e for e in group.enrollments.all() if e.is_active]
+                student_count = len(group_enrollments)
 
                 for enrollment in group_enrollments:
                     student = enrollment.student
                     if student.status == 'discount':
                         continue
-                    if student.status in ['low_income', 'negotiated']:
+                    
+                    # User talabi: Advanced guruhda negotiated statusi o'tmaydi
+                    if group.group_type == 'advanced' and student.status == 'negotiated':
+                        g_expected += _to_decimal(group.monthly_price)
+                    elif student.status in ['low_income', 'negotiated']:
                         g_expected += _to_decimal(student.custom_fee)
                     else:
                         g_expected += _to_decimal(group.monthly_price)
 
                 expected_income += g_expected
 
-                # To'lovlarni bitta aggregate da olamiz
-                payments_stats = Payment.objects.filter(
-                    group=group,
-                    month__month=month,
-                    month__year=year
-                ).aggregate(
-                    received=Sum('amount', filter=Q(is_paid=True)),
-                    debt=Sum('amount', filter=Q(is_paid=False))
-                )
+                # Payment mapdan ma'lumotlarni olamiz
+                p_stat = payment_map.get(group.id, {})
+                g_received = _to_decimal(p_stat.get('received'))
+                g_debt = _to_decimal(p_stat.get('debt'))
 
-                g_received = _to_decimal(payments_stats['received'])
-                g_debt = _to_decimal(payments_stats['debt'])
-
-                # Refundlarni hisoblash: nosoz student bo'lsa endpointni yiqitmaymiz
+                # Refundlar: bu qism eng sekin ishlaydi, shuning uchun dars kunlarini bir marta olib loop qilamiz
                 g_refunds = 0
+                lesson_dates = group.get_lesson_dates(year, month)
+                days_count = len(lesson_dates)
+                
+                # Refund hisoblash (agar studentlar juda ko'p bo'lsa buni ham optimallashtirish mumkin)
                 for enrollment in group_enrollments:
                     try:
                         refund = enrollment.student.calculate_refund_amount(year, month, group=group)
                         g_refunds += float(refund)
                     except Exception:
-                        logger.exception(
-                            "Refund hisoblashda xatolik: group_id=%s student_id=%s",
-                            group.id,
-                            getattr(enrollment.student, 'id', None),
-                        )
+                        continue
 
-                mentor_name = "Yo'q"
-                if group.mentor:
-                    mentor_name = group.mentor.get_full_name() or getattr(group.mentor, 'username', "Yo'q")
+                mentor_name = group.mentor.get_full_name() if group.mentor else "Yo'q"
+                
+                g_monthly_price = float(group.monthly_price)
+                g_daily_price = g_monthly_price / days_count if days_count > 0 else 0
 
                 groups_detail.append({
                     "id": group.id,
                     "name": group.name,
                     "student_count": student_count,
+                    "monthly_price": g_monthly_price,
+                    "daily_price": round(g_daily_price, 2),
                     "expected_income": float(g_expected),
                     "received_income": float(g_received),
                     "refund_amount": g_refunds,
@@ -528,7 +554,6 @@ def get_branch_finance_stats(branch_id, month, year):
                 })
             except Exception:
                 logger.exception("Group statistikada xatolik: group_id=%s", group.id)
-                # Bitta guruh nosoz bo'lsa ham qolganlari qaytishi kerak
                 continue
 
         # Umumiy tranzaksiyalar
@@ -585,4 +610,88 @@ def get_branch_finance_stats(branch_id, month, year):
             "groups": [],
             "warning": "Ma'lumotlar vaqtincha to'liq emas. Server loglarini tekshiring.",
         }
+
+
+def get_monthly_branch_trends(user, end_month, end_year, months_back=6):
+    """
+    Har oy kesimida filiallar bo'yicha tushum/chiqim trendi.
+    Frontend bitta chartda barcha filiallarni ko'rsatishi uchun qaytariladi.
+    """
+    try:
+        months_back = max(1, min(int(months_back), 24))
+    except (TypeError, ValueError):
+        months_back = 6
+
+    end_month = int(end_month)
+    end_year = int(end_year)
+
+    month_points = []
+    y, m = end_year, end_month
+    for _ in range(months_back):
+        month_points.append((y, m))
+        if m == 1:
+            y -= 1
+            m = 12
+        else:
+            m -= 1
+    month_points.reverse()
+
+    if user.role == 'admin' and user.branch_id:
+        branches = Branch.objects.filter(id=user.branch_id)
+    else:
+        branches = Branch.objects.all()
+
+    branch_rows = list(branches.values('id', 'name'))
+    branch_ids = [b['id'] for b in branch_rows]
+
+    if not branch_ids:
+        return {"months": [], "branches": []}
+
+    start_year, start_month = month_points[0]
+    end_year_last, end_month_last = month_points[-1]
+    start_date = date(start_year, start_month, 1)
+    end_day = calendar.monthrange(end_year_last, end_month_last)[1]
+    end_date = date(end_year_last, end_month_last, end_day)
+
+    tx_qs = FinanceTransaction.objects.filter(
+        branch_id__in=branch_ids,
+        date__gte=start_date,
+        date__lte=end_date
+    )
+
+    aggregated = tx_qs.values(
+        'branch_id', 'date__year', 'date__month', 'transaction_type'
+    ).annotate(total=Sum('amount'))
+
+    bucket = {}
+    for row in aggregated:
+        key = (row['date__year'], row['date__month'], row['branch_id'])
+        if key not in bucket:
+            bucket[key] = {'income': Decimal('0'), 'expense': Decimal('0')}
+        tx_type = row['transaction_type']
+        bucket[key][tx_type] = _to_decimal(row['total'])
+
+    month_payload = []
+    for year, month in month_points:
+        month_label = f"{year}-{str(month).zfill(2)}"
+        branch_stats = []
+        for branch in branch_rows:
+            totals = bucket.get((year, month, branch['id']), {'income': Decimal('0'), 'expense': Decimal('0')})
+            branch_stats.append({
+                "branch_id": branch['id'],
+                "branch_name": branch['name'],
+                "income": float(totals['income']),
+                "expense": float(totals['expense']),
+                "profit": float(totals['income'] - totals['expense']),
+            })
+
+        month_payload.append({
+            "month": month_label,
+            "branches": branch_stats
+        })
+
+    return {
+        "months": month_payload,
+        "branches": branch_rows
+    }
 

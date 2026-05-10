@@ -47,11 +47,14 @@ const StudentHistorySection = ({
  {p.absences_count > 0 && (
  <p className="text-[9px] font-bold text-red-400 capitalize tracking-widest">⚠️ {p.absences_count} qoldirgan</p>
  )}
- {p.refund_amount > 0 && !p.refund_ignored && (
- <p className="text-[9px] font-bold text-emerald-400 capitalize tracking-widest">🔄 Refund: {Math.floor(p.refund_amount).toLocaleString()} UZS</p>
+ {p.refund_amount > 0 && !p.refund_ignored && p.is_paid && (
+ <p className="text-[9px] font-bold text-emerald-400 capitalize tracking-widest">✅ Refund: {Math.floor(p.refund_amount).toLocaleString()} UZS</p>
  )}
- {p.refund_amount > 0 && p.refund_ignored && (
- <p className="text-[9px] font-bold text-red-400 capitalize tracking-widest">🚫 Refund bekor qilingan</p>
+ {p.refund_amount > 0 && p.refund_ignored && p.is_paid && (
+ <p className="text-[9px] font-bold text-amber-400 capitalize tracking-widest">🚫 Refund bekor qilingan</p>
+ )}
+ {p.notes && (
+ <p className="text-[9px] font-bold text-purple-400 capitalize tracking-widest">📝 {p.notes}</p>
  )}
  </div>
  </div>

@@ -330,6 +330,11 @@ const FinanceStat = ({ label, value, color, icon, trend, isMain }) => {
 const TransactionRow = React.memo(({ trx, formatCurrency, onDelete, isSuperAdmin }) => {
  const isIncome = trx.transaction_type ==='income';
 
+ // Refund ma'lumotini tekshirish
+ const hasRefund = trx.description?.includes('Refund') || trx.description?.includes('refund');
+ const refundMatch = trx.description?.match(/Refund:\s*([\d,]+)\s*UZS/);
+ const refundAmount = refundMatch ? refundMatch[1] : null;
+
  return (
  <div className="lux-card !p-5 group/row hover:border-[var(--gold)]/30 transition-all flex flex-col md:flex-row items-center justify-between gap-8">
  <div className="flex items-center gap-6 w-full md:w-auto">
@@ -344,6 +349,11 @@ const TransactionRow = React.memo(({ trx, formatCurrency, onDelete, isSuperAdmin
  }`}>
  {trx.category_display}
  </div>
+ {hasRefund && refundAmount && (
+ <div className="px-2 py-0.5 rounded-lg text-[8px] font-black capitalize tracking-widest border border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
+ Refund: -{refundAmount} UZS
+ </div>
+ )}
  </div>
  <p className="text-[10px] text-[var(--text-muted)] font-bold flex items-center gap-2 truncate opacity-60 capitalize">
  {trx.description?.slice(0, 50)}... <span className="text-[8px] not-italic text-[var(--gold)] opacity-40 ml-2">HEX:#{trx.id?.toString().slice(-6)}</span>
@@ -368,6 +378,12 @@ const TransactionRow = React.memo(({ trx, formatCurrency, onDelete, isSuperAdmin
  <p className={`text-xl font-black tabular-nums tracking-tighter md:min-w-32 ${isIncome ?'text-emerald-400' :'text-rose-400'} `}>
  {isIncome ?'+' :'-'}{formatCurrency(trx.amount)}
  </p>
+ {/* Refund ma'lumoti */}
+ {hasRefund && refundAmount && (
+ <p className="text-[8px] font-bold text-emerald-400 capitalize tracking-widest mt-1">
+ Refund: -{refundAmount} UZS
+ </p>
+ )}
  <p className="text-[8px] font-black text-[var(--text-muted)] capitalize tracking-widest mt-1 opacity-20">
  VAQT: {new Date(trx.created_at).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' })}
  </p>

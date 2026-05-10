@@ -1,5 +1,5 @@
-import React from"react";
-import { Receipt, Users, TrendingUp, PlusCircle, MinusCircle } from"lucide-react";
+import React, { useState } from"react";
+import { Receipt, Users, TrendingUp, PlusCircle, MinusCircle, CalendarDays, CheckCircle2, UserCheck } from"lucide-react";
 
 const PaymentStats = ({
  data,
@@ -7,16 +7,27 @@ const PaymentStats = ({
  isStudentCountType,
  formatCurrency,
  studentCountSummary,
- finalTotalAmount
+ finalTotalAmount,
+ isSuperAdmin,
+ onSelectIncomeType
 }) => {
+ const [selectedIncomeType, setSelectedIncomeType] = useState('actual'); // 'actual' | 'attendance' | 'mentor_attendance'
  return (
  <div className={`grid gap-4 ${isPercentageType || isStudentCountType ?'grid-cols-2 md:grid-cols-4' :'grid-cols-1 md:grid-cols-3'}`}>
  {/* 1. ASOSIY MAOSH KARTASI */}
  {isPercentageType ? (
- <div className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-emerald-500/20 shadow-lg shadow-emerald-500/5">
- <p className="text-[10px] font-black text-emerald-500 capitalize tracking-widest mb-1.5 flex items-center gap-2">
- <Receipt size={12} /> KPI Maosh
+ <>
+ {/* Asl Tushum va Komissiya */}
+ <div 
+ onClick={() => { setSelectedIncomeType('actual'); onSelectIncomeType?.('actual'); }}
+ className={`p-4 rounded-2xl bg-[var(--bg-panel)] border shadow-lg cursor-pointer transition-all ${selectedIncomeType === 'actual' ? 'border-emerald-500 shadow-emerald-500/10 ring-1 ring-emerald-500/30' : 'border-emerald-500/20 shadow-emerald-500/5 hover:border-emerald-500/40'}`}
+ >
+ <div className="flex items-center justify-between mb-1.5">
+ <p className="text-[10px] font-black text-emerald-500 capitalize tracking-widest flex items-center gap-2">
+ <Receipt size={12} /> Asl KPI
  </p>
+ {selectedIncomeType === 'actual' && <CheckCircle2 size={12} className="text-emerald-500" />}
+ </div>
  <h3 className="text-xl font-black text-[var(--text-primary)] tabular-nums mb-1">
  {formatCurrency(data.calculated_commission || 0)}
  </h3>
@@ -24,7 +35,46 @@ const PaymentStats = ({
  <p className="text-[8px] font-bold text-[var(--text-muted)] capitalize tracking-widest">Hisoblandi</p>
  <p className="text-[8px] font-bold text-emerald-500 capitalize tabular-nums">{formatCurrency(data.groups_income)} tushum</p>
  </div>
+ <p className="text-[7px] font-medium text-[var(--text-muted)]/80 mt-1.5 leading-snug">
+ To'lov − refund + qo'shimcha; o'quvchi qoldirishlari hisobga olinmaydi
+ </p>
  </div>
+
+ 
+ {/* Yangi: Davomat Asosidagi Mentor Oyligi */}
+ {data.attendance_based_salary?.salary > 0 && isSuperAdmin && (
+ <div 
+ onClick={() => { setSelectedIncomeType('mentor_attendance'); onSelectIncomeType?.('mentor_attendance'); }}
+ className={`p-4 rounded-2xl bg-[var(--bg-panel)] border shadow-lg cursor-pointer transition-all ${selectedIncomeType === 'mentor_attendance' ? 'border-purple-500 shadow-purple-500/10 ring-1 ring-purple-500/30' : 'border-purple-500/20 shadow-purple-500/5 hover:border-purple-500/40'}`}
+ >
+ <div className="flex items-center justify-between mb-1.5">
+ <p className="text-[10px] font-black text-purple-500 capitalize tracking-widest flex items-center gap-2">
+ <UserCheck size={12} /> Mentor Davomati
+ </p>
+ {selectedIncomeType === 'mentor_attendance' && <CheckCircle2 size={12} className="text-purple-500" />}
+ </div>
+ <h3 className="text-xl font-black text-[var(--text-primary)] tabular-nums mb-1">
+ {formatCurrency(data.attendance_based_salary.salary || 0)}
+ </h3>
+ <div className="flex items-center justify-between text-[8px]">
+ <p className="font-bold text-[var(--text-muted)]">
+ {data.attendance_based_salary.details?.total_teaching_days || 0} / {data.attendance_based_salary.details?.total_lesson_days || 0} kun
+ </p>
+ <p className="font-bold text-purple-500 tabular-nums">
+ {formatCurrency(data.attendance_based_salary.details?.daily_rate || 0).replace(' UZS', '')}/kun
+ </p>
+ </div>
+ {data.attendance_based_salary.details?.missed_days > 0 && (
+ <p className="text-[7px] font-medium text-rose-400/70 mt-1.5">
+ -{formatCurrency(data.attendance_based_salary.details?.missed_deduction || 0).replace(' UZS', '')} ({data.attendance_based_salary.details?.missed_days} kun dars o'tilmagan)
+ </p>
+ )}
+ <p className="text-[7px] font-medium text-[var(--text-muted)]/80 mt-1.5 leading-snug">
+ Brutto maosh ÷ jami reja kunlari × mentor kelgan kunlar (o'quvchi KPI dan mustaqil)
+ </p>
+ </div>
+ )}
+ </>
  ) : isStudentCountType ? (
  <div className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-blue-500/20 shadow-lg shadow-blue-500/5">
  <p className="text-[10px] font-black text-blue-400 capitalize tracking-widest mb-1.5 flex items-center gap-2">

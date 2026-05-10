@@ -4,6 +4,18 @@ from django.utils import timezone
 from django.core.validators import MinValueValidator, MaxValueValidator
 from decimal import Decimal
 
+
+def _student_contract_monthly(student, group):
+    """
+    O'quvchi uchun oylik shartnoma narxi (kelishilgan/custom_fee yoki guruh narxi).
+    Davomat jarimasining kunlik asosini shu qiymatdan olamiz — har doim guruh.monthly_price emas.
+    """
+    cf = getattr(student, 'custom_fee', None)
+    if cf is not None:
+        return Decimal(str(cf))
+    return Decimal(str(group.monthly_price or 0))
+
+
 class EmployeePayment(models.Model):
     """Xodimlar (mentor va admin) uchun oylik maosh to'lovlari"""
     employee = models.ForeignKey(
@@ -33,20 +45,61 @@ class EmployeePayment(models.Model):
         verbose_name="Ayirmalar"
     )
     
+    attendance_deductions = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Davomat bo'yicha ayirmalar",
+        help_text="Har bir o'quvchi uchun davomat sababli qirqilgan summa tafsilotlari"
+    )
+    
     @property
     def total_advances(self):
-        """Ushbu oy uchun berilgan barcha avanslar yig'indisi"""
+        """
+        Ushbu oy uchun berilgan avanslar + o'tgan to'langan oylardan 
+        'kech' qolib o'tib kelgan avanslar yig'indisi.
+        """
         from finance.models import EmployeeAdvance
-        return EmployeeAdvance.objects.filter(
+        from django.db.models import Sum
+        
+        # 1. Shu oyga tegishli avanslar
+        qs = EmployeeAdvance.objects.filter(employee=self.employee, month=self.month)
+        
+        if self.is_paid and self.paid_at:
+            # Snapshot: To'langan vaqtgacha bo'lgan avanslar
+            return qs.filter(created_at__lte=self.paid_at).aggregate(total=Sum('amount'))['total'] or 0
+
+        # TO'LANMAGAN OY UCHUN:
+        total = qs.aggregate(total=Sum('amount'))['total'] or 0
+        
+        # Carry-over: O'tgan to'langan oylardan kech qolgan avanslarni yig'amiz
+        last_paid = EmployeePayment.objects.filter(
             employee=self.employee, 
-            month=self.month
-        ).aggregate(total=models.Sum('amount'))['total'] or 0
+            month__lt=self.month,
+            is_paid=True
+        ).order_by('-month').first()
+        
+        if last_paid:
+            # Eng oxirgi to'langan oydan keyin yaratilgan barcha 'eskirgan' avanslar
+            late_advances = EmployeeAdvance.objects.filter(
+                employee=self.employee,
+                month__lt=self.month,
+                created_at__gt=last_paid.paid_at
+            ).aggregate(total=Sum('amount'))['total'] or 0
+            total += late_advances
+        else:
+            # Agar hali birorta ham oy to'lanmagan bo'lsa, barcha o'tgan oylardagi avanslar shu oyga o'tadi
+            late_advances = EmployeeAdvance.objects.filter(
+                employee=self.employee,
+                month__lt=self.month
+            ).aggregate(total=Sum('amount'))['total'] or 0
+            total += late_advances
+            
+        return total
 
     @property
     def total_amount(self):
-        """Jami to'lov miqdori (floor) - Endi Avanslar ham ayriladi"""
+        """Jami to'lov miqdori (floor)"""
         from finance.utils import floor_amount
-        # ✅ Barcha qiymatlarni Decimal ga o'girish
         salary = Decimal(str(self.salary_base)) if self.salary_base else Decimal('0')
         bonus = Decimal(str(self.bonus)) if self.bonus else Decimal('0')
         deductions = Decimal(str(self.deductions)) if self.deductions else Decimal('0')
@@ -83,8 +136,12 @@ class EmployeePayment(models.Model):
         if not self.is_paid:
             # To'lanayotgan paytda oxirgi marta qayta hisoblab olish (ixtiyoriy, lekin aniqlik uchun yaxshi)
             try:
-                if self.employee.role == 'mentor' and hasattr(self.employee, 'staff_profile'):
-                    if self.employee.staff_profile.salary_type in ['percentage', 'student_count']:
+                if hasattr(self.employee, 'staff_profile'):
+                    st = self.employee.staff_profile.salary_type
+                    # Foiz — mentor va admin; o'quvchi soni — faqat mentor guruhlari bilan
+                    if st == 'percentage' or (
+                        st == 'student_count' and self.employee.role == 'mentor'
+                    ):
                         self.recalculate_salary()
             except Exception as e:
                 # Agar qayta hisoblashda xatolik bo'lsa, davom etamiz
@@ -133,7 +190,8 @@ class EmployeePayment(models.Model):
             calculated_salary = profile.calculate_salary_for_month(self.month)
             # ✅ Decimal ga o'girish
             self.salary_base = Decimal(str(calculated_salary))
-            # save() ni chaqirmaymiz, chunki mark_as_paid() o'zi save() qiladi
+            # Davomat ayirmalarini tozalash (endi bu logika yo'q)
+            self.attendance_deductions = {}
             return self.salary_base
         except Exception as e:
             print(f"Recalculate salary error: {e}")
@@ -244,10 +302,21 @@ class StaffProfile(models.Model):
         """
         Mentorning berilgan oydagi jami daromadini hisoblash
         (To'langan oylik to'lovlar + qo'shimcha to'lovlar - refundlar)
-        Natija floor qilinadi.
         """
         from finance.utils import floor_amount
         
+        # Admin + foiz: filial bo'yicha tasdiqlangan oylik to'lovlar (mentor logikasi emas)
+        if self.user.role == 'admin' and getattr(self.user, 'branch', None):
+            from finance.models import Payment
+            from django.db.models import Sum
+            total = Payment.objects.filter(
+                group__branch=self.user.branch,
+                month__year=month.year,
+                month__month=month.month,
+                is_paid=True,
+            ).aggregate(total=Sum('amount'))['total'] or 0
+            return floor_amount(Decimal(str(total)))
+
         if self.user.role != 'mentor':
             return Decimal('0')
         
@@ -258,8 +327,10 @@ class StaffProfile(models.Model):
         mentor_groups = Group.objects.filter(mentor=self.user)
         
         total_income = Decimal('0')
+        
         for group in mentor_groups:
             group_revenue = Decimal('0')
+            
             for student in group.students.all():
                 # 1. Oylik asosiy to'lov (tasdiqlangan)
                 payment = Payment.objects.filter(
@@ -270,14 +341,16 @@ class StaffProfile(models.Model):
                     is_paid=True
                 ).first()
                 
+                student_revenue = Decimal('0')
                 if payment:
                     student_revenue = Decimal(str(payment.amount))
                     # Refund ayiramiz (agar bekor qilinmagan bo'lsa)
                     if not payment.refund_ignored:
-                        refund = Decimal(str(student.calculate_refund_amount(month.year, month.month)))
-                        group_revenue += (student_revenue - refund)
-                    else:
-                        group_revenue += student_revenue
+                        refund = Decimal(str(
+                            student.calculate_refund_amount(month.year, month.month, group=group)
+                        ))
+                        student_revenue -= refund
+                    group_revenue += student_revenue
                 
                 # 2. ✅ Qo'shimcha to'lovlarni ham hisobga olamiz (student_extra)
                 extra_txs = FinanceTransaction.objects.filter(
@@ -290,9 +363,9 @@ class StaffProfile(models.Model):
                 for tx in extra_txs:
                     tx_amount = Decimal(str(tx.amount))
                     if tx.transaction_type == 'income':
-                        group_revenue += tx_amount  # Qo'shimcha kirim qo'shiladi
+                        group_revenue += tx_amount
                     else:
-                        group_revenue -= tx_amount  # Qo'shimcha chiqim ayriladi
+                        group_revenue -= tx_amount
             
             total_income += group_revenue
             
@@ -303,11 +376,10 @@ class StaffProfile(models.Model):
         from finance.utils import floor_amount
         
         if self.salary_type == 'fixed':
-            # ✅ Fixed maosh — ham floor
             return floor_amount(self.fixed_salary)
         
         elif self.salary_type == 'percentage':
-            # ✅ Foiz - to'langan to'lovlardan
+            # ✅ Foiz - to'langan to'lovlardan (refundlar ayirilgan)
             total_income = self.calculate_monthly_income(month)
             commission_pct = Decimal(str(self.commission_percentage)) / Decimal('100')
             commission = total_income * commission_pct
@@ -332,15 +404,120 @@ class StaffProfile(models.Model):
             salary = Decimal('0')
             
             for p in paid_payments:
-                # Yangi logika: Agar o'quvchi mentor ulushidan kamroq to'lagan bo'lsa, 
-                # o'sha to'langan pulning hammasi mentorga o'tadi.
-                # Aks holda mentor o'zining belgilangan fixed ulushini oladi.
                 p_amount = Decimal(str(p.amount))
-                salary += min(p_amount, per_student)
+                mentor_slice = min(p_amount, per_student)
+                salary += mentor_slice
             
             return floor_amount(salary)
         
         return Decimal('0')
+    
+    def calculate_attendance_based_salary(self, month):
+        """
+        Mentorning jismonan dars o'tkazgan kunlari asosidagi maosh (o'quvchi qoldirishlari bilan aralashmaydi).
+
+        Asos (default): ``calculate_salary_for_month(month, attendance=False)`` — ya'ni brutto komissiya
+        yoki brutto «o'quvchi bo'yicha ulush» (tushum to'liq, o'quvchi davomat jarimalari yo'q).
+        Keyin rejalashtirilgan barcha dars kunlari bo'yicha bir kun narxi chiqariladi va faqat
+        kamida bitta o'quvchi kelgan kunlar uchun to'lanadi.
+
+        Agar bir vaqtning o'zida ham o'quvchi davomati, ham mentor davomati bo'yicha to'lash kerak bo'lsa,
+        UI da avval «O'quvchi davomati» variantini tanab tasdiqlang; «Mentor davomati» esa alohida usul.
+
+        Returns:
+            tuple: (attendance_based_salary, details_dict)
+        """
+        from finance.utils import floor_amount
+        from homework_attends.models import Attendance
+        from groups.models import Group
+        
+        # 1. Brutto maosh (o'quvchi davomat jarimalari qo'shilmagan)
+        base_salary = self.calculate_salary_for_month(month)
+        
+        if base_salary <= 0:
+            return Decimal('0'), {
+                'base_salary': 0,
+                'total_lesson_days': 0,
+                'total_teaching_days': 0,
+                'daily_rate': 0,
+                'attendance_based_salary': 0,
+                'groups': []
+            }
+        
+        # 2. Barcha guruhlarni olish
+        mentor_groups = Group.objects.filter(mentor=self.user)
+        
+        total_lesson_days = 0  # Jami dars kunlari (plan bo'yicha)
+        total_teaching_days = 0  # Mentoring dars o'tgan kunlari (kamida 1 o'quvchi kelsa)
+        groups_details = []
+        
+        for group in mentor_groups:
+            # Oydagi dars kunlari
+            lesson_dates = group.get_lesson_dates(month.year, month.month)
+            lesson_days_count = len(lesson_dates)
+            
+            if lesson_days_count == 0:
+                continue
+            
+            # Har bir dars kuni uchun tekshirish
+            # Mentor dars o'tgan kun = kamida 1 o'quvchi kelayotgan kun
+            teaching_days_in_group = 0
+            
+            for lesson_date in lesson_dates:
+                # Shu kuni kamida 1 ta o'quvchi kelayotganmi?
+                attended_students = Attendance.objects.filter(
+                    group=group,
+                    date=lesson_date,
+                    is_present=True
+                ).count()
+                
+                if attended_students > 0:
+                    # O'quvchilar kelgan - mentor dars o'tgan
+                    teaching_days_in_group += 1
+            
+            total_lesson_days += lesson_days_count
+            total_teaching_days += teaching_days_in_group
+            
+            groups_details.append({
+                'group_id': group.id,
+                'group_name': group.name,
+                'lesson_days': lesson_days_count,
+                'teaching_days': teaching_days_in_group,
+                'student_count': group.students.count()
+            })
+        
+        if total_lesson_days == 0:
+            return Decimal('0'), {
+                'base_salary': float(base_salary),
+                'total_lesson_days': 0,
+                'total_teaching_days': 0,
+                'daily_rate': 0,
+                'attendance_based_salary': 0,
+                'groups': groups_details
+            }
+        
+        # 3. Bir dars narxini hisoblash (sof oylik / jami dars kunlari)
+        daily_rate = base_salary / total_lesson_days
+        
+        # 4. Yakuniy maoshni hisoblash (bir_dars_narxi * dars o'tilgan kunlar)
+        attendance_based_salary = daily_rate * total_teaching_days
+        
+        # Dars o'tilmagan kunlar uchun ayirma
+        missed_days = total_lesson_days - total_teaching_days
+        missed_deduction = daily_rate * missed_days if missed_days > 0 else Decimal('0')
+        
+        details = {
+            'base_salary': float(base_salary),
+            'total_lesson_days': total_lesson_days,
+            'total_teaching_days': total_teaching_days,
+            'missed_days': int(missed_days),
+            'daily_rate': float(daily_rate),
+            'attendance_based_salary': float(floor_amount(attendance_based_salary)),
+            'missed_deduction': float(missed_deduction),
+            'groups': groups_details
+        }
+        
+        return floor_amount(attendance_based_salary), details
     
     def save(self, *args, **kwargs):
         """Profile yangilanganda mavjud to'lovlarni ham yangilash"""
@@ -383,6 +560,7 @@ class StaffProfile(models.Model):
 
         for payment in unpaid_payments:
             payment.salary_base = self.calculate_salary_for_month(payment.month)
+            payment.attendance_deductions = {}
             payment.save()
 
 class EmployeeAdvance(models.Model):

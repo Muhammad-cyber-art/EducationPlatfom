@@ -67,7 +67,8 @@ export function useCurrentBranch() {
  let finalBranchName = userInfo.branch_name;
 
  if (finalBranchId !== userInfo.branch_id) {
- const extraBranch = userInfo.accessible_branches?.find(
+ const accessibleBranches = Array.isArray(userInfo.accessible_branches) ? userInfo.accessible_branches : [];
+ const extraBranch = accessibleBranches.find(
  b => b.branch_id === finalBranchId
  );
  if (extraBranch) {

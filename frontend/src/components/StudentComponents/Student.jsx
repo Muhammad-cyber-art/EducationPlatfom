@@ -75,10 +75,11 @@ export default function StudentProfilePage() {
     // Derived Data
     const groups = studentData?.groups || [];
     const primaryGroup = groups[0] || {};
-    const primaryPayment = paymentsAllGroups.find(p => p.group === primaryGroup.id) || {};
+    const paymentsArray = Array.isArray(paymentsAllGroups) ? paymentsAllGroups : [];
+    const primaryPayment = paymentsArray.find(p => p.group === primaryGroup.id) || {};
 
     const payments = useMemo(() => {
-        return paymentsAllGroups.flatMap(gp => {
+        return paymentsArray.flatMap(gp => {
             const groupInfo = groups.find(g => g.id === gp.group);
             const history = gp.payment_history || [];
             return [
@@ -86,14 +87,14 @@ export default function StudentProfilePage() {
                 ...history.map(h => ({ ...h, group_name: groupInfo?.name || "Eski guruh" }))
             ];
         }).sort((a, b) => new Date(b.month) - new Date(a.month));
-    }, [paymentsAllGroups, groups]);
+    }, [paymentsArray, groups]);
 
     const extraTransactions = useMemo(() => {
-        return paymentsAllGroups.flatMap(gp => {
+        return paymentsArray.flatMap(gp => {
             const groupInfo = groups.find(g => g.id === gp.group);
             return (gp.extra_transactions || []).map(t => ({ ...t, group_name: groupInfo?.name || "Eski guruh" }));
         });
-    }, [paymentsAllGroups, groups]);
+    }, [paymentsArray, groups]);
 
     // Handlers
     const handleSaveEdit = () => editMutation.mutate(state.editData);
@@ -101,7 +102,7 @@ export default function StudentProfilePage() {
     const handlePaymentConfirm = (paymentId, amount = null, ignore_refund = false) => {
         const idToConfirm = paymentId || primaryPayment?.id;
         if (idToConfirm) {
-            const pData = paymentsAllGroups.find(p => p.id === idToConfirm) || primaryPayment;
+            const pData = paymentsArray.find(p => p.id === idToConfirm) || primaryPayment;
             const finalAmount = amount || pData?.amount || studentData?.custom_fee || primaryGroup?.monthly_price;
 
             dispatch({
@@ -121,13 +122,13 @@ export default function StudentProfilePage() {
     };
 
     const executePaymentConfirm = (paymentDetails) => {
-        const { id, amount, ignore_refund } = state.confirmPaymentData || {};
+        const { id, amount } = state.confirmPaymentData || {};
         if (id) {
-            paymentMutation.mutate({ 
-                id, 
-                amount, 
-                ignore_refund,
-                ...paymentDetails 
+            paymentMutation.mutate({
+                id,
+                amount,
+                ignore_refund: paymentDetails.ignore_refund,
+                ...paymentDetails
             });
             dispatch({ type: 'TOGGLE_CONFIRM_PAYMENT', payload: false });
         }

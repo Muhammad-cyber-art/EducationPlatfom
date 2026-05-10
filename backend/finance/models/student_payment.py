@@ -15,9 +15,10 @@ class Payment(models.Model):
     
     # Refund (Qaytarib berish)ni bekor qilish opsiyasi
     refund_ignored = models.BooleanField(default=False, verbose_name="Refund bekor qilingan")
-    
+
     # Guruhning o'sha paytdagi narxi (audit uchun muhim!)
     amount = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    refund_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Refund miqdori")
     
     # Kim tomonidan va qachon tasdiqlandi
     marked_by = models.ForeignKey(

@@ -199,21 +199,24 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                 for col_idx, d in enumerate(date_list, 5):
                     cell = ws.cell(row=row_num, column=col_idx)
                     
-                    is_present = att_data.get(student.id, {}).get(str(d))
+                    att_record = att_data.get(student.id, {}).get(str(d))
                     
-                    if is_present is True:
-                        cell.value = "+"
-                        cell.font = Font(color="008000", bold=True)
-                    elif is_present is False:
-                        cell.value = "K" 
-                        cell.font = Font(color="FF0000", bold=True)
+                    if att_record:
+                        if not att_record.get('is_confirmed'):
+                            cell.value = "!" # Davomat olinmagan (tasdiqlanmagan)
+                            cell.font = Font(color="FF0000", bold=True)
+                        elif att_record.get('is_present') is True:
+                            cell.value = "+"
+                            cell.font = Font(color="008000", bold=True)
+                        else:
+                            cell.value = "K" 
+                            cell.font = Font(color="FF0000", bold=True)
                     elif joined_at and d < joined_at:
                         cell.value = "-"
-                    elif not group.is_lesson_day(d):
-                        cell.value = "X" 
-                        cell.font = Font(color="808080")
                     else:
-                        cell.value = "?" 
+                        # Record yo'q bo'lsa va dars kuni bo'lsa (date_list dars kunlaridan iborat)
+                        cell.value = "!" 
+                        cell.font = Font(color="FF0000", bold=True)
                     cell.alignment = center_align
 
 
@@ -229,28 +232,23 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             joined_at = student.joined_at.date() if student.joined_at else None
             for d in date_list:
                 date_str = str(d)
+                att_record = att_data.get(student.id, {}).get(date_str)
+                
                 if joined_at and d < joined_at:
                     status = "not_joined"
-                is_p = att_data.get(student.id, {}).get(date_str)
-                if is_p is not None:
-                    # Agar rekord bo'lsa (dars kuni bo'lmasa ham) uni chiqaramiz
-                    if is_p is True: status = "present"
-                    else: status = "absent"
-                elif not group.is_lesson_day(d):
-                    status = "no_lesson"
+                elif att_record:
+                    if not att_record.get('is_confirmed'):
+                        status = "not_taken" # "!" belgisi o'rniga status
+                    elif att_record.get('is_present'):
+                        status = "present"
+                    else:
+                        status = "absent"
                 else:
                     # Dars kuni, lekin rekord yo'q
-
-                    if is_p is True: 
-                        status = "present"
-                    elif is_p is False: 
-                        status = "absent"
+                    if d < timezone.localdate():
+                        status = "not_taken"
                     else:
-                        # Senior logika: Agar sana o'tib ketgan bo'lsa va davomat olinmagan bo'lsa - "absent" deb hisoblaymiz
-                        if d < timezone.localdate():
-                            status = "absent"
-                        else:
-                            status = "none"
+                        status = "none"
 
                 
                 history.append({"date": date_str, "status": status})

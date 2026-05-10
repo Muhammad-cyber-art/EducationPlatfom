@@ -9,13 +9,16 @@ import { jwtDecode } from"jwt-decode";
  */
 // Dinamik BASE_URL sozlash
 const getBaseUrl = () => {
- const { hostname, protocol, origin } = window.location;
+ const { hostname, origin } = window.location;
+ const envApiUrl = (import.meta?.env?.VITE_API_URL || "").trim();
+ if (envApiUrl) {
+ return envApiUrl.endsWith("/") ? envApiUrl : `${envApiUrl}/`;
+ }
 
  // Agarda production domainda bo'lsak (yaxshi-niyat.uz bilan tugasa yoki localhost bo'lmasa)
  if (hostname !=="localhost" && hostname !=="127.0.0.1") {
- // Production URL (agarda backend bir xil domainda bo'lsa)
- // return origin +"/api/"; 
- return"https://yaxshi-niyat.uz/api/";
+ // Default: shu domenning /api/ yo'liga so'rov yuboramiz
+ return `${origin}/api/`;
  }
 
  // Development (Localhost)

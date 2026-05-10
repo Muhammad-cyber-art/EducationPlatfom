@@ -4,14 +4,14 @@ from .models import Payment ,EmployeePayment, StaffProfile, EmployeeAdvance
 class PaymentSerializer(serializers.ModelSerializer):
     student_name = serializers.ReadOnlyField(source='student.full_name')
     group_name = serializers.ReadOnlyField(source='group.name')
-    
+
     # Hammasini read_only qilamiz, shunda selection fieldlar yo'qoladi
     student = serializers.PrimaryKeyRelatedField(read_only=True)
     group = serializers.PrimaryKeyRelatedField(read_only=True)
     month = serializers.DateField(required=False)
     amount = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
     marked_by = serializers.StringRelatedField(read_only=True)
-    
+
     # Yangi maydonlar: Darslar soni, kunlik narxi va refund hisobi
     lessons_count = serializers.SerializerMethodField()
     daily_price = serializers.SerializerMethodField()
@@ -37,12 +37,18 @@ class PaymentSerializer(serializers.ModelSerializer):
         return obj.group.get_daily_price(obj.month.year, obj.month.month)
 
     def get_absences_count(self, obj):
-        if not obj.student or not obj.month: return 0
-        return obj.student.get_absences_count(obj.month.year, obj.month.month)
+        if not obj.student or not obj.month:
+            return 0
+        return obj.student.get_absences_count(
+            obj.month.year, obj.month.month, group=obj.group
+        )
 
     def get_refund_amount(self, obj):
-        if not obj.student or not obj.month: return 0
-        return obj.student.calculate_refund_amount(obj.month.year, obj.month.month)
+        if not obj.student or not obj.month:
+            return 0
+        return obj.student.calculate_refund_amount(
+            obj.month.year, obj.month.month, group=obj.group
+        )
 
 from groups.models import Group
 
@@ -66,6 +72,7 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
     calculated_commission = serializers.SerializerMethodField()
     calculated_per_student = serializers.SerializerMethodField()
     mentor_groups = serializers.SerializerMethodField() # ✅ QO'SHILDI
+    attendance_based_salary = serializers.SerializerMethodField() # ✅ Yangi: Davomat asosidagi mentor oyligi
     total_advances = serializers.DecimalField(max_digits=20, decimal_places=2, read_only=True)
     advances_history = serializers.SerializerMethodField()
     payment_history = serializers.SerializerMethodField()  # ✅ QO'SHILDI
@@ -93,6 +100,7 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             'calculated_commission',    # ✅ QO'SHILDI
             'calculated_per_student',   # ✅ QO'SHILDI
             'mentor_groups',            # ✅ QO'SHILDI (Guruhlar tafsiloti)
+            'attendance_based_salary',        # ✅ QO'SHILDI - Yangi: Davomat asosidagi mentor oyligi
             'total_advances',           # ✅ QO'SHILDI
             'advances_history',         # ✅ QO'SHILDI
             'payment_history',          # ✅ QO'SHILDI (O'tgan oylar tarixi)
@@ -157,128 +165,90 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             return None
     
     def get_groups_income(self, obj):
-        """Mentorning guruhlaridan tushgan daromad (floor qilingan)"""
+        """Xodimga tegishli (mentor uchun o'zining, admin uchun filiali) guruhlardan tushgan sof tushum"""
         try:
-            if obj.employee.role != 'mentor':
-                return None
-            if not hasattr(obj.employee, 'staff_profile'):
+            if not obj.month or not hasattr(obj.employee, 'staff_profile'):
+                return 0
+            from finance.utils import floor_amount
+            profile = obj.employee.staff_profile
+            # calculate_monthly_income metodini chaqiramiz (u role-ga qarab o'zi filtrlaydi)
+            inc = profile.calculate_monthly_income(obj.month)
+            return int(floor_amount(inc))
+        except Exception as e:
+            print(f"groups_income hisoblashda xato: {e}")
+            return 0
+    
+    def get_calculated_commission(self, obj):
+        """Foizli maosh — brutto tushumdan foiz (davomat jarimalari yo'q)."""
+        try:
+            from finance.utils import floor_amount
+            if not obj.month or not hasattr(obj.employee, 'staff_profile'):
                 return None
             profile = obj.employee.staff_profile
             if profile.salary_type != 'percentage':
                 return None
-            
-            from finance.utils import floor_amount
-            mentor_groups = Group.objects.filter(
-                mentor=obj.employee,
-                is_faol=True
-            )
-            if not mentor_groups.exists():
-                return 0
-            
-            total_income = 0
-            for group in mentor_groups:
-                for student in group.students.all():
-                    payment = Payment.objects.filter(
-                        student=student,
-                        group=group,
-                        month__year=obj.month.year,
-                        month__month=obj.month.month,
-                        is_paid=True
-                    ).first()
-                    if payment:
-                        total_income += float(payment.amount)
-                    
-                    if getattr(payment, 'refund_ignored', False):
-                        refund = 0
-                    else:
-                        refund = float(student.calculate_refund_amount(obj.month.year, obj.month.month))
-                    total_income -= refund
-
-                    extra_txs = FinanceTransaction.objects.filter(
-                        student=student,
-                        group=group,
-                        category='student_extra',
-                        date__year=obj.month.year,
-                        date__month=obj.month.month
-                    )
-                    for tx in extra_txs:
-                        if tx.transaction_type == 'income':
-                            total_income += float(tx.amount)
-                        else:
-                            total_income -= float(tx.amount)
-            
-            return int(floor_amount(total_income))
-            
-        except Exception as e:
-            print(f"groups_income hisoblashda xato: {e}")
-            return None
-    
-    def get_calculated_commission(self, obj):
-        """Hisoblangan komissiya — floor qilingan"""
-        try:
-            from finance.utils import floor_amount
-            groups_income = self.get_groups_income(obj)
-            if groups_income is None:
-                return None
-            try:
-                profile = obj.employee.staff_profile
-                commission_percentage = float(profile.commission_percentage)
-            except:
-                return None
-            calculated = float(groups_income) * (commission_percentage / 100)
-            return int(floor_amount(calculated))
+            sal = profile.calculate_salary_for_month(obj.month)
+            return int(floor_amount(sal))
         except Exception as e:
             print(f"calculated_commission hisoblashda xato: {e}")
             return None
+    def get_attendance_based_salary(self, obj):
+        """Davomat asosidagi mentor oyligini hisoblash"""
+        try:
+            if not obj.month or not hasattr(obj.employee, 'staff_profile'):
+                return None
+            
+            profile = obj.employee.staff_profile
+            salary, details = profile.calculate_attendance_based_salary(obj.month)
+            
+            return {
+                'salary': int(salary),
+                'details': details
+            }
+        except Exception as e:
+            print(f"attendance_based_salary hisoblashda xato: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
 
     def get_calculated_per_student(self, obj):
-        """Hisoblangan o'quvchilar soni bo'yicha maosh"""
+        """Har bir o'quvchi ulushi — model hisobi (brutto, davomat jarimalari yo'q)."""
         try:
             from finance.utils import floor_amount
-            if not hasattr(obj.employee, 'staff_profile'):
+            if not obj.month or not hasattr(obj.employee, 'staff_profile'):
                 return None
             profile = obj.employee.staff_profile
             if profile.salary_type != 'student_count':
                 return None
-            
-            from groups.models import Group, GroupEnrollment
-            import calendar
-            # Biz payment.month dan foydalanamiz
-            last_day_num = calendar.monthrange(obj.month.year, obj.month.month)[1]
-            last_day = obj.month.replace(day=last_day_num)
-            
-            mentor_groups = Group.objects.filter(mentor=obj.employee)
-            
-            from .models import Payment
-            paid_payments = Payment.objects.filter(
-                group__in=mentor_groups,
-                month=obj.month.replace(day=1),
-                is_paid=True
-            )
-            
-            per_student = float(profile.per_student_amount)
-            calculated = 0
-            for p in paid_payments:
-                # Yangi logika: Agar to'langan pul mentor ulushidan kam bo'lsa, hammasi mentorga
-                p_amount = float(p.amount)
-                calculated += min(p_amount, per_student)
-                
-            return int(floor_amount(calculated))
+            sal = profile.calculate_salary_for_month(obj.month)
+            return int(floor_amount(sal))
         except Exception as e:
             print(f"calculated_per_student hisoblashda xato: {e}")
             return None
     
     def get_mentor_groups(self, obj):
-        """Mentorning guruhlari ro'yxati (floor qilingan summalar)"""
+        """Xodimga tegishli guruhlar ro'yxati (Mentor uchun o'ziniki, Admin uchun filiali)"""
         try:
-            if obj.employee.role != 'mentor':
+            if not obj.month:
                 return None
+            
             from finance.utils import floor_amount
             from decimal import Decimal
-            mentor_groups = Group.objects.filter(
-                mentor=obj.employee,
-                is_faol=True
-            ).select_related('branch')
+            
+            # Guruhlarni aniqlash
+            if obj.employee.role == 'mentor':
+                groups_qs = Group.objects.filter(mentor=obj.employee)
+            elif obj.employee.role == 'admin' and obj.employee.branch:
+                groups_qs = Group.objects.filter(branch=obj.employee.branch)
+            else:
+                # Boshqa rollar uchun (masalan super_admin biror filialda bo'lsa)
+                if hasattr(obj.employee, 'branch') and obj.employee.branch:
+                    groups_qs = Group.objects.filter(branch=obj.employee.branch)
+                else:
+                    return None
+
+            mentor_groups = groups_qs.select_related('branch').prefetch_related('students')
             
             groups_data = []
             per_student_amount = Decimal('0')
@@ -294,6 +264,7 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                 paid_students_count = 0
                 
                 unpaid_students = []
+                paid_students = []
                 for student in group.students.all():
                     month_payment = Payment.objects.filter(
                         student=student,
@@ -301,22 +272,68 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                         month__year=obj.month.year,
                         month__month=obj.month.month
                     ).first()
-                    
+
                     expected_payment = student.custom_fee if student.custom_fee is not None else group.monthly_price
                     actual_payment = float(month_payment.amount) if month_payment and month_payment.is_paid else 0
-                    
+
+                    # Moliyaviy holatni aniqlash
+                    financial_status = student.status
+                    financial_status_label = {
+                        'regular': 'Oddiy',
+                        'discount': 'Imtiyozli',
+                        'low_income': 'Kam ta\'minlangan',
+                        'negotiated': 'Kelishilgan narx'
+                    }.get(student.status, 'Oddiy')
+
+                    # To'lov sanasi va usuli
+                    paid_at = month_payment.paid_at.strftime('%Y-%m-%d %H:%M') if month_payment and month_payment.paid_at else None
+                    payment_method = month_payment.get_payment_method_display() if month_payment else None
+
+                    # Kelishilgan narx ma'lumotlari
+                    negotiated_price = int(floor_amount(student.custom_fee)) if student.custom_fee is not None else None
+                    original_price = int(floor_amount(group.monthly_price))
+
                     if month_payment:
                         expected_income += float(month_payment.amount or 0)
                         if month_payment.is_paid:
                             group_revenue += float(month_payment.amount)
                             paid_students_count += 1
+                            # Refund ma'lumotini hisoblash
+                            refund_amount = 0
+                            if month_payment.month and not month_payment.refund_ignored:
+                                refund_amount = student.calculate_refund_amount(
+                                    month_payment.month.year,
+                                    month_payment.month.month,
+                                    group=group
+                                )
+                            paid_students.append({
+                                'id': student.id,
+                                'name': student.full_name,
+                                'expected': int(floor_amount(expected_payment)),
+                                'actual': int(floor_amount(month_payment.amount)),
+                                'status': 'To\'langan',
+                                'financial_status': financial_status,
+                                'financial_status_label': financial_status_label,
+                                'paid_at': paid_at,
+                                'payment_method': payment_method,
+                                'negotiated_price': negotiated_price,
+                                'original_price': original_price,
+                                'refund_amount': int(floor_amount(refund_amount)),
+                                'refund_ignored': month_payment.refund_ignored
+                            })
                         else:
                             unpaid_students.append({
                                 'id': student.id,
                                 'name': student.full_name,
                                 'expected': int(floor_amount(month_payment.amount or 0)),
                                 'actual': 0,
-                                'status': 'To\'lanmagan'
+                                'status': 'To\'lanmagan',
+                                'financial_status': financial_status,
+                                'financial_status_label': financial_status_label,
+                                'paid_at': paid_at,
+                                'payment_method': payment_method,
+                                'negotiated_price': negotiated_price,
+                                'original_price': original_price
                             })
                     else:
                         expected_income += float(floor_amount(expected_payment))
@@ -325,13 +342,23 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                             'name': student.full_name,
                             'expected': int(floor_amount(expected_payment)),
                             'actual': 0,
-                            'status': 'Kutilmoqda'
+                            'status': 'Kutilmoqda',
+                            'financial_status': financial_status,
+                            'financial_status_label': financial_status_label,
+                            'paid_at': paid_at,
+                            'payment_method': payment_method,
+                            'negotiated_price': negotiated_price,
+                            'original_price': original_price
                         })
 
                     if getattr(month_payment, 'refund_ignored', False):
                         refund = 0
                     else:
-                        refund = float(student.calculate_refund_amount(obj.month.year, obj.month.month))
+                        refund = float(
+                            student.calculate_refund_amount(
+                                obj.month.year, obj.month.month, group=group
+                            )
+                        )
                     group_refunds += refund
 
                     extra_txs = FinanceTransaction.objects.filter(
@@ -381,7 +408,8 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                     'real_income': int(floor_amount(net)),
                     'mentor_share_paid': int(floor_amount(mentor_share_paid_total)),
                     'mentor_share_expected': int(floor_amount(mentor_share_expected_total)),
-                    'unpaid_students': unpaid_students[:15], # Limit to avoid bloat
+                    'unpaid_students': unpaid_students[:15],
+                    'paid_students': paid_students[:15],
                     'is_faol': group.is_faol
                 })
             
@@ -392,23 +420,59 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             return None
 
     def get_advances_history(self, obj):
-        """Ushbu oy uchun berilgan avanslar tarixi"""
-        from .models import EmployeeAdvance
-        advances = EmployeeAdvance.objects.filter(
-            employee=obj.employee,
-            month=obj.month
-        )
-        return EmployeeAdvanceSerializer(advances, many=True).data
+        """
+        Ushbu oy uchun berilgan barcha avanslar + carry-overlar.
+        User talabiga ko'ra: to'langan bo'lsa ham barcha avanslar ko'rinishi kerak.
+        """
+        from .models import EmployeeAdvance, EmployeePayment
+        from django.db.models import Q
+        
+        # 1. Ushbu oyga biriktirilgan BARCHA avanslar (to'langan-to'lanmaganidan qat'iy nazar)
+        main_query = Q(employee=obj.employee, month=obj.month)
+        
+        # 2. Agar bu oy hali to'lanmagan bo'lsa, o'tgan oylardan 'kechikkan' avanslarni ham qo'shamiz
+        if not obj.is_paid:
+            last_paid = EmployeePayment.objects.filter(
+                employee=obj.employee, 
+                month__lt=obj.month,
+                is_paid=True
+            ).order_by('-month').first()
+            
+            if last_paid:
+                main_query |= Q(employee=obj.employee, month__lt=obj.month, created_at__gt=last_paid.paid_at)
+            else:
+                main_query |= Q(employee=obj.employee, month__lt=obj.month)
+        else:
+            # Agar bu oy to'langan bo'lsa, uning total_amount iga ta'sir qilgan 
+            # o'tgan oylardagi 'kechikkan' avanslarni ham tarixda ko'rsatishimiz kerak
+            # (chunki ular shu oy to'lovidan ayrilgan)
+            prev_paid = EmployeePayment.objects.filter(
+                employee=obj.employee, 
+                month__lt=obj.month,
+                is_paid=True
+            ).order_by('-month').first()
+            
+            if prev_paid:
+                # O'tgan to'lov va joriy to'lov oralig'ida yaratilgan barcha eski oylik avanslar
+                main_query |= Q(
+                    employee=obj.employee, 
+                    month__lt=obj.month, 
+                    created_at__gt=prev_paid.paid_at,
+                    created_at__lte=obj.paid_at
+                )
+            else:
+                main_query |= Q(
+                    employee=obj.employee, 
+                    month__lt=obj.month, 
+                    created_at__lte=obj.paid_at
+                )
+
+        qs = EmployeeAdvance.objects.filter(main_query).distinct().order_by('-created_at')
+        return EmployeeAdvanceSerializer(qs, many=True).data
 
     def get_total_advances(self, obj):
-        """Ushbu oy uchun berilgan jami avanslar"""
-        from .models import EmployeeAdvance
-        from django.db.models import Sum
-        total = EmployeeAdvance.objects.filter(
-            employee=obj.employee,
-            month=obj.month
-        ).aggregate(total=Sum('amount'))['total'] or 0
-        return float(total)
+        """Ushbu oy uchun berilgan jami avanslar (model property-dan foydalanamiz)"""
+        return float(obj.total_advances)
 
     def get_payment_history(self, obj):
         """Xodimning barcha (o'tgan va joriy) to'lovlari tarixi"""
@@ -430,14 +494,6 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             'paid_at': p.paid_at
         } for p in history]
 
-class EmployeeAdvanceSerializer(serializers.ModelSerializer):
-    marked_by_name = serializers.CharField(source='marked_by.get_full_name', read_only=True)
-    
-    class Meta:
-        model = EmployeeAdvance
-        fields = ['id', 'amount', 'description', 'date', 'marked_by', 'marked_by_name', 'created_at']
-        read_only_fields = ['id', 'marked_by', 'created_at']
-        
 class StaffProfileSerializer(serializers.ModelSerializer):
     # Foydalanuvchi ma'lumotlari (read-only)
     full_name = serializers.CharField(source='user.get_full_name', read_only=True)

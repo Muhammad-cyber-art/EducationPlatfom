@@ -93,7 +93,8 @@ export default function GroupsStudent({
   return (
     <>
       {students.map((item, index) => {
-        const studentAttendance = attendanceData?.find(a => Number(a.student_id) === Number(item.id));
+        const attendanceArray = Array.isArray(attendanceData) ? attendanceData : [];
+        const studentAttendance = attendanceArray.find(a => Number(a.student_id) === Number(item.id));
 
         // Senior Fix: O'quvchi guruhga qo'shilgan sanadan oldingi darslarni ko'rsatmaslik
         const joinDateStr = item.joined_at ? item.joined_at.split('T')[0] : null;

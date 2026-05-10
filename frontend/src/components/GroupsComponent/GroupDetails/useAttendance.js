@@ -30,17 +30,20 @@ export const useAttendance = (group_id, selectedDate, groupStudents, userData) =
   }, [localAttendanceByDate, selectedDate]);
 
   const isAttendanceConfirmed = useMemo(() => {
-    return attendanceData.some(a => a.marked_by !== null);
+    const attendanceArray = Array.isArray(attendanceData) ? attendanceData : [];
+    return attendanceArray.some(a => a.marked_by !== null);
   }, [attendanceData]);
 
   const handleConfirmAttendance = async (isLessonDay = true) => {
     const students = groupStudents || [];
     if (students.length === 0) return;
 
+    const attendanceArray = Array.isArray(attendanceData) ? attendanceData : [];
+
     const attendances = students.map((s) => {
       const studentId = Number(s.id);
       const localValue = mergedAttendanceForDate[studentId];
-      const existing = attendanceData.find(a => Number(a.student_id) === studentId);
+      const existing = attendanceArray.find(a => Number(a.student_id) === studentId);
       
       let is_present;
       if (localValue !== undefined) {

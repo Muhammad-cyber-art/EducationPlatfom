@@ -1,55 +1,90 @@
-import React from"react";
-import { History, Trash2, Bookmark, CheckCircle, X } from"lucide-react";
+import React from "react";
+import { History, Trash2, Bookmark, CheckCircle, DollarSign } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 const DetailRow = ({ label, value }) => (
- <div className="flex items-center justify-between py-0.5">
- <span className="text-[9px] font-black text-[var(--text-muted)] capitalize tracking-widest">{label}</span>
- <span className="text-[11px] font-bold text-[var(--text-primary)] tracking-tight">{value}</span>
- </div>
+    <div className="flex items-center justify-between py-0.5">
+        <span className="text-[9px] font-black text-[var(--text-muted)] capitalize tracking-widest">{label}</span>
+        <span className="text-[11px] font-bold text-[var(--text-primary)] tracking-tight">{value}</span>
+    </div>
 );
 
 const PaymentHistory = ({
- data,
- staff_id,
- formatCurrency,
- isSuperAdmin,
- handleDeleteHistory,
- dispatch,
- setPayModal
+    data,
+    staff_id,
+    formatCurrency,
+    isSuperAdmin,
+    handleDeleteHistory,
+    dispatch,
+    setPayModal,
+    setSelectedHistoryItem
 }) => {
- return (
- <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
- <div className="bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-2xl overflow-hidden shadow-lg">
- <div className="px-5 py-3 border-b border-[var(--border-glass)] flex items-center justify-between bg-[var(--bg-void)]/30">
- <div className="flex items-center gap-2">
- <History size={14} className="text-[var(--gold)]" />
- <span className="text-[10px] font-black text-[var(--text-primary)] capitalize tracking-widest">To'lov Tarixi</span>
- </div>
- </div>
+    const navigate = useNavigate();
 
- <div className="max-h-[220px] overflow-y-auto custom-scrollbar">
- <table className="w-full text-left">
- <tbody className="divide-y divide-[var(--border-glass)]">
- {data.payment_history?.map((item) => (
- <tr key={item.id} className={`hover:bg-[var(--gold-dim)] transition-colors group ${parseInt(staff_id) === item.id ?'bg-[var(--gold)]/5' :''}`}>
- <td className="px-5 py-3">
- <p className="text-[10px] font-black text-[var(--text-primary)]">{item.month}</p>
- <p className="text-[8px] font-bold text-[var(--text-muted)] capitalize">{item.is_paid ?"To'langan" :"Kutilmoqda"}</p>
- </td>
- <td className="px-5 py-3 text-[11px] font-black text-[var(--text-primary)] tabular-nums text-right flex items-center justify-end gap-3">
- <span>{formatCurrency(item.total_amount || item.amount || item.salary_base)}</span>
- {isSuperAdmin && (
- <button onClick={(e) => { e.stopPropagation(); handleDeleteHistory(item.id); }} className="p-1.5 text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100">
- <Trash2 size={12} />
- </button>
- )}
- </td>
- </tr>
- ))}
- </tbody>
- </table>
- </div>
- </div>
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-2xl overflow-hidden shadow-lg">
+                <div className="px-5 py-3 border-b border-[var(--border-glass)] flex items-center justify-between bg-[var(--bg-void)]/30">
+                    <div className="flex items-center gap-2">
+                        <History size={14} className="text-[var(--gold)]" />
+                        <span className="text-[10px] font-black text-[var(--text-primary)] capitalize tracking-widest">To'lov Tarixi</span>
+                    </div>
+                </div>
+
+                <div className="max-h-[220px] overflow-y-auto custom-scrollbar">
+                    <table className="w-full text-left">
+                        <tbody className="divide-y divide-[var(--border-glass)]">
+                            {data.payment_history?.map((item) => {
+                                const isActive = parseInt(staff_id) === item.id;
+                                return (
+                                    <tr 
+                                        key={item.id} 
+                                        onClick={() => !isActive && navigate(`/super_admin/all-payments/staff_payments/staff/${item.id}`)}
+                                        className={`hover:bg-[var(--gold-dim)] transition-colors group cursor-pointer ${isActive ? 'bg-[var(--gold)]/5' : ''}`}
+                                    >
+                                        <td className="px-5 py-3">
+                                            <p className="text-[10px] font-black text-[var(--text-primary)]">{item.month}</p>
+                                            <p className="text-[8px] font-bold text-[var(--text-muted)] capitalize">{item.is_paid ? "To'langan" : "Kutilmoqda"}</p>
+                                        </td>
+                                        <td className="px-5 py-3 text-[11px] font-black text-[var(--text-primary)] tabular-nums text-right flex items-center justify-end gap-3">
+                                            <span>{formatCurrency(item.total_amount || item.amount || item.salary_base)}</span>
+                                            
+                                            <div className="flex items-center gap-1">
+                                                {!item.is_paid && (
+                                                    <button 
+                                                        onClick={(e) => { 
+                                                            e.stopPropagation(); 
+                                                            dispatch(setSelectedHistoryItem(item));
+                                                            dispatch(setPayModal(true));
+                                                        }} 
+                                                        className="p-1.5 text-emerald-500 hover:bg-emerald-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                                        title="To'lovni amalga oshirish"
+                                                    >
+                                                        <DollarSign size={12} />
+                                                    </button>
+                                                )}
+
+                                                {isSuperAdmin && (
+                                                    <button 
+                                                        onClick={(e) => { 
+                                                            e.stopPropagation(); 
+                                                            handleDeleteHistory(item.id); 
+                                                        }} 
+                                                        className="p-1.5 text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                                        title="O'chirish"
+                                                    >
+                                                        <Trash2 size={12} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
  <div className="bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-2xl overflow-hidden shadow-lg p-5">
  <div className="flex items-center justify-between mb-4">

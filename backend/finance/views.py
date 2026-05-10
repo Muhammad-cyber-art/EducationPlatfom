@@ -26,7 +26,8 @@ from permissions.permissions import HasModulePermission
 from .services import (
     generate_monthly_payments, handle_custom_payment,
     confirm_student_payment, get_finance_dashboard_stats,
-    get_branch_finance_stats, process_absence_refunds
+    get_branch_finance_stats, process_absence_refunds,
+    get_monthly_branch_trends
 )
 from .exports import export_absent_students_to_excel
 from groups.models import Student, Group, Branch
@@ -82,7 +83,7 @@ class StudentPaymentViewSet(viewsets.ModelViewSet):
         'group': ['exact'],
         'student': ['exact'],
         'payment_method': ['exact'],
-        'paid_at': ['exact', 'date', 'gte', 'lte'],
+        'paid_at': ['exact', 'date', 'gte', 'lte', 'date__gte', 'date__lte'],
         'student__branch': ['exact']
     }
     search_fields = ['student__full_name', 'student__phone', 'group__name']
@@ -113,6 +114,27 @@ class StudentPaymentViewSet(viewsets.ModelViewSet):
                 description=f"Tahrirlandi: {updated_instance.student.full_name} to'lovi ({updated_instance.month})"
             )
 
+    @action(detail=True, methods=['get'], url_path='calculate-refund')
+    def calculate_refund(self, request, pk=None):
+        """To'lov uchun refund miqdorini hisoblash"""
+        try:
+            # QuerySet filteringdan o'tkazmaslik uchun to'g'ridan-to'g'ri olish
+            payment = Payment.objects.select_related('student', 'group').get(pk=pk)
+            if payment.student and payment.group and payment.month:
+                refund = payment.student.calculate_refund_amount(
+                    payment.month.year,
+                    payment.month.month,
+                    group=payment.group
+                )
+                return Response({
+                    'refund_amount': float(refund)
+                })
+            return Response({'refund_amount': 0})
+        except Payment.DoesNotExist:
+            return Response({'error': 'Payment not found'}, status=404)
+        except Exception as e:
+            return Response({'error': str(e)}, status=400)
+
     @action(detail=False, methods=['post'], url_path='custom-payment')
     def custom_payment(self, request):
         try:
@@ -131,7 +153,7 @@ class StudentPaymentViewSet(viewsets.ModelViewSet):
         payment = self.get_object()
         if payment.is_paid:
             return Response({"detail": "Ushbu to'lov allaqachon amalga oshirilgan"}, status=400)
-        
+
         try:
             updated_payment = confirm_student_payment(request.user, payment, request.data)
             return Response({
@@ -139,7 +161,8 @@ class StudentPaymentViewSet(viewsets.ModelViewSet):
                 "data": PaymentSerializer(updated_payment).data
             })
         except Exception as e:
-            return Response({"error": str(e)}, status=400)
+            import traceback
+            return Response({"error": str(e), "traceback": traceback.format_exc()}, status=400)
 
     @action(detail=True, methods=['post'], url_path='verify')
     def verify(self, request, pk=None):
@@ -206,12 +229,36 @@ class EmployeePaymentViewSet(viewsets.ModelViewSet):
         if request.user.role != 'super_admin':
             return Response({"detail": "Faqat super admin tasdiqlay oladi"}, status=403)
             
+        # Yangi: Modal orqali kelgan bonus va ayirmalarni olish
+        bonus = request.data.get('bonus', 0)
+        deductions = request.data.get('deductions', 0)
+        
         with transaction.atomic():
+            # Frontend: actual | attendance (tushum KPI) | mentor_attendance (mentor dars kunlari)
+            income_type = request.data.get('income_type') or 'actual'
+            try:
+                profile = payment.employee.staff_profile
+                if income_type == 'mentor_attendance':
+                    salary_base, _ = profile.calculate_attendance_based_salary(payment.month)
+                    payment.salary_base = salary_base
+                    payment.attendance_deductions = {}
+                else:
+                    # actual va attendance — backendda bir xil: davomat tushgan tushum / o'quvchi bo'yicha
+                    payment.recalculate_salary()
+            except Exception as e:
+                logger.error(f"Salary recalculation error during confirm: {e}")
+
+            # Bonus va ayirmalarni yangilash
+            payment.bonus = Decimal(str(bonus))
+            payment.deductions = Decimal(str(deductions))
+            
             payment.is_paid = True
             payment.paid_at = timezone.now()
             payment.marked_by = request.user
             payment.save()
             
+            # Centralized Finance Ledger yaratish
+            from .models import FinanceTransaction
             FinanceTransaction.objects.create(
                 transaction_type='expense',
                 category='salary',
@@ -219,8 +266,8 @@ class EmployeePaymentViewSet(viewsets.ModelViewSet):
                 date=timezone.localdate(),
                 marked_by=request.user,
                 branch=payment.employee.branch,
-                title=f"Maosh: {payment.employee.get_full_name()}",
-                description=f"{payment.month.strftime('%Y-%m')} oyi uchun",
+                title=f"Maosh: {payment.employee.get_full_name() or payment.employee.username}",
+                description=f"{payment.month.strftime('%Y-%m')} oyi uchun xizmat haqi",
                 related_id=f"EMP-{payment.id}"
             )
             
@@ -264,12 +311,6 @@ class EmployeePaymentViewSet(viewsets.ModelViewSet):
                     description=description,
                     marked_by=request.user
                 )
-                
-                # To'lanmagan bo'lsa, ayirmalarni yangilaymiz
-                if not payment.is_paid:
-                    payment.deductions = F('deductions') + Decimal(str(amount))
-                    payment.save()
-                    payment.refresh_from_db()
 
             return Response({
                 "status": "success",
@@ -308,7 +349,12 @@ class FinanceTransactionViewSet(viewsets.ModelViewSet):
     pagination_class = StandardResultsSetPagination
     
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['transaction_type', 'category', 'branch', 'date']
+    filterset_fields = {
+        'transaction_type': ['exact'],
+        'category': ['exact'],
+        'branch': ['exact'],
+        'date': ['exact', 'gte', 'lte']
+    }
     search_fields = ['title', 'description', 'payer_name']
 
     def perform_create(self, serializer):
@@ -323,17 +369,8 @@ class EmployeeAdvanceViewSet(viewsets.ModelViewSet):
     module_name = 'finance'
 
     def perform_create(self, serializer):
-        with transaction.atomic():
-            advance = serializer.save(marked_by=self.request.user)
-            # Update EmployeePayment deductions if exists
-            payment = EmployeePayment.objects.filter(
-                employee=advance.employee, 
-                month=advance.month, 
-                is_paid=False
-            ).first()
-            if payment:
-                payment.deductions += advance.amount
-                payment.save()
+        # Avanslar alohida EmployeeAdvance jadvalida; yakuniy summa total_advances orqali ayiriladi
+        serializer.save(marked_by=self.request.user)
 
 # --- Statistics Views ---
 
@@ -444,6 +481,24 @@ class AbsentTodayStudentsView(APIView):
             } for att in paginated_queryset
         ]
         return paginator.get_paginated_response(results)
+
+
+class MonthlyBranchTrendsView(APIView):
+    """Filiallar bo'yicha oylik tushum/chiqim trendi."""
+    permission_classes = [IsAuthenticated, HasModulePermission]
+    module_name = 'finance'
+
+    def get(self, request):
+        try:
+            month, year = _parse_month_year(request.query_params)
+            months_back = request.query_params.get('months_back', 6)
+            data = get_monthly_branch_trends(request.user, month, year, months_back)
+            return Response(data)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=400)
+        except Exception:
+            logger.exception("Monthly branch trends error")
+            return Response({"months": [], "branches": []}, status=200)
 
 # --- Triggers ---
 

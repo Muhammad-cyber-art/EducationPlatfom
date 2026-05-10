@@ -164,7 +164,9 @@ def get_monthly_attendance_data(group, month, year):
     last_day = date(year, month, last_day_num)
     
     report_end_day = today if (year == today.year and month == today.month) else last_day
-    date_list = [first_day + timedelta(days=i) for i in range((report_end_day - first_day).days + 1)]
+    # User talabi: Faqat dars bor kunlarini chiqaramiz
+    lesson_dates = group.get_lesson_dates(year, month)
+    date_list = [d for d in lesson_dates if d <= report_end_day]
     
     students = group.students.all().order_by('full_name')
     attendances = Attendance.objects.filter(group=group, date__range=[first_day, report_end_day])
@@ -173,7 +175,11 @@ def get_monthly_attendance_data(group, month, year):
     for att in attendances:
         if att.student_id not in att_data:
             att_data[att.student_id] = {}
-        att_data[att.student_id][str(att.date)] = att.is_present
+        # is_present dan tashqari, mentor tasdiqlaganligini (marked_by) ham saqlaymiz
+        att_data[att.student_id][str(att.date)] = {
+            'is_present': att.is_present,
+            'is_confirmed': att.marked_by_id is not None
+        }
         
     return date_list, students, att_data
 

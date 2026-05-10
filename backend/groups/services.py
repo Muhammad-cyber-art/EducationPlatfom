@@ -1,5 +1,6 @@
 import logging
 from django.db import transaction, IntegrityError
+from decimal import Decimal
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from .models import Group, Student, GroupEnrollment, GroupTransfer, WaitingStudent
@@ -28,7 +29,14 @@ def enroll_student_to_group(group, student_id, create_payment=True):
                 from finance.utils import floor_amount
                 today = timezone.now().date()
                 month_start = today.replace(day=1)
-                base_price = student.custom_fee if student.custom_fee is not None else group.monthly_price
+                # User talabi: Advanced guruhda negotiated statusi o'tmaydi
+                if group.group_type == 'advanced' and student.status == 'negotiated':
+                    base_price = group.monthly_price
+                elif student.status in ['low_income', 'negotiated']:
+                    base_price = student.custom_fee if student.custom_fee is not None else Decimal('0')
+                else:
+                    base_price = group.monthly_price
+                
                 final_amount = floor_amount(base_price)
 
                 p_obj, p_created = Payment.objects.get_or_create(
@@ -104,13 +112,16 @@ def transfer_student_to_group(student, new_group_id, request_user, reason, from_
         today = timezone.now().date()
         current_month_start = today.replace(day=1)
 
-        # 0. Snapshot fees
-        old_group_fee = floor_amount(
-            student.custom_fee if student.custom_fee is not None else old_group.monthly_price
-        )
-        new_group_fee = floor_amount(
-            student.custom_fee if student.custom_fee is not None else new_group.monthly_price
-        )
+        # 0. Snapshot fees (User talabi: Advanced guruh qoidasi bilan)
+        def get_effective_fee(st, gr):
+            if gr.group_type == 'advanced' and st.status == 'negotiated':
+                return gr.monthly_price
+            if st.status in ['low_income', 'negotiated']:
+                return st.custom_fee if st.custom_fee is not None else Decimal('0')
+            return gr.monthly_price
+
+        old_group_fee = floor_amount(get_effective_fee(student, old_group))
+        new_group_fee = floor_amount(get_effective_fee(student, new_group))
 
         # 1. Enrollmentlar bilan ishlash
         GroupEnrollment.objects.filter(student=student, group=old_group).delete()

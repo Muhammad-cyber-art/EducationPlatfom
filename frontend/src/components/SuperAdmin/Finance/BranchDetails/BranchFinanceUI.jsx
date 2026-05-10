@@ -6,7 +6,7 @@ import {
 } from'lucide-react';
 import GoBackButton from'../../../sendback';
 
-export const BranchHeader = ({ branchName }) => (
+export const BranchHeader = ({ branchName, periodControls }) => (
  <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-6 border-b border-[var(--border-glass)]">
  <div className="flex items-center gap-6">
  <GoBackButton />
@@ -17,8 +17,11 @@ export const BranchHeader = ({ branchName }) => (
  </p>
  </div>
  </div>
+ <div className="flex flex-wrap items-center gap-2 justify-end">
+ {periodControls}
  <div className="flex items-center gap-2 px-3 py-1 bg-[var(--bg-void)]/40 border border-[var(--border-glass)] rounded">
  <span className="text-[9px] font-bold text-[var(--text-primary)] capitalize tracking-widest">Jonli Tahlil</span>
+ </div>
  </div>
  </div>
 );

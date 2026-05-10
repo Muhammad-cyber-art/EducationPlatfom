@@ -15,7 +15,8 @@ const StudentGroupsSection = ({
  return (
  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
  {groups?.map(group => {
- const groupPayment = paymentsAllGroups.find(p => p.group === group.id);
+ const paymentsArray = Array.isArray(paymentsAllGroups) ? paymentsAllGroups : [];
+ const groupPayment = paymentsArray.find(p => p.group === group.id);
  return (
  <div key={group.id} className="space-y-4">
  {/* GROUP ALIGNMENT */}

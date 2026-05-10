@@ -26,7 +26,9 @@ load_dotenv(BASE_DIR / '.env')
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-@%_8w_d8d9df5l3r$7avnz+rl4(zb%$2(ei_i@9v#2gc5y6^wx')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG', 'True') == 'True'
+ENVIRONMENT = os.getenv('DJANGO_ENV', 'development').strip().lower()
+IS_PRODUCTION = ENVIRONMENT in ('production', 'prod')
+DEBUG = os.getenv('DEBUG', 'False' if IS_PRODUCTION else 'True') == 'True'
 # DEBUG = True    
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'yaxshi-niyat.uz,www.yaxshi-niyat.uz,localhost,127.0.0.1,192.168.43.209').split(',')
 # ALLOWED_HOSTS = ['*']
@@ -239,10 +241,15 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 
 # Security Headers (Production uchun)
-if not DEBUG:
-    SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'False') == 'True'
-    SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'False') == 'True'
-    CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', 'False') == 'True'
+if IS_PRODUCTION or not DEBUG:
+    # Trust reverse-proxy headers to generate correct absolute HTTPS URLs
+    # for ImageField/FileField in production.
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    USE_X_FORWARDED_HOST = True
+
+    SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'True' if IS_PRODUCTION else 'False') == 'True'
+    SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'True' if IS_PRODUCTION else 'False') == 'True'
+    CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', 'True' if IS_PRODUCTION else 'False') == 'True'
     SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', 0))
     SECURE_HSTS_INCLUDE_SUBDOMAINS = os.getenv('SECURE_HSTS_INCLUDE_SUBDOMAINS', 'False') == 'True'
     SECURE_HSTS_PRELOAD = os.getenv('SECURE_HSTS_PRELOAD', 'False') == 'True'

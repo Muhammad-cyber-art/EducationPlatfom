@@ -40,7 +40,7 @@ import StaffPayments from"../components/SuperAdmin/Finance/StaffPayments";
 import StaffPaymentDetails from"../components/SuperAdmin/Finance/StaffPaymentDetails";
 import BranchFinance from"../components/SuperAdmin/Finance/BranchDetails";
 import UtilityPayments from "../components/SuperAdmin/Finance/UtilityPayments";
-import Kassa from "../components/SuperAdmin/Finance/Kassa";
+import Kassa from "../components/SuperAdmin/Finance/Kassa/index.jsx";
 
 export const SuperAdminRoutes = (
  <Route path="/super_admin" element={<SuperAdminLayout />}>

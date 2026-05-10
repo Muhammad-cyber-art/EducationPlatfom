@@ -264,33 +264,39 @@ class Student(models.Model):
 
     def calculate_refund_amount(self, year, month, group=None):
         """
-        Dars qoldirganlik uchun refund summasini hisoblash.
-        Asosiy qoida: bir oyda darslar sonidan kelib chiqib kunlik narx aniqlanadi.
-        Agar o'quvchi 4 tadan ko'p dars qoldirsa (absences > 4), 
-        unda 4 tadan oshiqcha qoldirilgan har bir dars uchun pul qaytariladi (absences - 4).
-        Natija har doim quyi butun songa yaxlitlanadi (floor).
+        Dars qoldirganlik uchun refund (chegirma) summasini hisoblash.
+
+        Mantiq: oy narxi (individual yoki guruh) oydagi rejalashtirilgan darslar soniga
+        bo'linadi — kunlik narx. Har bir *o'tib bo'lgan* darsda kelmagan kun uchun
+        bitta kunlik narx miqdorida chegirma qo'llanadi (1 ta qoldirish ham hisobga olinadi).
+
+        Cheklovlar:
+        - Kelajakdagi darslar qo'shimcha qoldirish sifatida hisoblanmaydi (get_absences_count).
         """
         from finance.utils import floor_amount
         target_group = group or self.group
-        if not target_group: return 0
-        
+        if not target_group:
+            return 0
+
         absences = self.get_absences_count(year, month, group=target_group)
-        if absences > 4:
-            # O'quvchining individual narxi yoki guruhning umumiy narxi
-            base_price = self.custom_fee if self.custom_fee is not None else target_group.monthly_price
-            
-            # Oydagi jami darslar soni (dam olish kunlarisiz)
-            lessons_count = len(target_group.get_lesson_dates(year, month))
-            
-            if lessons_count > 0:
-                # Bir kunlik dars narxi (floor)
-                daily_price = floor_amount(base_price / lessons_count)
-                
-                # Faqat 4 tadan oshiqcha qoldirilgan darslar uchun refund beriladi
-                # Natija ham floor qilinadi
-                return floor_amount(daily_price * (absences - 4))
-                
-        return 0
+        if absences <= 0:
+            return 0
+
+        # Refund hisoblash uchun har doim guruh narxidan foydalanamiz
+        # chunki imtiyozli o'quvchilar uchun custom_fee 0 bo'lishi mumkin
+        base_price = target_group.monthly_price
+        lessons_count = len(target_group.get_lesson_dates(year, month))
+        if lessons_count <= 0:
+            return 0
+
+        daily_price = floor_amount(base_price / lessons_count)
+        refund = floor_amount(daily_price * absences)
+
+        # Yaxlitlash tufayli refund asosiy narxdan oshib ketmasin
+        base_floor = floor_amount(base_price)
+        if refund > base_floor:
+            return base_floor
+        return refund
 
 
     def __str__(self):

@@ -18,6 +18,11 @@ export const ProfileAttribute = React.memo(({ icon, label, value, colorClass }) 
 ));
 
 export const PaymentCheckout = ({ payment, onConfirm }) => {
+ // To'lov allaqachon amalga oshirilgan bo'lsa, umuman ko'rsatilmaydi
+ if (payment?.is_paid) {
+ return null;
+ }
+
  const [ignoreRefund, setIgnoreRefund] = useState(false);
  const refundAmount = payment?.refund_amount;
 

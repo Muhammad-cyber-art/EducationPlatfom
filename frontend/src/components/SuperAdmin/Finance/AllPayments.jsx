@@ -1,34 +1,75 @@
-import { useState, useEffect } from'react';
+import { useState, useEffect, useMemo } from'react';
 import {
  Search, Download, TrendingUp, Building2, Wallet, ArrowRight,
  Bell, MoreHorizontal, Loader2, Users, Activity, CreditCard,
- ChevronRight, MapPin, TrendingDown, ShieldCheck, Zap, Globe, ArrowUpRight, Circle
+ ChevronRight, MapPin, TrendingDown, ShieldCheck, Zap, Globe, ArrowUpRight, Circle, Calendar
 } from'lucide-react';
 import React from'react';
 import { NavLink, useNavigate } from'react-router-dom';
 import api from'../../../tokenUpdater/updater';
 import toast from'react-hot-toast';
-import { BarChart, Bar, ResponsiveContainer, Tooltip, XAxis } from'recharts';
+import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, Legend } from'recharts';
 
 const AllPayments = () => {
  const navigate = useNavigate();
  const [branches, setBranches] = useState([]);
  const [statistics, setStatistics] = useState(null);
+ const [trendData, setTrendData] = useState([]);
+ const [trendBranches, setTrendBranches] = useState([]);
  const [loading, setLoading] = useState(true);
  const [isDownloading, setIsDownloading] = useState(false);
  const [showNotif, setShowNotif] = useState(false);
+ const [activeMetric, setActiveMetric] = useState('income'); // income | expense
+
+ const today = new Date();
+ const [selectedYear, setSelectedYear] = useState(today.getFullYear());
+ const [selectedMonth, setSelectedMonth] = useState(today.getMonth() + 1); // 1-12
+
+ const goPrevMonth = () => {
+ const d = new Date(selectedYear, selectedMonth - 1, 1);
+ d.setMonth(d.getMonth() - 1);
+ setSelectedYear(d.getFullYear());
+ setSelectedMonth(d.getMonth() + 1);
+ };
+
+ const goCurrentMonth = () => {
+ const now = new Date();
+ setSelectedYear(now.getFullYear());
+ setSelectedMonth(now.getMonth() + 1);
+ };
 
  const formatNumber = (num) => {
  if (!num) return'0';
  return Math.floor(parseFloat(num)).toLocaleString();
  };
 
+ const formatMonthLabel = (year, month) => {
+ const m = String(month).padStart(2,'0');
+ return `${year}-${m}`;
+ };
+
+ const formatCurrency = (val) => `${formatNumber(val)} UZS`;
+
+ const normalizeTrendsForChart = (apiPayload, metricKey) => {
+ const months = apiPayload?.months || [];
+ const branchesList = apiPayload?.branches || [];
+
+ const data = months.map((m) => {
+ const row = { month: m.month };
+ (m.branches || []).forEach((b) => {
+ row[`b_${b.branch_id}`] = Number(b[metricKey] || 0);
+ });
+ return row;
+ });
+
+ return { data, branchesList };
+ };
+
  const handleDownloadMonthlyReport = async () => {
  setIsDownloading(true);
  try {
- const today = new Date();
- const currentYear = today.getFullYear();
- const currentMonth = today.getMonth() + 1;
+ const currentYear = selectedYear;
+ const currentMonth = selectedMonth;
  const response = await api.get('/reports/monthly-finance/', {
  params: { year: currentYear, month: currentMonth },
  responseType:'blob',
@@ -53,13 +94,15 @@ const AllPayments = () => {
  const fetchData = async () => {
  try {
  setLoading(true);
- const [branchRes, statsRes] = await Promise.all([
+ const [branchRes, statsRes, trendsRes] = await Promise.all([
  api.get(`/add_branch/branches/`),
- api.get(`/finance/statistics/`)
+ api.get(`/finance/statistics/`, { params: { year: selectedYear, month: selectedMonth } }),
+ api.get(`/finance/statistics/monthly-branch-trends/`, { params: { year: selectedYear, month: selectedMonth, months_back: 12 } })
  ]);
 
  const branchesData = branchRes.data.results || branchRes.data;
  const statsData = statsRes.data;
+ const trendsData = trendsRes.data;
 
  const statsMap = {};
  statsData.branches?.forEach(b => {
@@ -73,6 +116,10 @@ const AllPayments = () => {
 
  setBranches(mergedBranches);
  setStatistics(statsData);
+
+ const normalized = normalizeTrendsForChart(trendsData, activeMetric);
+ setTrendData(normalized.data);
+ setTrendBranches(normalized.branchesList);
  } catch (error) {
  console.error("Fetch Data Error:", error);
  toast.error("Ma'lumotlarni yuklashda xatolik.");
@@ -83,38 +130,96 @@ const AllPayments = () => {
 
  useEffect(() => {
  fetchData();
- }, []);
+ }, [selectedYear, selectedMonth, activeMetric]);
 
  const totalPersonnel = branches.reduce((sum, b) => sum + (b.mentors_count || 0) + (b.admins_count || 0), 0);
+
+ const branchLineColors = useMemo(() => {
+ const n = Math.max(trendBranches.length, 1);
+ return trendBranches.map((_, idx) => {
+ const h = Math.round((idx * 360) / n) % 360;
+ return `hsl(${h}, 65%, 55%)`;
+ });
+ }, [trendBranches]);
 
  return (
  <div className="space-y-4 pb-6">
  {/* Background removed as per request */}
 
  {/* HEADER ACTION AREA */}
- <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 bg-[var(--bg-panel)]/40 border border-[var(--border-glass)] rounded-2xl mb-8">
- <div className="flex items-center gap-4">
- <div className="w-1.5 h-8 bg-[var(--gold)] rounded-full" />
- <div>
- <h1 className="text-xl font-bold text-[var(--text-primary)] tracking-tight capitalize">Moliya Boshqaruvi</h1>
- <p className="text-[9px] text-[var(--text-muted)] font-bold capitalize tracking-wider">Platformaning moliyaviy integratsiyasi</p>
+ <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-3 sm:p-4 bg-[var(--bg-panel)]/40 border border-[var(--border-glass)] rounded-2xl mb-8">
+ <div className="flex items-center gap-3 min-w-0 shrink-0">
+ <div className="w-1.5 h-8 bg-[var(--gold)] rounded-full shrink-0" />
+ <div className="min-w-0">
+ <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight capitalize truncate">Moliya Boshqaruvi</h1>
+ <p className="text-[8px] sm:text-[9px] text-[var(--text-muted)] font-bold capitalize tracking-wider truncate">
+  Oylik: <span className="text-[var(--gold)] font-black">{formatMonthLabel(selectedYear, selectedMonth)}</span>
+ </p>
  </div>
  </div>
-    <div className="flex items-center gap-3">
-      <button
-        onClick={() => navigate('kassa')}
-        className="flex items-center gap-2 h-10 px-6 bg-[var(--bg-void)] border border-[var(--gold)]/30 text-[var(--gold)] rounded-xl font-bold text-[10px] capitalize tracking-wider transition-all hover:bg-[var(--gold)] hover:text-black active:scale-95 shadow-[0_5px_15px_rgba(184,134,11,0.1)]"
+    <div className="w-full lg:w-auto min-w-0 flex flex-nowrap items-center gap-1 sm:gap-1.5 overflow-x-auto no-scrollbar py-0.5 -mx-0.5 px-0.5">
+      <div
+        className="flex shrink-0 items-center gap-1 h-8 pl-1.5 pr-1 bg-[var(--bg-void)] border border-[var(--border-glass)] rounded-lg"
+        title="Oy va yil"
       >
-        <Wallet size={16} />
-        <span>Kassa Tizimi</span>
+        <Calendar size={11} className="text-[var(--gold)] opacity-60 shrink-0" />
+        <select
+          value={selectedMonth}
+          onChange={(e) => setSelectedMonth(Number(e.target.value))}
+          className="bg-transparent w-[2.35rem] sm:w-10 text-[8px] sm:text-[9px] font-black text-[var(--text-primary)] outline-none cursor-pointer"
+        >
+          {Array.from({ length: 12 }).map((_, idx) => (
+            <option key={idx + 1} value={idx + 1} className="bg-[var(--bg-panel)]">
+              {String(idx + 1).padStart(2,'0')}
+            </option>
+          ))}
+        </select>
+        <select
+          value={selectedYear}
+          onChange={(e) => setSelectedYear(Number(e.target.value))}
+          className="bg-transparent w-[3rem] sm:w-[3.25rem] text-[8px] sm:text-[9px] font-black text-[var(--text-primary)] outline-none cursor-pointer"
+        >
+          {Array.from({ length: 6 }).map((_, i) => {
+            const y = today.getFullYear() - i;
+            return <option key={y} value={y} className="bg-[var(--bg-panel)]">{y}</option>;
+          })}
+        </select>
+      </div>
+      <button
+        type="button"
+        onClick={goPrevMonth}
+        title="O'tgan oy ma'lumotlari"
+        className="shrink-0 inline-flex items-center justify-center gap-1 h-8 px-2 sm:px-2.5 bg-[var(--bg-void)] border border-red-500/20 text-red-400 rounded-lg font-black text-[8px] sm:text-[9px] uppercase tracking-wide whitespace-nowrap transition-all hover:bg-red-500/10 active:scale-95"
+      >
+        <span className="sm:hidden">O'tgan</span>
+        <span className="hidden sm:inline">O'tgan oy</span>
       </button>
       <button
+        type="button"
+        onClick={goCurrentMonth}
+        title="Joriy oy"
+        className="shrink-0 inline-flex items-center justify-center gap-1 h-8 px-2 sm:px-2.5 bg-[var(--bg-void)] border border-emerald-500/20 text-emerald-400 rounded-lg font-black text-[8px] sm:text-[9px] uppercase tracking-wide whitespace-nowrap transition-all hover:bg-emerald-500/10 active:scale-95"
+      >
+        Joriy
+      </button>
+      <button
+        type="button"
+        onClick={() => navigate('kassa')}
+        title="Kassa tizimi"
+        className="shrink-0 inline-flex items-center justify-center gap-1 h-8 px-2 sm:px-3 bg-[var(--bg-void)] border border-[var(--gold)]/30 text-[var(--gold)] rounded-lg font-bold text-[8px] sm:text-[9px] capitalize tracking-wide whitespace-nowrap transition-all hover:bg-[var(--gold)] hover:text-black active:scale-95 shadow-[0_5px_15px_rgba(184,134,11,0.1)]"
+      >
+        <Wallet size={14} className="shrink-0 sm:w-4 sm:h-4" />
+        <span>Kassa</span>
+      </button>
+      <button
+        type="button"
         onClick={handleDownloadMonthlyReport}
         disabled={isDownloading}
-        className="flex items-center gap-2 h-10 px-6 bg-[var(--gold)] text-black rounded-xl font-bold text-[10px] capitalize tracking-wider transition-opacity hover:opacity-90 active:scale-95 disabled:opacity-50"
+        title="Hisobotni yuklash"
+        className="shrink-0 inline-flex items-center justify-center gap-1 h-8 px-2 sm:px-3 bg-[var(--gold)] text-black rounded-lg font-bold text-[8px] sm:text-[9px] capitalize tracking-wide whitespace-nowrap transition-opacity hover:opacity-90 active:scale-95 disabled:opacity-50"
       >
-        {isDownloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-        <span>Hisobotni Yuklash</span>
+        {isDownloading ? <Loader2 size={14} className="animate-spin shrink-0" /> : <Download size={14} className="shrink-0 sm:w-4 sm:h-4" />}
+        <span className="max-[380px]:hidden sm:inline">Yuklash</span>
       </button>
     </div>
  </div>
@@ -194,35 +299,72 @@ const AllPayments = () => {
  </div>
 
  {/* VISUAL CHART */}
- {statistics.branches && statistics.branches.length > 0 && (
+ {trendData && trendData.length > 0 && trendBranches && trendBranches.length > 0 && (
  <div className="mt-8 pt-6 border-t border-[var(--border-glass)]">
  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
- <h4 className="text-[9px] font-black text-[var(--text-muted)] capitalize tracking-[0.2em]">Filiallar kesimida moliyaviy oqim (UZS)</h4>
- <div className="flex gap-4">
- <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-emerald-500"></div><span className="text-[8px] text-[var(--text-muted)] font-black capitalize tracking-widest">Tushum</span></div>
- <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-red-500"></div><span className="text-[8px] text-[var(--text-muted)] font-black capitalize tracking-widest">Chiqim</span></div>
+ <h4 className="text-[9px] font-black text-[var(--text-muted)] capitalize tracking-[0.2em]">
+  Filiallar bo‘yicha oylik {activeMetric === 'income' ? 'tushum' : 'chiqim'} trendi (UZS)
+ </h4>
+ <div className="flex items-center gap-2">
+  <button
+   onClick={() => setActiveMetric('income')}
+   className={`h-8 px-4 rounded-lg text-[9px] font-black tracking-widest border transition-all ${
+    activeMetric === 'income'
+     ?'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+     :'bg-[var(--bg-void)] text-[var(--text-muted)] border-[var(--border-glass)] hover:border-emerald-500/20'
+   }`}
+  >
+   Tushum
+  </button>
+  <button
+   onClick={() => setActiveMetric('expense')}
+   className={`h-8 px-4 rounded-lg text-[9px] font-black tracking-widest border transition-all ${
+    activeMetric === 'expense'
+     ?'bg-red-500/15 text-red-400 border-red-500/30'
+     :'bg-[var(--bg-void)] text-[var(--text-muted)] border-[var(--border-glass)] hover:border-red-500/20'
+   }`}
+  >
+   Chiqim
+  </button>
  </div>
  </div>
- <div className="h-[140px] w-full">
+ <div className="h-[220px] md:h-[260px] w-full">
  <ResponsiveContainer width="100%" height="100%">
- <BarChart data={statistics.branches} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+ <LineChart data={trendData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+ <CartesianGrid strokeDasharray="3 3" stroke="var(--border-glass)" vertical={false} />
  <XAxis
- dataKey="name"
+ dataKey="month"
  axisLine={false}
  tickLine={false}
  tick={{ fill:'var(--text-muted)', fontSize: 9, fontWeight: 800 }}
  dy={10}
  />
+ <YAxis
+  axisLine={false}
+  tickLine={false}
+  tick={{ fill:'var(--text-muted)', fontSize: 9, fontWeight: 800 }}
+  width={40}
+ />
  <Tooltip
  cursor={{ fill:'rgba(255,255,255,0.02)' }}
  contentStyle={{ backgroundColor:'#111827', borderColor:'#374151', borderRadius:'12px', padding:'12px', fontSize:'10px', textTransform:'capitalize', fontWeight:'900', letterSpacing:'1px' }}
  itemStyle={{ fontSize:'11px', fontWeight:'bold' }}
- formatter={(value) => [`${formatNumber(value)} UZS`,'']}
+ formatter={(value, name) => [`${formatCurrency(value)}`, name]}
  labelStyle={{ color:'#d4af37', marginBottom:'8px' }}
  />
- <Bar dataKey="income" name="Tushum" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} />
- <Bar dataKey="expense" name="Chiqim" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={40} />
- </BarChart>
+ <Legend wrapperStyle={{ fontSize:'9px', fontWeight: 900, color:'var(--text-muted)' }} />
+ {trendBranches.map((b, idx) => (
+  <Line
+   key={b.id}
+   type="monotone"
+   dataKey={`b_${b.id}`}
+   name={b.name}
+   strokeWidth={trendBranches.length > 12 ? 1.5 : 2}
+   dot={false}
+   stroke={branchLineColors[idx] || '#10b981'}
+  />
+ ))}
+ </LineChart>
  </ResponsiveContainer>
  </div>
  </div>
