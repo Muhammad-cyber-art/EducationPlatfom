@@ -163,9 +163,9 @@ class StudentSerializer(serializers.ModelSerializer):
         status = attrs.get('status')
         # Agar status attrs ichida bo'lsa (ya'ni o'zgarayotgan bo'lsa)
         if status:
-            if status == 'regular':
+            if status in ['regular', 'discount']:
                 attrs['custom_fee'] = None
-            elif status in ['discount', 'low_income', 'negotiated']:
+            elif status in ['low_income', 'negotiated']:
                 # Agar summa kiritilmagan bo'lsa (None yoki bo'sh), uni 0 qilamiz
                 if 'custom_fee' not in attrs or attrs.get('custom_fee') is None:
                     attrs['custom_fee'] = 0

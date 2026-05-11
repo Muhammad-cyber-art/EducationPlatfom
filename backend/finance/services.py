@@ -97,10 +97,7 @@ def generate_monthly_payments(month_date=None):
     for group in active_groups:
         for student in group.students.all():
             # Yangi mantiq: Status va Guruh turi bo'yicha narxni aniqlash
-            if student.status == 'discount':
-                # Imtiyozli o'quvchilar har doim 0 (ikki toifada ham)
-                raw_amount = Decimal('0')
-            elif student.status == 'negotiated' and group.group_type == 'advanced':
+            if student.status == 'negotiated' and group.group_type == 'advanced':
                 # User talabi: Advanced guruhda kelishilgan narx statusi o'tmaydi -> to'liq narx
                 raw_amount = group.monthly_price
             elif student.status in ['low_income', 'negotiated']:
@@ -279,25 +276,8 @@ def confirm_student_payment(request_user, payment, data):
     elif is_advanced and student_status == 'low_income':
         base_amount = payment.student.custom_fee if payment.student.custom_fee is not None else Decimal('0')
 
-    # Imtiyozli o'quvchilar uchun kelgan kunlarga qarab hisoblash
+    # Imtiyozli o'quvchilar uchun maxsus hisoblash olib tashlandi - ular ham to'liq to'laydi
     calculation_note = None
-    try:
-        if payment.student and hasattr(payment.student, 'status') and payment.student.status == 'discount' and payment.month:
-            target_group = payment.group
-            if target_group:
-                lessons_count = len(target_group.get_lesson_dates(payment.month.year, payment.month.month))
-                if lessons_count > 0:
-                    absences = payment.student.get_absences_count(payment.month.year, payment.month.month, group=target_group)
-                    attended_days = lessons_count - absences
-                    if attended_days > 0:
-                        daily_price = floor_amount(target_group.monthly_price / lessons_count)
-                        base_amount = floor_amount(daily_price * attended_days)
-                        calculation_note = f"Kelgan kunlar: {attended_days}/{lessons_count}. Kunlik narx: {daily_price}. Jami: {base_amount}"
-                    else:
-                        base_amount = floor_amount(target_group.monthly_price)
-                        calculation_note = f"Kelgan kunlar: {attended_days}/{lessons_count}. Jami: {base_amount}"
-    except Exception as e:
-        logger.error(f"Discount student calculation error: {str(e)}")
 
     # Refund hisoblash - ignore_refund flagga qarab
     calculated_refund = Decimal('0')
@@ -503,8 +483,7 @@ def get_branch_finance_stats(branch_id, month, year):
 
                 for enrollment in group_enrollments:
                     student = enrollment.student
-                    if student.status == 'discount':
-                        continue
+                    # Imtiyozli o'quvchilar ham guruh narxida hisoblanadi (skipt qilinmaydi)
                     
                     # User talabi: Advanced guruhda negotiated statusi o'tmaydi
                     if group.group_type == 'advanced' and student.status == 'negotiated':
