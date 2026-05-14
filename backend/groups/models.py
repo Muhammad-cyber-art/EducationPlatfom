@@ -106,7 +106,7 @@ class Group(models.Model):
         return floor_amount(self.monthly_price / len(lessons))
 
     @property
-    def computed_status(self):
+    def computed_status(self) -> str:
         """
         Guruh holatini hisoblab beradi:
         - 'inactive': is_faol = False

@@ -23,19 +23,19 @@ class BranchSerializer(serializers.ModelSerializer):
             'groups_count'
         ]
     
-    def get_mentors_count(self, obj):
+    def get_mentors_count(self, obj) -> int:
         return User.objects.filter(branch=obj, role='mentor', is_active=True).count()
     
-    def get_admins_count(self, obj):
+    def get_admins_count(self, obj) -> int:
         return User.objects.filter(branch=obj, role='admin', is_active=True).count()
     
-    def get_students_count(self, obj):
+    def get_students_count(self, obj) -> int:
         from groups.models import Student
         return Student.objects.filter(
             group__branch=obj,
             group__is_faol=True
         ).distinct().count()
     
-    def get_groups_count(self, obj):
+    def get_groups_count(self, obj) -> int:
         from groups.models import Group
         return Group.objects.filter(branch=obj, is_faol=True).count()

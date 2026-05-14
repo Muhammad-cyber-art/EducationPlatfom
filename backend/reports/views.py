@@ -3,13 +3,23 @@
 from django.http import HttpResponse
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
+from rest_framework import serializers
+from rest_framework.response import Response
 from .services import generate_daily_full_report
 from datetime import datetime
+from drf_spectacular.utils import extend_schema, OpenApiTypes
+
+class DailyReportQuerySerializer(serializers.Serializer):
+    date = serializers.DateField(required=False, help_text="Sana (YYYY.MM.DD). Default: bugun")
+
+class MonthlyFinanceQuerySerializer(serializers.Serializer):
+    year = serializers.IntegerField(required=False)
+    month = serializers.IntegerField(required=False)
 
 class DailyReportExportView(APIView):
     # Faqat admin yoki mas'ul xodimlar kira olishi uchun:
     permission_classes = [IsAuthenticated]
-
+    @extend_schema(parameters=[DailyReportQuerySerializer], responses={(200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
     def get(self, request):
         # Role check
         if request.user.role not in ['admin', 'super_admin']:
@@ -53,7 +63,7 @@ from rest_framework.response import Response
 
 class MonthlyFinanceExportView(APIView):
     permission_classes = [IsAuthenticated]
-
+    @extend_schema(parameters=[MonthlyFinanceQuerySerializer], responses={(200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
     def get(self, request):
         if request.user.role != 'super_admin':
             return Response({"error": "Faqat SuperAdmin hisobotni yuklay oladi"}, status=403)

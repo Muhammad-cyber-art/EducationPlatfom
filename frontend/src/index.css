@@ -15,8 +15,8 @@
  --text-primary: #ffffff;
  --text-secondary: #777777;
  --text-muted: #444444;
- --input-bg: var(--bg-void);
- --input-border: rgba(255, 255, 255, 0.1);
+ --input-bg: #0a0a0a;
+ --input-border: rgba(255, 255, 255, 0.08);
 
  --gold: #b8860b;
  --gold-dim: rgba(184, 134, 11, 0.08);

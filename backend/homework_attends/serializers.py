@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema_field
 from .models import Homework, HomeworkSubmission ,Attendance, MockTest, MockTestResult
 # 1. O'quvchilar ro'yxati uchun (Detail sahifada ko'rinadi)
 class HomeworkSubmissionSerializer(serializers.ModelSerializer):
@@ -35,7 +36,9 @@ class HomeworkListSerializer(serializers.ModelSerializer):
         # 'group_name' esa faqat o'qish uchun guruh nomini bildiradi
         fields = ('id', 'title', 'description', 'group', 'group_name', 'stats', 'created_at')
         
-    def get_stats(self, obj):
+    from drf_spectacular.utils import extend_schema_field
+    @extend_schema_field(serializers.DictField())
+    def get_stats(self, obj) -> dict:
         return {
             "total": obj.submissions.count(),
             "completed": obj.submissions.filter(status='full').count()
@@ -65,7 +68,8 @@ class MockTestListSerializer(serializers.ModelSerializer):
         model = MockTest
         fields = ('id', 'subject', 'type', 'group', 'group_name', 'date', 'stats', 'created_at')
         
-    def get_stats(self, obj):
+    @extend_schema_field(serializers.DictField())
+    def get_stats(self, obj) -> dict:
         # Oddiy statistika: nechta o'quvchi baholangan
         return {
             "total": obj.results.count(),

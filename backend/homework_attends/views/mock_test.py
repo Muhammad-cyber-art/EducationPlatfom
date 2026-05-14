@@ -23,6 +23,8 @@ class MockTestViewSet(ModelViewSet):
     filterset_fields = ['group']
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return MockTest.objects.none()
         user = self.request.user
         group_id = self.request.query_params.get('group_id')
         

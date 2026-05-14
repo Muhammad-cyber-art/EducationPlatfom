@@ -4,7 +4,7 @@ from .views import (
     BranchFinanceDetailView, StudentPaymentViewSet, EmployeePaymentViewSet,
     StaffProfileViewSet, FinanceDashboardView, trigger_monthly_payments,
     FinanceTransactionViewSet, EmployeeAdvanceViewSet, AbsentTodayStudentsView,
-    payment_statistics_view, MonthlyBranchTrendsView
+    payment_statistics_view, MonthlyBranchTrendsView, AdminExpenseViewSet
 )
 
 router = DefaultRouter()
@@ -13,6 +13,7 @@ router.register(r'employee-payments', EmployeePaymentViewSet, basename='employee
 router.register(r'staff-profiles', StaffProfileViewSet, basename='staff-profile')
 router.register(r'transactions', FinanceTransactionViewSet, basename='finance-transaction')
 router.register(r'employee-advances', EmployeeAdvanceViewSet, basename='employee-advance')
+router.register(r'admin-expenses', AdminExpenseViewSet, basename='admin-expense')
 urlpatterns = [
     path('', include(router.urls)),
     path('statistics/', FinanceDashboardView.as_view(), name='finance-stats'),

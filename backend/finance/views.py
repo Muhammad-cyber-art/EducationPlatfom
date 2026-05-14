@@ -6,7 +6,7 @@ from django.db import transaction
 from django.db.models import Sum, Q, F, Count
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import viewsets, permissions, filters, status
+from rest_framework import viewsets, permissions, filters, status, serializers
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -15,12 +15,15 @@ from rest_framework.pagination import PageNumberPagination
 
 from .models import (
     Payment, FinanceTransaction, EmployeePayment, 
-    StaffProfile, EmployeeAdvance
+    StaffProfile, EmployeeAdvance, AdminExpense
 )
 from .serializers import (
     PaymentSerializer, FinanceTransactionSerializer, 
     EmployeePaymentSerializer, StaffProfileSerializer, 
-    EmployeeAdvanceSerializer
+    EmployeeAdvanceSerializer, FinanceDashboardSerializer,
+    BranchFinanceDetailSerializer, SuccessSerializer, 
+    AbsentStudentSerializer, PaymentStatisticsSerializer,
+    AdminExpenseSerializer
 )
 from permissions.permissions import HasModulePermission
 from .services import (
@@ -351,6 +354,7 @@ class FinanceDashboardView(APIView):
     """Moliya dashboardi statistikasi"""
     permission_classes = [IsAuthenticated, HasModulePermission] 
     module_name = 'finance'
+    serializer_class = FinanceDashboardSerializer
 
     def get(self, request):
         try:
@@ -385,6 +389,7 @@ class BranchFinanceDetailView(APIView):
     """Filial bo'yicha batafsil moliya"""
     permission_classes = [IsAuthenticated, HasModulePermission]
     module_name = 'finance'
+    serializer_class = BranchFinanceDetailSerializer
 
     def get(self, request, branch_id):
         try:
@@ -414,6 +419,7 @@ class BranchFinanceDetailView(APIView):
 class AbsentTodayStudentsView(APIView):
     """Bugun darsga kelmagan o'quvchilar ro'yxati"""
     permission_classes = [IsAuthenticated]
+    serializer_class = AbsentStudentSerializer
 
     def get(self, request, branch_id):
         user = request.user
@@ -460,6 +466,7 @@ class MonthlyBranchTrendsView(APIView):
     """Filiallar bo'yicha oylik tushum/chiqim trendi."""
     permission_classes = [IsAuthenticated, HasModulePermission]
     module_name = 'finance'
+    serializer_class = SuccessSerializer
 
     def get(self, request):
         try:
@@ -475,6 +482,8 @@ class MonthlyBranchTrendsView(APIView):
 
 # --- Triggers ---
 
+from drf_spectacular.utils import extend_schema
+@extend_schema(request=None, responses={200: SuccessSerializer})
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def trigger_monthly_payments(request):
@@ -484,7 +493,50 @@ def trigger_monthly_payments(request):
     except Exception as e:
         return Response({'success': False, 'message': str(e)}, status=500)
 
+class AdminExpenseViewSet(viewsets.ModelViewSet):
+    """
+    Adminlar tomonidan kiritiladigan mayda harajatlar.
+    Bu harajatlar asosiy moliya balansiga qo'shilmaydi.
+    """
+    queryset = AdminExpense.objects.all().select_related('branch', 'marked_by')
+    serializer_class = AdminExpenseSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['branch', 'date']
+    search_fields = ['title', 'description']
 
+    def get_queryset(self):
+        user = self.request.user
+        qs = super().get_queryset()
+        
+        # Branch filteri (query param orqali)
+        branch_id = self.request.query_params.get('branch_id')
+        
+        if user.role == 'super_admin':
+            return qs.filter(branch_id=branch_id) if branch_id else qs
+            
+        if user.role == 'admin':
+            # Admin faqat o'z filialidagi harajatlarni ko'radi
+            allowed_branches = [user.branch.id] if user.branch else []
+            if hasattr(user, 'branch_accesses'):
+                allowed_branches.extend(user.branch_accesses.values_list('branch_id', flat=True))
+            
+            qs = qs.filter(branch_id__in=allowed_branches)
+            return qs.filter(branch_id=branch_id) if branch_id else qs
+            
+        return qs.none()
+
+    def perform_create(self, serializer):
+        # Filialni avtomatik aniqlash (agar berilmagan bo'lsa)
+        user = self.request.user
+        branch = serializer.validated_data.get('branch')
+        if not branch and user.role == 'admin':
+            branch = user.branch
+            
+        serializer.save(marked_by=user, branch=branch)
+
+
+@extend_schema(responses={200: PaymentStatisticsSerializer})
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def payment_statistics_view(request):

@@ -83,11 +83,31 @@ export default function GroupsListPage() {
  }, [data]);
 
  const filteredData = useMemo(() => {
- return groupsArr.filter((group) => {
- if (activeTab ==="all") return true;
- return group.days === activeTab;
- });
- }, [groupsArr, activeTab]);
+    const search = debouncedSearch?.toLowerCase().trim();
+    
+    return groupsArr.filter((group) => {
+      // 1. Kunlar bo'yicha qat'iy filter
+      if (activeTab !== "all") {
+        if (group.days !== activeTab) return false;
+      }
+
+      // 2. Qidiruv bo'yicha qo'shimcha (kuchaytirilgan) filter
+      if (search) {
+        const name = (group.name || "").toLowerCase();
+        const subject = (group.subject_name || group.subject || "").toLowerCase();
+        const mentor = (group.mentor?.full_name || group.mentor?.username || "").toLowerCase();
+        
+        // Agar qidiruv so'zi birorta ham muhim maydonda topilmasa - o'chirib tashlaymiz
+        const matches = name.includes(search) || 
+                        subject.includes(search) || 
+                        mentor.includes(search);
+        
+        if (!matches) return false;
+      }
+
+      return true;
+    });
+  }, [groupsArr, activeTab, debouncedSearch]);
 
  return (
  <div className="p-3 sm:p-6 space-y-10">

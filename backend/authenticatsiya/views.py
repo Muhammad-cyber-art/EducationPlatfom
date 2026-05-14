@@ -33,6 +33,8 @@ class RegisterViewSet(ModelViewSet):
     search_fields = ['username', 'first_name', 'last_name']
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return UserModel.objects.none()
         user = self.request.user
         if user.role == 'super_admin': 
             return UserModel.objects.all()
@@ -99,6 +101,8 @@ class RegisterViewSet(ModelViewSet):
             # o'zining asosiy filialiga biriktiriladi
             serializer.save(branch_id=user.branch_id)
 
+    from drf_spectacular.utils import extend_schema
+    @extend_schema(responses={200: UsersListSerializer(many=True)})
     @action(detail=False, methods=['get'], url_path='admins')
     def list_admins(self, request):
         if request.user.role != 'super_admin':
@@ -117,6 +121,8 @@ class UsersListView(ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return UserModel.objects.none()
         user = self.request.user
         
         if user.role == 'super_admin':

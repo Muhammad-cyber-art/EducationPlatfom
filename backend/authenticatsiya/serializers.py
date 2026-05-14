@@ -4,6 +4,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import get_user_model
 from branches.serializers import BranchSerializer
 from branches.models import Branch
+from drf_spectacular.utils import extend_schema_field
 User = get_user_model()
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -178,8 +179,6 @@ class UsersListSerializer(serializers.ModelSerializer):
         fields = ["id", "username", "first_name", 'color','image', "last_name","is_active", "date_joined", "role",
             "phone_number", "subject",'branch','branch_id', "is_staff"
         ]
-        read_only_fields = ["is_staff","is_active",]
-
 class CurrentUserSerializer(serializers.ModelSerializer):
     branch = BranchSerializer(read_only=True)
     permissions = serializers.SerializerMethodField()
@@ -192,7 +191,9 @@ class CurrentUserSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["is_staff","is_active",]
 
-    def get_accessible_branches(self, obj):
+    from drf_spectacular.utils import extend_schema_field
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_accessible_branches(self, obj) -> list:
         """Admin/mentor uchun asosiy filial + BranchAccess orqali ruxsat berilgan filiallar."""
         from .models import BranchAccess
         out = []
@@ -204,7 +205,8 @@ class CurrentUserSerializer(serializers.ModelSerializer):
             out.append({"branch_id": acc.branch.id, "branch_name": acc.branch.name, "access_level": getattr(acc, 'access_level', obj.role)})
         return out
 
-    def get_permissions(self, obj):
+    @extend_schema_field(serializers.DictField())
+    def get_permissions(self, obj) -> dict:
         """
         Permissions ni soddalashtirilgan Boolean formatda qaytaradi.
         Masalan: {finance: true, groups: false, ...}
@@ -282,7 +284,8 @@ class BranchAccessSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['granted_by', 'created_at']
     
-    def get_branch(self, obj):
+    @extend_schema_field(serializers.DictField())
+    def get_branch(self, obj) -> dict:
         """Branch obyektini to'liq ma'lumot bilan qaytarish"""
         if obj.branch:
             return {

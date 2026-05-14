@@ -24,6 +24,8 @@ import WaitingHall from"../components/StudentComponents/WaitingHall";
 import MentorFinance from"../components/mentorsComponent/MentorFinance";
 import AdminProfile from"../components/adminComponents/adminProfile";
 import ArchivePage from"../components/adminComponents/ArchivePage";
+import AdminExpenses from"../components/adminComponents/Expenses/AdminExpenses";
+
 
 export const AdminRoutes = (
  <Route path="/admin" element={<AdminPanel />}>
@@ -64,5 +66,7 @@ export const AdminRoutes = (
  <Route path="finance" element={<MentorFinance />} />
  <Route path="profile" element={<AdminProfile />} />
  <Route path="archive" element={<ArchivePage />} />
+ <Route path="expenses" element={<AdminExpenses />} />
+
  </Route>
 );

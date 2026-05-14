@@ -1,15 +1,18 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from rest_framework import status
+from rest_framework import status, serializers
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
 from groups.models import Group, Student
 from .utils import send_telegram_message_async, get_student_telegram_ids
+from .serializers import BotStatsSerializer, BroadcastMessageSerializer, BotSuccessSerializer
 from django.db.models import Q
+from drf_spectacular.utils import extend_schema
 
 class BroadcastMessageView(APIView):
     permission_classes = [IsAuthenticated]
+    serializer_class = BroadcastMessageSerializer
 
     def post(self, request):
         user = request.user
@@ -112,6 +115,7 @@ class BroadcastMessageView(APIView):
 
 class BotStatisticsView(APIView):
     permission_classes = [IsAuthenticated]
+    serializer_class = BotStatsSerializer
 
     def get(self, request):
         branch_id = request.query_params.get('branch_id')
@@ -149,6 +153,7 @@ class ExportUnregisteredStudentsView(APIView):
     Botdan o'tmagan (chat_id si yo'q) o'quvchilar ro'yxatini Excel export qiladi.
     """
     permission_classes = [IsAuthenticated]
+    serializer_class = BotSuccessSerializer
 
     def get(self, request):
         branch_id = request.query_params.get('branch_id')

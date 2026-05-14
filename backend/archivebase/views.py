@@ -298,9 +298,13 @@ class PaymentArchiveViewSet(viewsets.ModelViewSet):
     
     # Faqat Super Admin arxivni ko'ra oladi
     def get_permissions(self):
-        if self.request.user.role == 'super_admin':
+        class DenyAll(permissions.BasePermission):
+            def has_permission(self, request, view):
+                return False
+        
+        if self.request.user and self.request.user.is_authenticated and getattr(self.request.user, 'role', '') == 'super_admin':
             return [permissions.IsAuthenticated()]
-        return [permissions.DenyAll()]
+        return [DenyAll()]
 
 
 from .models import ArchivedHomework

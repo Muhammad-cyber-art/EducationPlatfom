@@ -23,13 +23,13 @@ load_dotenv(BASE_DIR / '.env')
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-@%_8w_d8d9df5l3r$7avnz+rl4(zb%$2(ei_i@9v#2gc5y6^wx')
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'x_z#v9!k@m&p*q2r5s8t-w+y(z)a[b]c{d}e|f:g;h<i.j/k?l>m,n')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 ENVIRONMENT = os.getenv('DJANGO_ENV', 'development').strip().lower()
 IS_PRODUCTION = ENVIRONMENT in ('production', 'prod')
 DEBUG = os.getenv('DEBUG', 'False' if IS_PRODUCTION else 'True') == 'True'
-# DEBUG = True    
+# DEBUG = False    
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'yaxshi-niyat.uz,www.yaxshi-niyat.uz,localhost,127.0.0.1,192.168.43.209').split(',')
 # ALLOWED_HOSTS = ['*']
 
@@ -128,6 +128,13 @@ SPECTACULAR_SETTINGS = {
     'SWAGGER_UI_DIST': 'SIDECAR',  # Static fayllarni sidecar paketidan oladi
     'SWAGGER_UI_FAVICON_HREF': 'SIDECAR',
     'REDOC_DIST': 'SIDECAR',
+    'ENUM_NAME_OVERRIDES': {
+        'RoleEnum': 'authenticatsiya.models.UserModel.ROLE_CHOICES',
+        'StatusEnum': 'groups.models.Student.STUDENT_STATUS',
+    },
+    'POSTPROCESSING_HOOKS': [
+        'drf_spectacular.hooks.postprocess_schema_enums'
+    ],
 }
 from datetime import timedelta
 SIMPLE_JWT = {
@@ -241,22 +248,25 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 
 # Security Headers (Production uchun)
-if IS_PRODUCTION or not DEBUG:
-    # Trust reverse-proxy headers to generate correct absolute HTTPS URLs
-    # for ImageField/FileField in production.
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-    USE_X_FORWARDED_HOST = True
+# Trust reverse-proxy headers (Nginx/Traefik)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
 
-    SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'True' if IS_PRODUCTION else 'False') == 'True'
-    SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'True' if IS_PRODUCTION else 'False') == 'True'
-    CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', 'True' if IS_PRODUCTION else 'False') == 'True'
-    SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', 0))
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = os.getenv('SECURE_HSTS_INCLUDE_SUBDOMAINS', 'False') == 'True'
-    SECURE_HSTS_PRELOAD = os.getenv('SECURE_HSTS_PRELOAD', 'False') == 'True'
-    SECURE_CONTENT_TYPE_NOSNIFF = True
-    SECURE_BROWSER_XSS_FILTER = True
+# HSTS Sozlamalari (Faqat productionda yoqiladi)
+SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', 31536000 if not DEBUG else 0))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = os.getenv('SECURE_HSTS_INCLUDE_SUBDOMAINS', 'True') == 'True'
+SECURE_HSTS_PRELOAD = os.getenv('SECURE_HSTS_PRELOAD', 'True') == 'True'
 
-    X_FRAME_OPTIONS = 'DENY'
+# SSL va Cookie xavfsizligi (Lokalda xalaqit bermasligi uchun default holatda DEBUG ga bog'lanadi)
+SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', str(not DEBUG)) == 'True'
+SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', str(not DEBUG)) == 'True'
+CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', str(not DEBUG)) == 'True'
+
+# Qo'shimcha xavfsizlik
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_BROWSER_XSS_FILTER = True
+X_FRAME_OPTIONS = 'DENY'
+SECURE_REFERRER_POLICY = 'same-origin'
 
 # Celery Configuration
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
@@ -279,3 +289,41 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(day_of_month=1, hour=0, minute=5), # Har oyning 1-kuni 00:05 da
     },
 }
+
+# Production Optimization & Logging
+if not DEBUG:
+    # Faqat productionda loglarni faylga yozamiz
+    LOGGING = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'formatters': {
+            'verbose': {
+                'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+                'style': '{',
+            },
+        },
+        'handlers': {
+            'file': {
+                'level': 'ERROR',
+                'class': 'logging.FileHandler',
+                'filename': os.path.join(BASE_DIR, 'logs', 'django_error.log'),
+                'formatter': 'verbose',
+            },
+        },
+        'loggers': {
+            'django': {
+                'handlers': ['file'],
+                'level': 'ERROR',
+                'propagate': True,
+            },
+        },
+    }
+    
+    # Log katalogi mavjudligini tekshirish
+    LOG_DIR = os.path.join(BASE_DIR, 'logs')
+    if not os.path.exists(LOG_DIR):
+        os.makedirs(LOG_DIR)
+
+# Max upload sizes (10MB)
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10485760
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10485760

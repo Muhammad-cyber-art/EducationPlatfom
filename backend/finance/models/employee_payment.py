@@ -53,7 +53,7 @@ class EmployeePayment(models.Model):
     )
     
     @property
-    def total_advances(self):
+    def total_advances(self) -> Decimal:
         """
         Ushbu oy uchun berilgan avanslar + o'tgan to'langan oylardan 
         'kech' qolib o'tib kelgan avanslar yig'indisi.
@@ -97,7 +97,7 @@ class EmployeePayment(models.Model):
         return total
 
     @property
-    def total_amount(self):
+    def total_amount(self) -> Decimal:
         """Jami to'lov miqdori (floor)"""
         from finance.utils import floor_amount
         salary = Decimal(str(self.salary_base)) if self.salary_base else Decimal('0')

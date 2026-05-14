@@ -6,6 +6,7 @@ from branches.serializers import BranchSerializer
 from branches.models import Branch
 from django.utils import timezone
 from finance.models import Payment
+from drf_spectacular.utils import extend_schema_field
 User = get_user_model()
 
 
@@ -33,13 +34,16 @@ class MentorListSerializer(serializers.ModelSerializer):
         model = User
         fields = ('id', 'full_name', 'role', 'branch_id', 'accessible_branches')
     
-    def get_full_name(self, obj):
+    from drf_spectacular.utils import extend_schema_field
+    @extend_schema_field(serializers.CharField())
+    def get_full_name(self, obj) -> str:
         """To'liq ism-familiyani qaytaradi"""
         if obj.first_name and obj.last_name:
             return f"{obj.first_name} {obj.last_name}"
         return obj.username
 
-    def get_accessible_branches(self, obj):
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_accessible_branches(self, obj) -> list:
         """Mentorga ruxsat berilgan qo'shimcha filiallar ro'yxati"""
         try:
             accesses = obj.branch_accesses.all().select_related('branch')
@@ -59,21 +63,22 @@ class GroupSimpleSerializer(serializers.ModelSerializer):
     present_count = serializers.SerializerMethodField()
     absent_count = serializers.SerializerMethodField()
     mentor = MentorListSerializer(read_only=True)
+    computed_status = serializers.CharField(read_only=True)
 
     class Meta:
         model = Group
         fields = ('id', 'name', 'group_type', 'is_faol', 'computed_status', 'color', 'subject','mentor','monthly_price','days','dars_kunlari','dars_vaqti','students_count','branch', 'today_attendance_confirmed', 'present_count', 'absent_count')
 
-    def get_today_attendance_confirmed(self, obj):
+    def get_today_attendance_confirmed(self, obj) -> bool:
         return _safe_attendance_metrics(obj)["confirmed"]
 
-    def get_present_count(self, obj):
+    def get_present_count(self, obj) -> int:
         return _safe_attendance_metrics(obj)["present"]
 
-    def get_absent_count(self, obj):
+    def get_absent_count(self, obj) -> int:
         return _safe_attendance_metrics(obj)["absent"]
 
-    def get_students_count(self, obj):
+    def get_students_count(self, obj) -> int:
         # Faqat is_active=True bo'lgan o'quvchilarni sanaymiz
         return obj.enrollments.filter(is_active=True).count()
         
@@ -130,7 +135,7 @@ class StudentSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ('joined_at',)
 
-    def get_current_payment_status(self, obj):
+    def get_current_payment_status(self, obj) -> bool:
         """O'quvchining shu oydagi to'lov holati (True/False)"""
         today = timezone.now().date()
         first_day_of_month = today.replace(day=1)
@@ -143,7 +148,8 @@ class StudentSerializer(serializers.ModelSerializer):
         
         return payment.is_paid if payment else False
 
-    def get_current_payment_id(self, obj):
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
+    def get_current_payment_id(self, obj) -> int:
         """Frontend uchun to'lovni tasdiqlashda kerak bo'ladigan Payment ID"""
         today = timezone.now().date()
         first_day_of_month = today.replace(day=1)
@@ -305,7 +311,7 @@ class GroupShortSerializer(serializers.ModelSerializer):
             'today_attendance_confirmed'
         )
 
-    def get_today_attendance_confirmed(self, obj):
+    def get_today_attendance_confirmed(self, obj) -> bool:
         return _safe_attendance_metrics(obj)["confirmed"]
 class MentorNestedSerializer(serializers.ModelSerializer):
     # Branch ob'ektini to'liq ko'rinishi
@@ -331,7 +337,8 @@ class MentorNestedSerializer(serializers.ModelSerializer):
             'accessible_branches', 'mentor_groups'
         )
 
-    def get_accessible_branches(self, obj):
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_accessible_branches(self, obj) -> list:
         """Mentorga ruxsat berilgan qo'shimcha filiallar ro'yxati"""
         try:
             # related_name='branch_accesses' ekanligiga ishonch hosil qiling
@@ -345,7 +352,8 @@ class MentorNestedSerializer(serializers.ModelSerializer):
         except Exception:
             return []
 
-    def get_mentor_groups(self, obj):
+    @extend_schema_field(GroupSimpleSerializer(many=True))
+    def get_mentor_groups(self, obj) -> list:
         """Guruhlarni birlashtirish va branch_id bo'yicha filterlash"""
         request = self.context.get('request')
         # URL orqali kelgan branch_id (?branch_id=1)
@@ -423,6 +431,7 @@ class GroupSerializer(serializers.ModelSerializer):
         write_only=True
     )
     today_attendance_confirmed = serializers.SerializerMethodField()
+    computed_status = serializers.CharField(read_only=True)
 
     class Meta:
         model = Group
@@ -436,11 +445,12 @@ class GroupSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ('created_at', 'students_count')
 
-    def get_students_count(self, obj):
+    def get_students_count(self, obj) -> int:
         # Faqat is_active=True bo'lgan o'quvchilarni sanaymiz
         return obj.enrollments.filter(is_active=True).count()
 
-    def get_students(self, obj):
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_students(self, obj) -> list:
         """
         N+1 muammosini bartaraf etish: barcha to'lov ma'lumotlarini bitta so'rovda olamiz.
         """
@@ -492,7 +502,7 @@ class GroupSerializer(serializers.ModelSerializer):
             })
         return result
 
-    def get_today_attendance_confirmed(self, obj):
+    def get_today_attendance_confirmed(self, obj) -> bool:
         return _safe_attendance_metrics(obj)["confirmed"]
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -573,7 +583,8 @@ class MentorSerializer(serializers.ModelSerializer):
             'accessible_branches', 'mentor_groups', 'groups_count', 'students_count'
         )
 
-    def get_accessible_branches(self, obj):
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_accessible_branches(self, obj) -> list:
         """Faqat qo'shimcha ruxsat berilgan branchlarni qaytaradi"""
         # related_name='branch_accesses' ekanligiga ishonch hosil qiling
         accesses = obj.branch_accesses.all().select_related('branch')
@@ -584,7 +595,8 @@ class MentorSerializer(serializers.ModelSerializer):
             } for acc in accesses
         ]
 
-    def get_mentor_groups(self, obj):
+    @extend_schema_field(GroupSimpleSerializer(many=True))
+    def get_mentor_groups(self, obj) -> list:
         """Guruhlarni birlashtiradi va branch_id bo'yicha filterlaydi"""
         
         # 1. URL dan branch_id ni olamiz (?branch_id=...)
@@ -628,10 +640,10 @@ class MentorSerializer(serializers.ModelSerializer):
 
         return all_groups
 
-    def get_groups_count(self, obj):
+    def get_groups_count(self, obj) -> int:
         return self._get_filtered_groups(obj).count()
 
-    def get_students_count(self, obj):
+    def get_students_count(self, obj) -> int:
         groups_qs = self._get_filtered_groups(obj)
         return Student.objects.filter(
             enrollments__group__in=groups_qs,
@@ -681,7 +693,7 @@ class GroupTransferSerializer(serializers.ModelSerializer):
             'marked_by', 'marked_by_name', 'created_at'
         )
 
-    def get_marked_by_name(self, obj):
+    def get_marked_by_name(self, obj) -> str:
         if obj.marked_by:
             return obj.marked_by.get_full_name() or obj.marked_by.username
         return "Tizim"
@@ -714,9 +726,8 @@ class StudentGroupListSerializer(serializers.ModelSerializer):
         payment_info = payment_map.get(obj.id)
         return payment_info['id'] if payment_info else None
 
-    joined_at = serializers.SerializerMethodField()
-
-    def get_joined_at(self, obj):
+    @extend_schema_field(serializers.DateTimeField(allow_null=True))
+    def get_joined_at(self, obj) -> str:
         enrollment_map = self.context.get('enrollment_map', {})
         return enrollment_map.get(obj.id)
 
