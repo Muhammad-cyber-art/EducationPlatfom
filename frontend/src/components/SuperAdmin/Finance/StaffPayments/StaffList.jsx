@@ -14,8 +14,6 @@ const StaffList = ({
  setStaffSearchQuery, 
  handleRefreshPayments, 
  staffRefreshing, 
- handleProcessRefunds, 
- refundProcessing, 
  staffLoading, 
  filteredStaffData 
 }) => {
@@ -45,14 +43,6 @@ const StaffList = ({
  <span>{staffRefreshing ?"..." :"Oylik Ochish"}</span>
  </button>
 
- <button
- onClick={handleProcessRefunds}
- disabled={refundProcessing}
- className="px-6 sm:px-8 py-3.5 sm:py-4 flex items-center justify-center gap-3 sm:gap-4 bg-rose-500/10 border border-rose-500/20 hover:border-rose-500/50 rounded-2xl text-[9px] sm:text-[10px] font-black capitalize tracking-widest transition-all active:scale-95 disabled:opacity-50 text-rose-500 group"
- >
- <Undo2 size={16} className={refundProcessing ?"animate-spin" :"group-hover:-rotate-45 transition-transform sm:w-4 sm:h-4"} />
- <span>{refundProcessing ?"..." :"Refundlar"}</span>
- </button>
  </div>
 
  {/* LIST */}

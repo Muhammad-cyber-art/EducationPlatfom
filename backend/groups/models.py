@@ -193,6 +193,7 @@ class Student(models.Model):
         ('discount', 'Imtiyozli'),
         ('low_income', 'Kam ta\'minlangan'),
         ('negotiated', 'Kelishilgan narx'),
+        ('teacher_negotiated', "O'qituvchi kelishgan"),
     ]
     groups = models.ManyToManyField(
         Group, 
@@ -208,6 +209,11 @@ class Student(models.Model):
         blank=True, 
         verbose_name="Individual narx",
         help_text="Agar o'quvchi guruh narxidan boshqa (masalan, kamroq) narxda o'qisa, shu yerga yozing."
+    )
+    include_in_mentor_salary = models.BooleanField(
+        default=False, 
+        verbose_name="Mentor oyligiga qo'shilsinmi?",
+        help_text="Faqat 'O'qituvchi kelishgan' statusidagi o'quvchilar uchun amal qiladi."
     )
 
     def save(self, *args, **kwargs):
@@ -229,7 +235,7 @@ class Student(models.Model):
             )
 
     def get_absences_count(self, year, month, group=None):
-        """O'quvchining berilgan oydagi qoldirgan darslari sonini qaytaradi (Optimallashtirilgan mantiq)"""
+        """O'quvchining berilgan oydagi qoldirgan darslari sonini qaytaradi"""
         target_group = group or self.group
         if not target_group:
             return 0
@@ -237,17 +243,14 @@ class Student(models.Model):
         today = timezone.localdate()
         lesson_dates = target_group.get_lesson_dates(year, month)
         
-        # Faqat o'tib bo'lgan dars kunlarini olamiz (bugunni ham qo'shamiz)
+        # Faqat o'tib bo'lgan dars kunlarini olamiz
         passed_lessons = [d for d in lesson_dates if d <= today]
         
-        # O'quvchining ushbu guruhga qo'shilgan sanasini inobatga olamiz
-        # Agar o'quvchi oyning o'rtasida kelgan bo'lsa, undan oldingi darslar "qoldirilgan" hisoblanmaydi
         enrollment = self.enrollments.filter(group=target_group).first()
         if enrollment:
             join_date = enrollment.joined_at.date()
             passed_lessons = [d for d in passed_lessons if d >= join_date]
         
-        # Kelgan kunlari sonini hisoblaymiz
         present_count = self.attendances.filter(
             group=target_group,
             date__year=year, 
@@ -256,10 +259,52 @@ class Student(models.Model):
             is_present=True
         ).count()
         
-        # Qoldirilgan darslar = O'tib bo'lgan darslar soni - Kelgan darslar soni
-        # Shu orqali davomat olinmagan (bazada rekord yo'q) kunlar ham "kelmadi" deb hisoblanadi
         absences = len(passed_lessons) - present_count
         return max(0, absences)
+
+    def calculate_accrued_amount(self, year, month, group=None):
+        """
+        NEW LOGIC: Davomatga qarab bir kunlik dars narxi qo'shilib borishi.
+        Oylik to'lov = (Kelgan kunlar soni) * (Bir kunlik dars narxi)
+        """
+        from finance.utils import floor_amount
+        target_group = group or self.group
+        if not target_group:
+            return 0
+
+        # Oydagi jami rejalashtirilgan darslar soni
+        lesson_dates = target_group.get_lesson_dates(year, month)
+        total_lessons_count = len(lesson_dates)
+        if total_lessons_count <= 0:
+            return 0
+
+        # O'quvchining haqiqiy oylik narxi (custom_fee yoki guruh narxi)
+        base_price = target_group.monthly_price
+        if self.status in ['low_income', 'negotiated']:
+            if self.custom_fee is not None:
+                base_price = self.custom_fee
+
+        # Bir kunlik dars narxi
+        daily_price = floor_amount(base_price / total_lessons_count)
+
+        # O'qituvchi kelishgan: Umuman pul to'lamaydi
+        if self.status == 'teacher_negotiated':
+            return 0
+
+        # Kelishilgan narxdagi o'quvchilar: Davomatga qaramasdan to'liq narxni to'laydi
+        if self.status == 'negotiated':
+            return floor_amount(base_price)
+
+        # Kelgan kunlar soni
+        present_count = self.attendances.filter(
+            group=target_group,
+            date__year=year,
+            date__month=month,
+            is_present=True
+        ).count()
+
+        accrued_amount = floor_amount(daily_price * present_count)
+        return accrued_amount
 
 
     def calculate_refund_amount(self, year, month, group=None):

@@ -1,428 +1,451 @@
-import React, { useEffect, useReducer, useCallback, useMemo, memo } from'react';
-import toast from'react-hot-toast';
-import { useParams, useNavigate } from'react-router-dom';
-import GoBackButton from"../sendback";
+import React, { useEffect, useReducer, useCallback, useMemo, memo } from 'react';
+import toast from 'react-hot-toast';
+import { useParams, useNavigate } from 'react-router-dom';
+import GoBackButton from "../sendback";
 import {
- Users,
- Settings,
- CalendarDays,
- Hash,
- Loader2,
- Trash2,
- Save,
- Award,
- TrendingUp,
- ShieldCheck
-} from"lucide-react";
-import api from'../../tokenUpdater/updater';
+  Users,
+  CalendarDays,
+  Hash,
+  Loader2,
+  Trash2,
+  Save,
+  Award,
+  TrendingUp,
+  ShieldCheck,
+  CheckCircle2,
+  AlertCircle,
+  ChevronRight,
+  BookOpen
+} from "lucide-react";
+import api from '../../tokenUpdater/updater';
 
 // --- Reducer Logic ---
 const initialState = {
- loading: true,
- saving: false,
- testData: null,
- students: [],
- maxScoreInput:'',
- maxScore:''
+  loading: true,
+  saving: false,
+  testData: null,
+  students: [],
+  maxScoreInput: '',
+  maxScore: ''
 };
 
 function reducer(state, action) {
- switch (action.type) {
- case'SET_LOADING':
- return { ...state, loading: action.payload };
- case'SET_SAVING':
- return { ...state, saving: action.payload };
- case'FETCH_SUCCESS':
- return {
- ...state,
- testData: action.payload.testData,
- students: action.payload.students,
- loading: false
- };
- case'UPDATE_STUDENT_SCORE':
- return {
- ...state,
- students: state.students.map(s =>
- s.id === action.payload.id ? { ...s, score: action.payload.value } : s
- )
- };
- case'SET_MAX_SCORE_INPUT':
- return { ...state, maxScoreInput: action.payload };
- case'SET_MAX_SCORE':
- return { ...state, maxScore: action.payload };
- default:
- return state;
- }
+  switch (action.type) {
+    case 'SET_LOADING':
+      return { ...state, loading: action.payload };
+    case 'SET_SAVING':
+      return { ...state, saving: action.payload };
+    case 'FETCH_SUCCESS':
+      return {
+        ...state,
+        testData: action.payload.testData,
+        students: action.payload.students,
+        loading: false
+      };
+    case 'UPDATE_STUDENT_SCORE':
+      return {
+        ...state,
+        students: state.students.map(s =>
+          s.id === action.payload.id ? { ...s, score: action.payload.value } : s
+        )
+      };
+    case 'SET_MAX_SCORE_INPUT':
+      return { ...state, maxScoreInput: action.payload };
+    case 'SET_MAX_SCORE':
+      return { ...state, maxScore: action.payload };
+    default:
+      return state;
+  }
 }
 
 // --- Sub-components (Memoized) ---
 const StudentRow = memo(({ student, maxScore, onScoreChange }) => {
- const initials = useMemo(() =>
- student.name.split('').map(n => n[0]).join('').slice(0, 2),
- [student.name]);
+  const initials = useMemo(() =>
+    student.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
+    [student.name]);
 
- return (
- <tr className="hover:bg-[var(--gold-dim)]/30 transition-all group">
- <td className="px-8 py-3">
- <div className="flex items-center gap-3">
- <div className="text-[10px] font-black text-[var(--gold)]/50">
- {initials}
- </div>
- <p className="text-[11px] font-bold text-[var(--text-primary)] capitalize group-hover:text-[var(--gold)] transition-colors">
- {student.name.toLowerCase()}
- </p>
- </div>
- </td>
- <td className="px-8 py-3">
- <div className="flex justify-center">
- <div className="relative w-full max-w-[140px]">
- <div className="flex items-center lux-input !py-0 !px-2 !h-9 overflow-hidden shadow-inner">
- <input
- type="text"
- value={student.score}
- onChange={(e) => onScoreChange(student.id, e.target.value)}
- placeholder="Ball"
- className={`bg-transparent border-none outline-none font-bold text-[11px] h-full min-w-0 ${maxScore ?'flex-1 text-right pr-1' :'w-full text-center'}`}
- />
- {maxScore && (
- <div className="text-[var(--text-muted)] font-black text-[9px] flex-none text-left pl-1 pointer-events-none whitespace-nowrap">
- / {maxScore}
- </div>
- )}
- </div>
- </div>
- </div>
- </td>
- </tr>
- );
+  const scoreValue = parseFloat(student.score);
+  const isHigh = maxScore && scoreValue >= (maxScore * 0.85);
+
+  return (
+    <tr className="hover:bg-[var(--gold-dim)]/10 transition-all group/row">
+      <td className="px-8 py-4">
+        <div className="flex items-center gap-4">
+          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-black transition-all duration-500 border
+            ${isHigh ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500/30' : 'bg-[var(--bg-void)] text-[var(--gold)] border-[var(--border-glass)] group-hover/row:border-[var(--gold)]/30'}`}>
+            {initials}
+          </div>
+          <div className="min-w-0">
+            <p className="text-[13px] font-bold text-[var(--text-primary)] capitalize group-hover/row:text-[var(--gold)] transition-colors truncate">
+              {student.name.toLowerCase()}
+            </p>
+            <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest mt-0.5">ID: {student.id}</p>
+          </div>
+        </div>
+      </td>
+      <td className="px-8 py-4">
+        <div className="flex justify-center">
+          <div className="relative group/input max-w-[160px] w-full">
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] group-focus-within/input:text-[var(--gold)] transition-colors pointer-events-none">
+              <Award size={14} />
+            </div>
+            <div className="flex items-center lux-input !py-0 !px-0 !h-11 overflow-hidden focus-within:ring-2 focus-within:ring-[var(--gold)]/20 transition-all bg-[var(--bg-void)]/40 border-[var(--border-glass)]">
+              <input
+                type="text"
+                value={student.score}
+                onChange={(e) => onScoreChange(student.id, e.target.value)}
+                placeholder="---"
+                className={`bg-transparent border-none outline-none font-black text-sm h-full min-w-0 pr-1 ${maxScore ? 'w-2/3 text-right' : 'w-full text-center'}`}
+              />
+              {maxScore && (
+                <div className="text-[var(--text-muted)] font-black text-[10px] pl-1 w-1/3 text-left opacity-60 pointer-events-none">
+                  / {maxScore}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
 });
 
 const StudentCardMobile = memo(({ student, maxScore, onScoreChange }) => {
- const initials = useMemo(() =>
- student.name.split('').map(n => n[0]).join('').slice(0, 2),
- [student.name]);
+  const initials = useMemo(() =>
+    student.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
+    [student.name]);
 
- return (
- <div className="bg-[var(--bg-void)]/40 border border-[var(--border-glass)] rounded-xl p-3 flex items-center justify-between gap-3">
- <div className="flex items-center gap-3 overflow-hidden">
- <div className="text-[10px] font-black text-[var(--gold)]/60 min-w-[24px]">
- {initials}
- </div>
- <p className="text-[11px] font-bold text-[var(--text-primary)] truncate capitalize">
- {student.name.toLowerCase()}
- </p>
- </div>
+  return (
+    <div className="lux-card !p-4 flex items-center justify-between gap-4 border border-[var(--border-glass)]/30 hover:border-[var(--gold)]/30 transition-all bg-[var(--bg-panel)]/40">
+      <div className="flex items-center gap-4 min-w-0">
+        <div className="w-10 h-10 shrink-0 rounded-2xl bg-[var(--bg-void)] border border-[var(--border-glass)] flex items-center justify-center text-xs font-black text-[var(--gold)]">
+          {initials}
+        </div>
+        <div className="min-w-0">
+          <p className="text-[12px] font-black text-[var(--text-primary)] truncate capitalize tracking-tight leading-tight">
+            {student.name.toLowerCase()}
+          </p>
+          <p className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">O'quvchi</p>
+        </div>
+      </div>
 
- <div className="w-32 flex-shrink-0">
- <div className="flex items-center justify-center lux-input !py-0 !px-0 !h-9 overflow-hidden">
- <input
- type="text"
- value={student.score}
- onChange={(e) => onScoreChange(student.id, e.target.value)}
- placeholder="Ball"
- className={`bg-transparent border-none outline-none font-bold text-[11px] h-full min-w-0 ${maxScore ?'flex-1 text-right pr-1' :'w-full text-center'}`}
- />
- {maxScore && (
- <div className="text-[var(--text-muted)] font-black text-[9px] flex-1 text-left pl-1 pointer-events-none whitespace-nowrap overflow-hidden">
- / {maxScore}
- </div>
- )}
- </div>
- </div>
- </div>
- );
+      <div className="w-[120px] flex-shrink-0">
+        <div className="flex items-center lux-input !py-0 !px-0 !h-11 !rounded-2xl overflow-hidden bg-[var(--bg-void)]/60">
+          <input
+            type="text"
+            value={student.score}
+            onChange={(e) => onScoreChange(student.id, e.target.value)}
+            placeholder="---"
+            className={`bg-transparent border-none outline-none font-black text-xs h-full min-w-0 pr-1 ${maxScore ? 'w-2/3 text-right' : 'w-full text-center'}`}
+          />
+          {maxScore && (
+            <div className="text-[var(--text-muted)] font-black text-[9px] pl-1 w-1/3 text-left opacity-60">
+              / {maxScore}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 });
 
 // --- Main Component ---
 const MockTestDetails = () => {
- const { test_id } = useParams();
- const navigate = useNavigate();
- const [state, dispatch] = useReducer(reducer, initialState);
+  const { test_id } = useParams();
+  const navigate = useNavigate();
+  const [state, dispatch] = useReducer(reducer, initialState);
 
- const { loading, saving, testData, students, maxScoreInput, maxScore } = state;
+  const { loading, saving, testData, students, maxScoreInput, maxScore } = state;
 
- useEffect(() => {
- const fetchTestDetails = async () => {
- try {
- const res = await api.get(`/homework_attends/mock-tests/${test_id}/`);
- const formattedTestData = {
- id: res.data.id,
- subject: res.data.subject,
- type: res.data.type,
- date: res.data.date,
- group_name: res.data.group_name
- };
+  useEffect(() => {
+    const fetchTestDetails = async () => {
+      try {
+        const res = await api.get(`/homework_attends/mock-tests/${test_id}/`);
+        const formattedTestData = {
+          id: res.data.id,
+          subject: res.data.subject,
+          type: res.data.type,
+          date: res.data.date,
+          group_name: res.data.group_name
+        };
 
- const formattedStudents = (res.data.students_status || []).map(s => {
- let displayScore = s.score ||'';
- if (displayScore.includes('/')) {
- displayScore = displayScore.split('/')[0].trim();
- }
- return {
- id: s.id,
- name: s.student_name,
- score: displayScore
- };
- });
+        let detectedMaxScore = '';
+        const formattedStudents = (res.data.students_status || []).map(s => {
+          let displayScore = s.score || '';
+          if (displayScore.includes('/')) {
+            const parts = displayScore.split('/');
+            displayScore = parts[0].trim();
+            if (!detectedMaxScore) detectedMaxScore = parts[1].trim();
+          }
+          return {
+            id: s.id,
+            name: s.student_name,
+            score: displayScore
+          };
+        });
 
- dispatch({
- type:'FETCH_SUCCESS',
- payload: { testData: formattedTestData, students: formattedStudents }
- });
- } catch (err) {
- console.error("Failed to fetch test details", err);
- dispatch({ type:'SET_LOADING', payload: false });
- }
- };
+        dispatch({
+          type: 'FETCH_SUCCESS',
+          payload: { testData: formattedTestData, students: formattedStudents }
+        });
 
- if (test_id) {
- fetchTestDetails();
- }
- }, [test_id]);
+        if (detectedMaxScore) {
+          dispatch({ type: 'SET_MAX_SCORE', payload: detectedMaxScore });
+          dispatch({ type: 'SET_MAX_SCORE_INPUT', payload: detectedMaxScore });
+        }
+      } catch (err) {
+        console.error("Failed to fetch test details", err);
+        dispatch({ type: 'SET_LOADING', payload: false });
+      }
+    };
 
- const handleScoreChange = useCallback((id, value) => {
- dispatch({ type:'UPDATE_STUDENT_SCORE', payload: { id, value } });
- }, []);
+    if (test_id) {
+      fetchTestDetails();
+    }
+  }, [test_id]);
 
- const handleSave = useCallback(async () => {
- dispatch({ type:'SET_SAVING', payload: true });
- let successCount = 0;
- let failCount = 0;
+  const handleScoreChange = useCallback((id, value) => {
+    dispatch({ type: 'UPDATE_STUDENT_SCORE', payload: { id, value } });
+  }, []);
 
- try {
- for (const s of students) {
- // Agar ball kiritilmagan bo'lsa, bu o'quvchini tashlab ketamiz (na saqlanadi, na xabar boradi)
- if (s.score ==="" || s.score === null) continue;
+  const handleSave = useCallback(async () => {
+    dispatch({ type: 'SET_SAVING', payload: true });
+    let successCount = 0;
+    let failCount = 0;
 
- try {
- const finalScore = maxScore ? `${s.score} / ${maxScore}` : String(s.score);
- await api.patch(`/homework_attends/mock-tests/${Number(test_id)}/update_student_score/`, {
- result_id: Number(s.id),
- score: finalScore
- });
- successCount++;
- } catch (e) {
- console.error(`Error saving score for ${s.name}:`, e.response?.data || e.message);
- failCount++;
- }
- }
+    try {
+      for (const s of students) {
+        if (s.score === "" || s.score === null) continue;
 
- if (failCount === 0) {
- toast.success("Barcha natijalar muvaffaqiyatli saqlandi!");
- } else if (successCount > 0) {
- toast.error(`${failCount} ta o'quvchida xatolik yuz berdi.`);
- } else {
- toast.error("Hech bir natija saqlanmadi.");
- }
- } catch (err) {
- console.error("General error in handleSave:", err);
- toast.error("Tizimda kutilmagan xatolik");
- } finally {
- dispatch({ type:'SET_SAVING', payload: false });
- }
- }, [students, maxScore, test_id]);
+        try {
+          const finalScore = maxScore ? `${s.score} / ${maxScore}` : String(s.score);
+          await api.patch(`/homework_attends/mock-tests/${Number(test_id)}/update_student_score/`, {
+            result_id: Number(s.id),
+            score: finalScore
+          });
+          successCount++;
+        } catch (e) {
+          failCount++;
+        }
+      }
 
- const handleDeleteTest = useCallback(async () => {
- if (window.confirm("Bu testni o'chirib tashlamoqchimisiz?")) {
- try {
- await api.delete(`/homework_attends/mock-tests/${test_id}/`);
- toast.success("Test o'chirildi");
- navigate(-1);
- } catch (err) {
- console.error("Error deleting test:", err);
- }
- }
- }, [test_id, navigate]);
+      if (failCount === 0) {
+        toast.success("Natijalar muvaffaqiyatli saqlandi!");
+      } else if (successCount > 0) {
+        toast.error(`${failCount} ta o'quvchida xatolik yuz berdi.`);
+      } else {
+        toast.error("Hech bir natija saqlanmadi.");
+      }
+    } catch (err) {
+      toast.error("Tizimda kutilmagan xatolik");
+    } finally {
+      dispatch({ type: 'SET_SAVING', payload: false });
+    }
+  }, [students, maxScore, test_id]);
 
- const handleSetMaxScore = useCallback(() => {
- if (maxScoreInput) {
- dispatch({ type:'SET_MAX_SCORE', payload: maxScoreInput });
- toast.success(`Maksimal ball: ${maxScoreInput}`);
- }
- }, [maxScoreInput]);
+  const handleDeleteTest = useCallback(async () => {
+    if (window.confirm("Bu testni o'chirib tashlamoqchimisiz?")) {
+      try {
+        await api.delete(`/homework_attends/mock-tests/${test_id}/`);
+        toast.success("Test o'chirildi");
+        navigate(-1);
+      } catch (err) {
+        console.error("Error deleting test:", err);
+      }
+    }
+  }, [test_id, navigate]);
 
- // Derived Data
- const studentCount = useMemo(() => students.length, [students]);
+  const handleSetMaxScore = useCallback(() => {
+    if (maxScoreInput) {
+      dispatch({ type: 'SET_MAX_SCORE', payload: maxScoreInput });
+      toast.success(`Maksimal ball: ${maxScoreInput}`);
+    }
+  }, [maxScoreInput]);
 
- if (loading) return (
- <div className="min-h-screen bg-[var(--bg-void)] flex flex-col items-center justify-center gap-4">
- <Loader2 className="animate-spin text-[var(--gold)]" size={32} />
- <p className="text-[9px] font-black text-[var(--text-muted)] capitalize tracking-[0.3em]">Yuklanmoqda...</p>
- </div>
- );
+  if (loading) return (
+    <div className="min-h-screen bg-[var(--bg-void)] flex flex-col items-center justify-center gap-6">
+      <div className="relative">
+        <Loader2 className="animate-spin text-[var(--gold)]" size={48} />
+        <div className="absolute inset-0 blur-lg bg-[var(--gold)]/20 animate-pulse"></div>
+      </div>
+      <p className="text-[10px] font-black text-[var(--gold)] uppercase tracking-[0.5em] animate-pulse">Ma'lumotlar yuklanmoqda</p>
+    </div>
+  );
 
- if (!testData) return (
- <div className="min-h-screen bg-[var(--bg-void)] flex items-center justify-center text-[var(--text-muted)] font-bold capitalize tracking-widest text-center">
- MA'LUMOT TOPILMADI
- </div>
- );
+  return (
+    <div className="min-h-screen bg-[var(--bg-void)] p-4 md:p-10 text-[var(--text-primary)] selection:bg-[var(--gold)]/40 animate-lux-fade">
+      {/* BACKGROUND EFFECTS */}
+      <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
+        <div className="absolute top-[10%] right-[10%] w-[500px] h-[500px] rounded-full blur-[150px] bg-[var(--gold)]/5"></div>
+        <div className="absolute bottom-[10%] left-[5%] w-[400px] h-[400px] rounded-full blur-[120px] bg-[var(--gold)]/5"></div>
+      </div>
 
- return (
- <div className="min-h-screen bg-[var(--bg-void)] p-3 md:p-8 text-[var(--text-primary)] font-sans selection:bg-[var(--gold)]/30 animate-lux-fade">
- <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
- <div className="absolute top-1/4 -right-20 w-80 h-80 rounded-full blur-[100px] bg-[var(--gold)] opacity-5"></div>
- <div className="absolute bottom-1/4 -left-20 w-64 h-64 rounded-full blur-[80px] bg-[var(--gold)] opacity-5"></div>
- </div>
+      <div className="max-w-[1200px] mx-auto space-y-8">
+        {/* HEADER SECTION - STREAMLINED & ORGANIZED */}
+        <div className="lux-card !p-6 md:!p-8 border border-[var(--border-glass)] bg-[var(--bg-panel)]/40 shadow-2xl relative overflow-hidden group">
+          {/* Subtle accent line */}
+          <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-[var(--gold)]/50 to-transparent"></div>
+          
+          <div className="space-y-6">
+            {/* Top Row: Navigation, Title, Date & Actions */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+              
+              {/* Left: Nav + Identity */}
+              <div className="flex items-center gap-5">
+                <GoBackButton className="!w-12 !h-12 !rounded-xl !bg-[var(--bg-void)] !border-[var(--border-glass)] hover:!border-[var(--gold)]/50 transition-all active:scale-90" />
+                <div className="h-8 w-[1px] bg-[var(--border-glass)] opacity-50"></div>
+                <div className="flex flex-wrap items-center gap-4">
+                  <h1 className="text-2xl md:text-4xl font-black tracking-tighter text-white uppercase italic">
+                    {testData.subject}
+                  </h1>
+                  <div className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[9px] font-black text-emerald-500 tracking-[0.2em] flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                    FAOL
+                  </div>
+                </div>
+              </div>
 
- <div className="max-w-[1100px] mx-auto space-y-6 md:space-y-8">
- {/* Header */}
- <div className="lux-card !p-5 md:!p-8 relative overflow-hidden group">
- <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
- <div className="flex items-start md:items-center gap-5">
- <GoBackButton />
- <div>
- <div className="flex items-center gap-3 mb-1">
- <h2 className="text-xl md:text-2xl font-bold tracking-tight capitalize">{testData.subject}</h2>
- <div className="hidden sm:flex bg-[var(--gold-dim)] text-[var(--gold)] px-2 py-0.5 rounded border border-[var(--gold)]/20 text-[9px] font-black tracking-widest items-center gap-1">
- <Hash size={10} /> {test_id}
- </div>
- </div>
- <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
- <p className="text-[9px] font-black text-[var(--text-muted)] capitalize tracking-[0.2em] flex items-center gap-2">
- <span className="w-1.5 h-1.5 bg-[var(--gold)] rounded-full shadow-[0_0_5px_var(--gold)]"></span>
- {testData.type}
- </p>
- <p className="text-[9px] font-black text-[var(--gold)] capitalize tracking-[0.2em]">
- {testData.group_name}
- </p>
- </div>
- </div>
- </div>
+              {/* Right: Date + Delete Action */}
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 px-5 py-2.5 bg-[var(--bg-void)]/60 border border-[var(--border-glass)] rounded-2xl group/date">
+                  <CalendarDays size={16} className="text-[var(--gold)]" />
+                  <span className="text-[12px] font-black text-[var(--gold)] tracking-widest">{testData.date}</span>
+                </div>
+                
+                <button
+                  onClick={handleDeleteTest}
+                  className="w-11 h-11 flex items-center justify-center rounded-2xl bg-red-500/5 text-red-500 border border-red-500/10 hover:bg-red-500 hover:text-white transition-all active:scale-95 shadow-lg group/del"
+                >
+                  <Trash2 size={18} className="group-hover/del:scale-110 transition-transform" />
+                </button>
+              </div>
+            </div>
 
- <div className="flex items-center justify-between md:justify-end gap-3 border-t md:border-t-0 border-[var(--border-glass)] pt-4 md:pt-0">
- <div className="flex items-center gap-2.5 px-4 py-2 bg-[var(--bg-void)]/40 rounded-xl border border-[var(--border-glass)] shadow-inner">
- <CalendarDays size={14} className="text-[var(--gold)] opacity-60" />
- <span className="text-[10px] font-black text-[var(--text-secondary)] capitalize tracking-[0.1em]">
- {testData.date}
- </span>
- </div>
+            {/* Bottom Row: Additional Meta Info */}
+            <div className="flex flex-wrap items-center gap-6 pt-4 border-t border-[var(--border-glass)]/30">
+              <div className="flex items-center gap-2 text-[10px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em]">
+                <BookOpen size={14} className="text-[var(--gold)]" />
+                <span>Tur: <span className="text-[var(--text-primary)]">{testData.type}</span></span>
+              </div>
+              <div className="flex items-center gap-2 text-[10px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em]">
+                <Users size={14} className="text-indigo-400" />
+                <span>Guruh: <span className="text-indigo-400">{testData.group_name}</span></span>
+              </div>
+            </div>
+          </div>
+        </div>
 
- <button
- onClick={handleDeleteTest}
- className="w-10 h-10 bg-red-500/5 text-red-500 border border-red-500/10 rounded-xl hover:bg-red-500 hover:text-white transition-all flex items-center justify-center"
- title="Testni o'chirish"
- >
- <Trash2 size={18} />
- </button>
- </div>
- </div>
- </div>
+        {/* ANALYTICS GRID */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          {[
+            { label: "Jami O'quvchilar", value: `${students.length} ta`, icon: Users, color: "text-[var(--gold)]" },
+            { label: "Maksimal Ball", value: maxScore || "O'rnatilmagan", icon: Award, color: "text-blue-400" },
+            { label: "Imtihon ID", value: `#${test_id}`, icon: Hash, color: "text-purple-400" }
+          ].map((stat, i) => (
+            <div key={i} className="lux-card !p-6 flex items-center gap-5 group hover:border-[var(--gold)]/30 transition-all">
+              <div className={`w-14 h-14 rounded-2xl bg-[var(--bg-void)] border border-[var(--border-glass)] flex items-center justify-center ${stat.color} shadow-inner group-hover:scale-110 transition-transform duration-500`}>
+                <stat.icon size={28} />
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em] mb-1">{stat.label}</p>
+                <p className="text-xl font-black tracking-tight">{stat.value}</p>
+              </div>
+            </div>
+          ))}
+        </div>
 
- {/* Analytics */}
- <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
- <div className="lux-card !p-4 flex items-center gap-3">
- <div className="p-2.5 bg-[var(--gold-dim)] rounded-xl text-[var(--gold)]">
- <Users size={18} />
- </div>
- <div className="overflow-hidden">
- <p className="text-[8px] font-black text-[var(--text-muted)] capitalize tracking-wider truncate text-ellipsis">O'quvchilar</p>
- <p className="text-sm font-bold truncate">{studentCount} ta</p>
- </div>
- </div>
- <div className="lux-card !p-4 flex items-center gap-3">
- <div className="p-2.5 bg-[var(--gold-dim)] rounded-xl text-[var(--gold)]">
- <Award size={18} />
- </div>
- <div className="overflow-hidden">
- <p className="text-[8px] font-black text-[var(--text-muted)] capitalize tracking-wider truncate text-ellipsis">O'zlashtirish</p>
- <p className="text-sm font-bold truncate">Standard</p>
- </div>
- </div>
- <div className="lux-card !p-4 col-span-2 md:col-span-1 flex items-center gap-3">
- <div className="p-2.5 bg-[var(--gold-dim)] rounded-xl text-[var(--gold)]">
- <ShieldCheck size={18} />
- </div>
- <div className="overflow-hidden">
- <p className="text-[8px] font-black text-[var(--text-muted)] capitalize tracking-wider truncate text-ellipsis">Holati</p>
- <p className="text-sm font-bold truncate text-emerald-500">Tasdiqlangan</p>
- </div>
- </div>
- </div>
+        {/* MAIN RESULTS TABLE */}
+        <div className="lux-card !p-0 overflow-hidden shadow-[0_30px_60px_rgba(0,0,0,0.5)] border border-[var(--border-glass)] bg-[var(--bg-panel)]/40">
+          <div className="px-6 py-6 md:px-10 md:py-8 border-b border-[var(--border-glass)] bg-[var(--bg-void)]/30 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-4 w-full md:w-auto">
+              <div className="w-10 h-10 rounded-xl bg-[var(--gold)]/10 flex items-center justify-center text-[var(--gold)]">
+                <TrendingUp size={22} />
+              </div>
+              <div>
+                <h3 className="text-lg font-black tracking-tight">O'quvchilar Natijalari</h3>
+                <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">Ballarni kiritish va tahrirlash</p>
+              </div>
+            </div>
 
- {/* Main Content */}
- <div className="lux-card !p-0 overflow-hidden shadow-xl border border-[var(--border-glass)]">
- <div className="px-6 py-5 md:px-10 md:py-6 border-b border-[var(--border-glass)] bg-[var(--bg-panel)]/30 flex flex-col sm:flex-row items-center justify-between gap-4">
- <div className="flex items-center gap-4 w-full sm:w-auto">
- <TrendingUp size={20} className="text-[var(--gold)]" />
- <div>
- <h3 className="text-sm md:text-base font-bold text-[var(--text-primary)] tracking-tight capitalize">Natijalar</h3>
- <p className="text-[8px] font-bold text-[var(--text-muted)] capitalize tracking-[0.2em] hidden sm:block">Ballarni tahrirlash</p>
- </div>
- </div>
+            <div className="flex items-center flex-wrap justify-center md:justify-end gap-4 w-full md:w-auto">
+              {/* Max Score Input */}
+              <div className="flex items-center p-1.5 bg-[var(--bg-void)] border border-[var(--border-glass)] rounded-2xl focus-within:border-[var(--gold)]/50 transition-all shadow-inner">
+                <input
+                  type="number"
+                  value={maxScoreInput}
+                  onChange={(e) => dispatch({ type: 'SET_MAX_SCORE_INPUT', payload: e.target.value })}
+                  placeholder="Max ball..."
+                  className="bg-transparent border-none outline-none text-[11px] font-black px-4 w-28 text-[var(--text-primary)] placeholder:text-[var(--text-muted)]/50"
+                />
+                <button
+                  onClick={handleSetMaxScore}
+                  className="h-10 px-6 bg-[var(--gold)] text-black rounded-xl text-[10px] font-black uppercase tracking-widest hover:opacity-90 transition-all active:scale-95 shadow-lg"
+                >
+                  OK
+                </button>
+              </div>
 
- <div className="flex items-center flex-wrap justify-center sm:justify-end gap-3 w-full sm:w-auto">
- <div className="flex items-center gap-1.5 bg-[var(--bg-void)]/50 p-1 rounded-lg border border-[var(--border-glass)]">
- <div className="relative">
- <input
- type="number"
- value={maxScoreInput}
- onChange={(e) => dispatch({ type:'SET_MAX_SCORE_INPUT', payload: e.target.value })}
- placeholder="Max ball"
- className="bg-transparent border-none outline-none text-[9px] font-bold px-1.5 w-16 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] placeholder:font-normal"
- />
- </div>
- <button
- onClick={handleSetMaxScore}
- className="h-6 px-2 bg-[var(--gold-dim)] text-[var(--gold)] hover:bg-[var(--gold)] hover:text-black transition-all rounded-md text-[8px] font-black capitalize tracking-wider"
- >
- OK
- </button>
- </div>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="lux-btn !bg-emerald-500 hover:!bg-emerald-600 !text-black !h-12 !px-8 !rounded-2xl !text-[11px] !font-black !uppercase !tracking-widest shadow-[0_10px_20px_rgba(16,185,129,0.2)] active:scale-95 disabled:opacity-50 flex items-center gap-3 transition-all"
+              >
+                {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                Saqlash
+              </button>
+            </div>
+          </div>
 
- <button
- onClick={handleSave}
- disabled={saving}
- className="lux-btn lux-btn-primary !px-6 !h-10 !text-[10px] shadow-lg active:scale-95 disabled:opacity-50"
- >
- {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
- <span>Saqlash</span>
- </button>
- </div>
- </div>
+          {/* TABLE / CARDS CONTENT */}
+          <div className="p-3 md:p-0">
+            {/* Mobile Cards */}
+            <div className="grid grid-cols-1 gap-3 md:hidden">
+              {students.map((student) => (
+                <StudentCardMobile
+                  key={student.id}
+                  student={student}
+                  maxScore={maxScore}
+                  onScoreChange={handleScoreChange}
+                />
+              ))}
+            </div>
 
- {/* Mobile View */}
- <div className="block md:hidden p-3 space-y-2">
- {students.map((student) => (
- <StudentCardMobile
- key={student.id}
- student={student}
- maxScore={maxScore}
- onScoreChange={handleScoreChange}
- />
- ))}
- </div>
+            {/* Desktop Table */}
+            <div className="hidden md:block">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="text-[var(--text-muted)] text-[9px] font-black uppercase tracking-[0.4em] border-b border-[var(--border-glass)]/50 bg-[var(--bg-void)]/10">
+                    <th className="px-10 py-6">O'quvchi</th>
+                    <th className="px-10 py-6 text-center">Natija / Ball</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border-glass)]/30">
+                  {students.map((student) => (
+                    <StudentRow
+                      key={student.id}
+                      student={student}
+                      maxScore={maxScore}
+                      onScoreChange={handleScoreChange}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
- {/* Desktop View */}
- <div className="hidden md:block overflow-x-auto">
- <table className="w-full text-left">
- <thead>
- <tr className="text-[var(--text-muted)] text-[8px] font-black capitalize tracking-[0.3em] border-b border-[var(--border-glass)]">
- <th className="px-8 py-4">O'quvchi ismi-familiyasi</th>
- <th className="px-8 py-4 text-center">Natija</th>
- </tr>
- </thead>
- <tbody className="divide-y divide-[var(--border-glass)]">
- {students.map((student) => (
- <StudentRow
- key={student.id}
- student={student}
- maxScore={maxScore}
- onScoreChange={handleScoreChange}
- />
- ))}
- </tbody>
- </table>
- </div>
+            {students.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-24 text-[var(--text-muted)] gap-4">
+                <AlertCircle size={48} className="opacity-20" />
+                <p className="text-[12px] font-black uppercase tracking-[0.3em]">O'quvchilar ro'yxati bo'sh</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
- {students.length === 0 && (
- <div className="text-center py-16 text-[var(--text-muted)] font-black capitalize tracking-[0.2em] text-[10px]">
- Ma'lumotlar topilmadi.
- </div>
- )}
- </div>
- </div>
- </div>
- );
+      {/* FOOTER SPACING */}
+      <div className="h-20"></div>
+    </div>
+  );
 };
 
 export default MockTestDetails;

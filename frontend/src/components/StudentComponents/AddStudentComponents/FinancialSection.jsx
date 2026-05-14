@@ -22,6 +22,7 @@ const FinancialSection = ({ formData, setFormData, handleChange }) => (
           <option value="discount">Imtiyozli</option>
           <option value="low_income">Kam ta'minlangan</option>
           <option value="negotiated">Kelishilgan narx</option>
+          <option value="teacher_negotiated">O'qituvchi kelishgan</option>
         </select>
       </div>
       <div>
@@ -32,8 +33,35 @@ const FinancialSection = ({ formData, setFormData, handleChange }) => (
           onChange={handleChange}
           placeholder="Ixtiyoriy summa"
           className="lux-input !bg-[#0a0a0a] pr-12"
+          disabled={formData.status === 'teacher_negotiated'}
         />
       </div>
+
+      {formData.status === 'teacher_negotiated' && (
+        <div className="md:col-span-2 pt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+          <label className="flex items-center gap-3 cursor-pointer group">
+            <div className="relative">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={formData.include_in_mentor_salary}
+                onChange={(e) => setFormData(prev => ({ ...prev, include_in_mentor_salary: e.target.checked }))}
+              />
+              <div className="w-12 h-6 bg-slate-200 border border-slate-300 rounded-full peer-checked:bg-emerald-500 peer-checked:border-emerald-600 transition-all"></div>
+              <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-all peer-checked:translate-x-6 shadow-md"></div>
+            </div>
+            <div>
+              <span className="text-[11px] font-black capitalize tracking-widest text-white group-hover:text-emerald-500 transition-colors">
+                Mentor oyligiga qo'shilsinmi?
+              </span>
+              <p className="text-[9px] text-[var(--text-muted)] capitalize font-bold mt-0.5">
+                {formData.include_in_mentor_salary ? "O'quvchi bepul o'qiydi, lekin mentorga puli hisoblanadi" : "O'quvchi ham, mentor ham ushbu o'quvchidan daromad olmaydi"}
+              </p>
+            </div>
+          </label>
+        </div>
+      )}
+
       <div className="md:col-span-2 pt-2">
         <label className="flex items-center gap-3 cursor-pointer group">
           <div className="relative">
@@ -43,8 +71,8 @@ const FinancialSection = ({ formData, setFormData, handleChange }) => (
               checked={formData.create_payment}
               onChange={(e) => setFormData(prev => ({ ...prev, create_payment: e.target.checked }))}
             />
-            <div className="w-12 h-6 bg-white/10 rounded-full peer-checked:bg-[var(--gold)] transition-all"></div>
-            <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-all peer-checked:translate-x-6"></div>
+            <div className="w-12 h-6 bg-slate-200 border border-slate-300 rounded-full peer-checked:bg-[var(--gold)] peer-checked:border-[var(--gold)] transition-all"></div>
+            <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-all peer-checked:translate-x-6 shadow-md"></div>
           </div>
           <div>
             <span className="text-[11px] font-black capitalize tracking-widest text-white group-hover:text-[var(--gold)] transition-colors">

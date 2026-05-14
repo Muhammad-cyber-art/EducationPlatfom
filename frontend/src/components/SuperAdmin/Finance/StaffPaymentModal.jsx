@@ -3,7 +3,7 @@ import { createPortal } from'react-dom';
 import { X, CheckCircle2, ShieldCheck, Loader2, Banknote } from'lucide-react';
 import AmountInput from'../../Common/AmountInput';
 
-const StaffPaymentModal = ({ isOpen, onClose, onConfirm, info, amount, incomeType }) => {
+const StaffPaymentModal = ({ isOpen, onClose, onConfirm, info, amount }) => {
  const [loading, setLoading] = useState(false);
  const [bonus, setBonus] = useState(0);
  const [deduction, setDeduction] = useState(0);
@@ -61,21 +61,6 @@ const StaffPaymentModal = ({ isOpen, onClose, onConfirm, info, amount, incomeTyp
  {info?.employee_first_name} {info?.employee_last_name}
  </p>
  </div>
- {/* Income Type Badge */}
- {incomeType === 'mentor_attendance' && (
- <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-500/10 border border-purple-500/20 mb-4">
- <span className="text-[9px] font-bold text-purple-400 capitalize tracking-wide">
- Mentor Davomati Asosida
- </span>
- </div>
- )}
- {incomeType === 'actual' && info?.salary_type === 'percentage' && (
- <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 mb-4">
- <span className="text-[9px] font-bold text-emerald-400 capitalize tracking-wide">
- Asl Tushum Asosida
- </span>
- </div>
- )}
  </div>
 
  {/* Maoshni Tahrirlash (Bonus/Ayirma) */}

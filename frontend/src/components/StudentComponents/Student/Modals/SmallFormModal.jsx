@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from"react";
 import { createPortal } from"react-dom";
+import AmountInput from "../../../Common/AmountInput";
 
 export const SmallFormModal = ({ isOpen, onClose, onSave, title, initialValue, label, isPaid }) => {
  const [val, setVal] = useState(initialValue ||"");
@@ -22,8 +23,7 @@ export const SmallFormModal = ({ isOpen, onClose, onSave, title, initialValue, l
  <div className="space-y-4">
  <div className="space-y-2">
  <label className="text-[9px] font-black text-[var(--text-muted)] capitalize tracking-widest ml-1">{label}</label>
- <input
- type="number"
+ <AmountInput
  className="lux-input !bg-[var(--bg-void)]"
  value={val}
  onChange={e => setVal(e.target.value)}

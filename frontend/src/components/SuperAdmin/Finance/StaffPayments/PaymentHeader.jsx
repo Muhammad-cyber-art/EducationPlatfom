@@ -1,6 +1,7 @@
 import React from"react";
-import { ArrowLeft, Settings, Calculator, Loader2, Edit3, Coins, Trash2 } from"lucide-react";
-import ThemeToggle from"../../../ThemeToggle";
+import { ArrowLeft, Settings, Calculator, Loader2, Edit3, Coins, Trash2 } from "lucide-react";
+import toast from "react-hot-toast";
+import ThemeToggle from "../../../ThemeToggle";
 
 const PaymentHeader = ({
  navigate,

@@ -53,7 +53,20 @@ class GroupViewSet(viewsets.ModelViewSet):
     module_name = 'groups'
 
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    search_fields = ['name', 'subject', 'mentor__first_name', 'mentor__last_name']
+    search_fields = [
+        'name', 
+        'subject', 
+        'group_type',
+        'days',
+        'dars_kunlari',
+        'dars_vaqti',
+        'mentor__first_name', 
+        'mentor__last_name', 
+        'mentor__username',
+        'additional_mentors__mentor__first_name',
+        'additional_mentors__mentor__last_name',
+        'additional_mentors__mentor__username'
+    ]
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -107,7 +120,10 @@ class GroupViewSet(viewsets.ModelViewSet):
 
     def retrieve(self, request, *args, **kwargs):
         """N+1 muammosini oldini olish bilan retrieve"""
-        queryset = self.get_queryset().select_related(
+        # queryset ni tozalaymiz (base dagi 'students' va 'additional_mentors' ni)
+        queryset = self.get_queryset().prefetch_related(None)
+        
+        queryset = queryset.select_related(
             'mentor', 'mentor__branch', 'admin', 'branch'
         ).prefetch_related('additional_mentors__mentor')
         
@@ -119,7 +135,10 @@ class GroupViewSet(viewsets.ModelViewSet):
                     queryset=Student.objects.select_related('group', 'branch').order_by('full_name')
                 )
             )
-            
+        else:
+            # exclude_students bo'lsa 'students' umuman kerakmas
+            pass
+
         instance = get_object_or_404(queryset, pk=kwargs['pk'])
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
@@ -294,7 +313,7 @@ class GroupViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='assign-additional-mentor', permission_classes=[IsAdminOrSuperAdmin])
     def assign_additional_mentor(self, request, pk=None):
         group = self.get_object()
-        serializer = AssignAdditionalMentorSerializer(data=request.data)
+        serializer = AssignAdditionalMentorSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         
         from django.contrib.auth import get_user_model
@@ -377,14 +396,31 @@ class StudentViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         qs = super().get_queryset()
-        if user.role == 'super_admin': return qs
+        
+        if user.role == 'super_admin': 
+            return qs
+            
         if user.role == 'admin':
-            allowed = [user.branch.id] if user.branch else []
+            # AGAR qidiruv bo'layotgan bo'lsa (dublikatlarni topish uchun) yoki shunchaki ma'lumot ko'rilayotgan bo'lsa (retrieve)
+            if self.request.query_params.get('search') or self.action == 'retrieve':
+                return qs
+
+            allowed_branches = [user.branch.id] if user.branch else []
             if hasattr(user, 'branch_accesses'):
-                allowed.extend(user.branch_accesses.values_list('branch_id', flat=True))
-            return qs.filter(branch_id__in=allowed)
+                allowed_branches.extend(user.branch_accesses.values_list('branch_id', flat=True))
+            
+            return qs.filter(
+                Q(branch_id__in=allowed_branches) | 
+                Q(groups__branch_id__in=allowed_branches)
+            ).distinct()
+            
         if user.role == 'mentor':
-            return qs.filter(Q(group__mentor=user) | Q(groups__mentor=user) | Q(groups__additional_mentors__mentor=user)).distinct()
+            return qs.filter(
+                Q(group__mentor=user) | 
+                Q(groups__mentor=user) | 
+                Q(groups__additional_mentors__mentor=user)
+            ).distinct()
+            
         return Student.objects.none()
 
     @action(detail=True, methods=['post'], url_path='transfer-group')
@@ -527,15 +563,29 @@ class StudentNestedView(viewsets.ReadOnlyModelViewSet):
             return qs
             
         if user.role == 'admin':
-            allowed = [user.branch_id] if user.branch_id else []
-            allowed.extend(user.branch_accesses.values_list('branch_id', flat=True))
-            qs = qs.filter(branch_id__in=allowed)
+            # Dublikatlarni qidirishda filial cheklovini olib tashlaymiz
+            if self.request.query_params.get('search') or self.action == 'retrieve':
+                return qs
+
+            allowed_branches = [user.branch_id] if user.branch_id else []
+            if hasattr(user, 'branch_accesses'):
+                allowed_branches.extend(user.branch_accesses.values_list('branch_id', flat=True))
+            
+            qs = qs.filter(
+                Q(branch_id__in=allowed_branches) | 
+                Q(groups__branch_id__in=allowed_branches)
+            ).distinct()
+            
             if branch_id:
                 qs = qs.filter(branch_id=branch_id)
             return qs
             
         if user.role == 'mentor':
-            qs = qs.filter(Q(group__mentor=user) | Q(group__additional_mentors__mentor=user)).distinct()
+            qs = qs.filter(
+                Q(group__mentor=user) | 
+                Q(groups__mentor=user) |
+                Q(groups__additional_mentors__mentor=user)
+            ).distinct()
             if branch_id:
                 qs = qs.filter(branch_id=branch_id)
             return qs
@@ -614,6 +664,18 @@ class GroupSimpleViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Group.objects.all()
     serializer_class = GroupSimpleSerializer
     permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    search_fields = [
+        'name', 
+        'subject', 
+        'group_type',
+        'days',
+        'dars_kunlari',
+        'dars_vaqti',
+        'mentor__first_name', 
+        'mentor__last_name', 
+        'mentor__username'
+    ]
 
     def get_queryset(self):
         user = self.request.user

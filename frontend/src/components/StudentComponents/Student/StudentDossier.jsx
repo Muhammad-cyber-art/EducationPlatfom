@@ -52,7 +52,8 @@ const StudentDossier = ({
  value={
  studentData?.status ==='low_income' ?'Kam ta\'minlangan' :
  studentData?.status ==='discount' ?'Imtiyozli' :
- studentData?.status ==='negotiated' ?'Kelishilgan narx' :'Oddiy'
+ studentData?.status ==='negotiated' ?'Kelishilgan narx' :
+ studentData?.status ==='teacher_negotiated' ?'O\'qituvchi kelishgan' :'Oddiy'
  }
  />
  <ProfileAttribute

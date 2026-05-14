@@ -48,6 +48,7 @@ class Payment(models.Model):
     payment_method = models.CharField(max_length=10, choices=PAYMENT_METHODS, default='cash')
     receipt_image = models.ImageField(upload_to='receipts/', null=True, blank=True)
     is_receiptless = models.BooleanField(default=False, verbose_name="Chek yo'q")
+    is_full_amount = models.BooleanField(default=False, verbose_name="To'liq oylik to'langan")
     notes = models.TextField(blank=True, null=True)
 
     # Super Admin tasdig'i (Verification)
@@ -70,13 +71,14 @@ class Payment(models.Model):
     def __str__(self):
         return f"{self.student.full_name} - {self.group.name} - {self.month.strftime('%B %Y') if self.month else 'No month'}"
 
-    def mark_as_paid(self, admin_user, method='cash', receipt=None, notes=None, is_receiptless=False):
+    def mark_as_paid(self, admin_user, method='cash', receipt=None, notes=None, is_receiptless=False, is_full_amount=False):
         if not self.is_paid:
             self.is_paid = True
             self.marked_by = admin_user
             self.paid_at = timezone.now()
             self.payment_method = method
             self.is_receiptless = is_receiptless
+            self.is_full_amount = is_full_amount
             if receipt: self.receipt_image = receipt
             if notes: self.notes = notes
             self.save()
@@ -93,7 +95,7 @@ class Payment(models.Model):
                     'marked_by': admin_user,
                     'branch': self.student.branch,
                     'title': f"To'lov: {self.student.full_name}",
-                    'description': f"{self.group.name} guruhi uchun {self.month.strftime('%Y-%m')} oyi to'lovi. Usul: {self.get_payment_method_display()}. {'(Cheksiz)' if self.is_receiptless else ''} {self.notes or ''}",
+                    'description': f"{self.group.name} ({'To''liq' if self.is_full_amount else 'Davomat'}) {self.month.strftime('%Y-%m')} to'lovi. Usul: {self.get_payment_method_display()}. {'(Cheksiz)' if self.is_receiptless else ''} {self.notes or ''}",
                 }
             )
     def save(self, *args, **kwargs):

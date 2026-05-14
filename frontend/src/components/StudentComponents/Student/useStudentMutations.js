@@ -27,18 +27,19 @@ export const useStudentMutations = (student_id, dispatch, navigate) => {
  });
 
  const paymentMutation = useMutation({
-  mutationFn: async ({ id, amount, ignore_refund, payment_method, receipt_image, notes, is_receiptless }) => {
-    const formData = new FormData();
-    if (amount) formData.append('amount', amount);
-    if (ignore_refund !== undefined) formData.append('ignore_refund', ignore_refund);
-    if (payment_method) formData.append('payment_method', payment_method);
-    if (receipt_image) formData.append('receipt_image', receipt_image);
-    if (notes) formData.append('notes', notes);
-    if (is_receiptless !== undefined) formData.append('is_receiptless', is_receiptless);
-    return await api.post(`/finance/student-payments/${id}/confirm/`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    });
- },
+   mutationFn: async ({ id, amount, ignore_refund, payment_method, receipt_image, notes, is_receiptless, pay_full_month }) => {
+     const formData = new FormData();
+     if (amount) formData.append('amount', amount);
+     if (ignore_refund !== undefined) formData.append('ignore_refund', ignore_refund);
+     if (payment_method) formData.append('payment_method', payment_method);
+     if (receipt_image) formData.append('receipt_image', receipt_image);
+     if (notes) formData.append('notes', notes);
+     if (is_receiptless !== undefined) formData.append('is_receiptless', is_receiptless);
+     if (pay_full_month !== undefined) formData.append('pay_full_month', pay_full_month);
+     return await api.post(`/finance/student-payments/${id}/confirm/`, formData, {
+       headers: { 'Content-Type': 'multipart/form-data' }
+     });
+  },
  onSuccess: () => {
  queryClient.invalidateQueries(['payments-all']);
  dispatch({ type:'TOGGLE_MODAL', payload: false });

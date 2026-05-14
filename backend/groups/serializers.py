@@ -125,7 +125,8 @@ class StudentSerializer(serializers.ModelSerializer):
             'id', 'full_name', 'branch_id', 'group', 'groups', 'phone', 'birth_date', 
             'parent_name', 'parent_phone', 'address', 'notes', 'color', 'image',
             'joined_at', 'current_payment_status', 'current_payment_id',
-            'telegram_id', 'parent_telegram_id', 'status', 'custom_fee', 'create_payment'
+            'telegram_id', 'parent_telegram_id', 'status', 'custom_fee', 'create_payment',
+            'include_in_mentor_salary'
         )
         read_only_fields = ('joined_at',)
 
@@ -165,10 +166,14 @@ class StudentSerializer(serializers.ModelSerializer):
         if status:
             if status in ['regular', 'discount']:
                 attrs['custom_fee'] = None
+                attrs['include_in_mentor_salary'] = False
             elif status in ['low_income', 'negotiated']:
                 # Agar summa kiritilmagan bo'lsa (None yoki bo'sh), uni 0 qilamiz
                 if 'custom_fee' not in attrs or attrs.get('custom_fee') is None:
                     attrs['custom_fee'] = 0
+                attrs['include_in_mentor_salary'] = False
+            elif status != 'teacher_negotiated':
+                attrs['include_in_mentor_salary'] = False
         return attrs
 
     def update(self, instance, validated_data):
@@ -391,7 +396,8 @@ class StudentNestedSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'group', 'groups', 'full_name', 'branch_id', 'phone', 'birth_date',
             'parent_name', 'parent_phone', 'address', 'image', 'color', 'notes', 
-            'telegram_id', 'parent_telegram_id', 'status', 'custom_fee', 'joined_at'
+            'telegram_id', 'parent_telegram_id', 'status', 'custom_fee', 'joined_at',
+            'include_in_mentor_salary'
         )
         read_only_fields = ('joined_at',)
 

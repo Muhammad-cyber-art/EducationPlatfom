@@ -1,10 +1,11 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import( BranchFinanceDetailView,
-StudentPaymentViewSet, EmployeePaymentViewSet,StaffProfileViewSet ,
-FinanceDashboardView,trigger_monthly_payments, FinanceTransactionViewSet,
-trigger_absence_refunds, EmployeeAdvanceViewSet, AbsentTodayStudentsView,
-payment_statistics_view, MonthlyBranchTrendsView)
+from .views import (
+    BranchFinanceDetailView, StudentPaymentViewSet, EmployeePaymentViewSet,
+    StaffProfileViewSet, FinanceDashboardView, trigger_monthly_payments,
+    FinanceTransactionViewSet, EmployeeAdvanceViewSet, AbsentTodayStudentsView,
+    payment_statistics_view, MonthlyBranchTrendsView
+)
 
 router = DefaultRouter()
 router.register(r'student-payments', StudentPaymentViewSet, basename='student-payment')
@@ -19,6 +20,5 @@ urlpatterns = [
     path('statistics/branch-finance/<int:branch_id>/', BranchFinanceDetailView.as_view(), name='branch-finance-detail'),
     path('statistics/monthly-branch-trends/', MonthlyBranchTrendsView.as_view(), name='monthly-branch-trends'),
     path('statistics/absent-students/<int:branch_id>/', AbsentTodayStudentsView.as_view(), name='absent-students-list'),
-    path('absence-refunds/', trigger_absence_refunds, name='trigger-absence-refunds'),
     path('payment-statistics/', payment_statistics_view, name='payment-statistics'),
 ]

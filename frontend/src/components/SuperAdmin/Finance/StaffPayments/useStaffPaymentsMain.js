@@ -5,7 +5,7 @@ import api from"../../../../tokenUpdater/updater";
 import {
  setActiveBranch, setActiveTab, setAddStaffModal,
  setBranches, setStaffData, setStaffSearchQuery,
- setStaffRefreshing, setStaffLoading, setRefundProcessing
+ setStaffRefreshing, setStaffLoading
 } from"../../../../store/slices/financeSlice";
 
 export const useStaffPaymentsMain = () => {
@@ -20,8 +20,7 @@ export const useStaffPaymentsMain = () => {
  staffData,
  staffSearchQuery,
  staffRefreshing,
- staffLoading,
- refundProcessing
+ staffLoading
  } = finance;
 
  const fetchBranches = useCallback(async () => {
@@ -76,22 +75,7 @@ export const useStaffPaymentsMain = () => {
  }
  };
 
- const handleProcessRefunds = async () => {
- if (!window.confirm("O'quvchilarning qolib ketgan darslari uchun refundlarni hisoblab chiqishni tasdiqlaysizmi?")) return;
 
- dispatch(setRefundProcessing(true));
- try {
- const response = await api.post('/finance/absence-refunds/');
- const { count, total_amount } = response.data;
- toast.success(`${count} ta refund (${total_amount} UZS) muvaffaqiyatli hisoblandi.`);
- await fetchStaffData();
- } catch (error) {
- console.error("Refund error:", error);
- toast.error("Refundlarni hisoblashda xatolik yuz berdi.");
- } finally {
- dispatch(setRefundProcessing(false));
- }
- };
 
  const filteredStaffData = staffData.filter((person) => {
  const searchLower = staffSearchQuery.toLowerCase().trim();
@@ -109,11 +93,9 @@ export const useStaffPaymentsMain = () => {
  staffSearchQuery,
  staffRefreshing,
  staffLoading,
- refundProcessing,
  filteredStaffData,
  fetchStaffData,
  handleRefreshPayments,
- handleProcessRefunds,
  setAddStaffModal: (val) => dispatch(setAddStaffModal(val)),
  setActiveBranch: (val) => dispatch(setActiveBranch(val)),
  setActiveTab: (val) => dispatch(setActiveTab(val)),

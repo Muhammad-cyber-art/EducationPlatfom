@@ -107,7 +107,13 @@ export const useAddStudent = (branchId) => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => {
+      const newState = { ...prev, [name]: value };
+      if (name === 'status' && value !== 'teacher_negotiated') {
+        newState.include_in_mentor_salary = true;
+      }
+      return newState;
+    });
   };
 
   const handleImageChange = (e) => {

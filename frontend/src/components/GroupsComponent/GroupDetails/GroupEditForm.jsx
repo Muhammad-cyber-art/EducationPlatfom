@@ -1,5 +1,6 @@
 import React from "react";
 import { AlignLeft, DollarSign, Calendar, UserCheck, ChevronRight } from "lucide-react";
+import AmountInput from "../../Common/AmountInput";
 
 const GroupEditForm = ({
   editData,
@@ -62,8 +63,7 @@ const GroupEditForm = ({
                 <div className="space-y-2">
                   <label className="text-[9px] font-black text-[var(--text-muted)] capitalize tracking-widest ml-1">Oylik to'lov (UZS)</label>
                   <div className="relative">
-                    <input
-                      type="number"
+                    <AmountInput
                       className="lux-input !bg-[var(--bg-void)]/50 !py-4 !pl-12 !pr-5 w-full"
                       value={editData.monthly_price || ""}
                       onChange={(e) => uiDispatch({ type: "UPDATE_EDIT_DATA", payload: { monthly_price: e.target.value } })}

@@ -341,16 +341,15 @@ class StaffProfile(models.Model):
                     is_paid=True
                 ).first()
                 
-                student_revenue = Decimal('0')
                 if payment:
                     student_revenue = Decimal(str(payment.amount))
-                    # Refund ayiramiz (agar bekor qilinmagan bo'lsa)
-                    if not payment.refund_ignored:
-                        refund = Decimal(str(
-                            student.calculate_refund_amount(month.year, month.month, group=group)
-                        ))
-                        student_revenue -= refund
                     group_revenue += student_revenue
+                
+                # ✅ QO'SHIMCHA: O'qituvchi kelishgan o'quvchilar (agar on qilingan bo'lsa)
+                elif student.status == 'teacher_negotiated' and student.include_in_mentor_salary:
+                    # Ularning o'rniga o'qituvchiga hypothetical summa qo'shiladi
+                    hypothetical_fee = Decimal(str(student.custom_fee or group.monthly_price))
+                    group_revenue += hypothetical_fee
                 
                 # 2. ✅ Qo'shimcha to'lovlarni ham hisobga olamiz (student_extra)
                 extra_txs = FinanceTransaction.objects.filter(
@@ -408,116 +407,24 @@ class StaffProfile(models.Model):
                 mentor_slice = min(p_amount, per_student)
                 salary += mentor_slice
             
+            # ✅ QO'SHIMCHA: O'qituvchi kelishgan o'quvchilarni ham sanaymiz
+            for group in mentor_groups:
+                teacher_neg_students = group.students.filter(
+                    status='teacher_negotiated', 
+                    include_in_mentor_salary=True
+                )
+                for _ in teacher_neg_students:
+                    salary += per_student
+            
             return floor_amount(salary)
         
         return Decimal('0')
     
     def calculate_attendance_based_salary(self, month):
         """
-        Mentorning jismonan dars o'tkazgan kunlari asosidagi maosh (o'quvchi qoldirishlari bilan aralashmaydi).
-
-        Asos (default): ``calculate_salary_for_month(month, attendance=False)`` — ya'ni brutto komissiya
-        yoki brutto «o'quvchi bo'yicha ulush» (tushum to'liq, o'quvchi davomat jarimalari yo'q).
-        Keyin rejalashtirilgan barcha dars kunlari bo'yicha bir kun narxi chiqariladi va faqat
-        kamida bitta o'quvchi kelgan kunlar uchun to'lanadi.
-
-        Agar bir vaqtning o'zida ham o'quvchi davomati, ham mentor davomati bo'yicha to'lash kerak bo'lsa,
-        UI da avval «O'quvchi davomati» variantini tanab tasdiqlang; «Mentor davomati» esa alohida usul.
-
-        Returns:
-            tuple: (attendance_based_salary, details_dict)
+        OBSOLETE: Mentor davomati logikasi olib tashlandi.
         """
-        from finance.utils import floor_amount
-        from homework_attends.models import Attendance
-        from groups.models import Group
-        
-        # 1. Brutto maosh (o'quvchi davomat jarimalari qo'shilmagan)
-        base_salary = self.calculate_salary_for_month(month)
-        
-        if base_salary <= 0:
-            return Decimal('0'), {
-                'base_salary': 0,
-                'total_lesson_days': 0,
-                'total_teaching_days': 0,
-                'daily_rate': 0,
-                'attendance_based_salary': 0,
-                'groups': []
-            }
-        
-        # 2. Barcha guruhlarni olish
-        mentor_groups = Group.objects.filter(mentor=self.user)
-        
-        total_lesson_days = 0  # Jami dars kunlari (plan bo'yicha)
-        total_teaching_days = 0  # Mentoring dars o'tgan kunlari (kamida 1 o'quvchi kelsa)
-        groups_details = []
-        
-        for group in mentor_groups:
-            # Oydagi dars kunlari
-            lesson_dates = group.get_lesson_dates(month.year, month.month)
-            lesson_days_count = len(lesson_dates)
-            
-            if lesson_days_count == 0:
-                continue
-            
-            # Har bir dars kuni uchun tekshirish
-            # Mentor dars o'tgan kun = kamida 1 o'quvchi kelayotgan kun
-            teaching_days_in_group = 0
-            
-            for lesson_date in lesson_dates:
-                # Shu kuni kamida 1 ta o'quvchi kelayotganmi?
-                attended_students = Attendance.objects.filter(
-                    group=group,
-                    date=lesson_date,
-                    is_present=True
-                ).count()
-                
-                if attended_students > 0:
-                    # O'quvchilar kelgan - mentor dars o'tgan
-                    teaching_days_in_group += 1
-            
-            total_lesson_days += lesson_days_count
-            total_teaching_days += teaching_days_in_group
-            
-            groups_details.append({
-                'group_id': group.id,
-                'group_name': group.name,
-                'lesson_days': lesson_days_count,
-                'teaching_days': teaching_days_in_group,
-                'student_count': group.students.count()
-            })
-        
-        if total_lesson_days == 0:
-            return Decimal('0'), {
-                'base_salary': float(base_salary),
-                'total_lesson_days': 0,
-                'total_teaching_days': 0,
-                'daily_rate': 0,
-                'attendance_based_salary': 0,
-                'groups': groups_details
-            }
-        
-        # 3. Bir dars narxini hisoblash (sof oylik / jami dars kunlari)
-        daily_rate = base_salary / total_lesson_days
-        
-        # 4. Yakuniy maoshni hisoblash (bir_dars_narxi * dars o'tilgan kunlar)
-        attendance_based_salary = daily_rate * total_teaching_days
-        
-        # Dars o'tilmagan kunlar uchun ayirma
-        missed_days = total_lesson_days - total_teaching_days
-        missed_deduction = daily_rate * missed_days if missed_days > 0 else Decimal('0')
-        
-        details = {
-            'base_salary': float(base_salary),
-            'total_lesson_days': total_lesson_days,
-            'total_teaching_days': total_teaching_days,
-            'missed_days': int(missed_days),
-            'daily_rate': float(daily_rate),
-            'attendance_based_salary': float(floor_amount(attendance_based_salary)),
-            'missed_deduction': float(missed_deduction),
-            'groups': groups_details
-        }
-        
-        return floor_amount(attendance_based_salary), details
+        return self.calculate_salary_for_month(month), {}
     
     def save(self, *args, **kwargs):
         """Profile yangilanganda mavjud to'lovlarni ham yangilash"""

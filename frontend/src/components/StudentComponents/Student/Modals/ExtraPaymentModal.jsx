@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from"react";
 import { createPortal } from"react-dom";
 import { CreditCard, Save, Loader2 } from"lucide-react";
+import AmountInput from "../../../Common/AmountInput";
 
 export const ExtraPaymentModal = ({ isOpen, onClose, onSave, loading, studentName, adminName }) => {
  const [data, setData] = useState({
@@ -56,7 +57,7 @@ export const ExtraPaymentModal = ({ isOpen, onClose, onSave, loading, studentNam
  <div className="space-y-5">
  <div className="space-y-2">
  <label className="text-[9px] font-black text-[var(--text-muted)] capitalize tracking-widest ml-1">Summa (UZS)</label>
- <input type="number" className="lux-input !bg-[var(--bg-void)] !py-4" value={data.amount} onChange={e => setData({ ...data, amount: e.target.value })} placeholder="Masalan: 50000" autoFocus />
+ <AmountInput className="lux-input !bg-[var(--bg-void)] !py-4" value={data.amount} onChange={e => setData({ ...data, amount: e.target.value })} placeholder="Masalan: 50000" autoFocus />
  </div>
  <div className="space-y-2">
  <label className="text-[9px] font-black text-[var(--text-muted)] capitalize tracking-widest ml-1">{data.transaction_type ==='income' ?'Kim to\'ladi?' :'Kimga berildi?'}</label>

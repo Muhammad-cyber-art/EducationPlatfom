@@ -134,12 +134,20 @@ const StudentEditForm = ({
  <select
  className="lux-input !bg-[var(--bg-void)]/50 !py-4"
  value={editData.status ||"regular"}
- onChange={e => dispatch({ type:'UPDATE_EDIT_FIELD', payload: { status: e.target.value } })}
+ onChange={e => {
+    const newStatus = e.target.value;
+    const updates = { status: newStatus };
+    if (newStatus !== 'teacher_negotiated') {
+      updates.include_in_mentor_salary = true;
+    }
+    dispatch({ type:'UPDATE_EDIT_FIELD', payload: updates });
+  }}
  >
  <option value="regular">ODDIY</option>
  <option value="discount">IMTIYOZLI</option>
  <option value="low_income">KAM TA'MINLANGAN</option>
  <option value="negotiated">KELISHILGAN NARX</option>
+ <option value="teacher_negotiated">O'QITUVCHI KELISHGAN</option>
  </select>
  </div>
  <div className="space-y-2">
@@ -151,6 +159,31 @@ const StudentEditForm = ({
  placeholder="Guruh narxidan farqli bo'lsa"
  />
  </div>
+
+ {editData.status === 'teacher_negotiated' && (
+ <div className="sm:col-span-2 pt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+ <label className="flex items-center gap-3 cursor-pointer group">
+ <div className="relative">
+ <input
+ type="checkbox"
+ className="sr-only peer"
+ checked={editData.include_in_mentor_salary}
+ onChange={e => dispatch({ type:'UPDATE_EDIT_FIELD', payload: { include_in_mentor_salary: e.target.checked } })}
+ />
+ <div className="w-12 h-6 bg-slate-200 border border-slate-300 rounded-full peer-checked:bg-emerald-500 peer-checked:border-emerald-600 transition-all"></div>
+ <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-all peer-checked:translate-x-6 shadow-md"></div>
+ </div>
+ <div>
+ <span className="text-[11px] font-black capitalize tracking-widest text-white group-hover:text-emerald-500 transition-colors">
+ Mentor oyligiga qo'shilsinmi?
+ </span>
+ <p className="text-[9px] text-[var(--text-muted)] capitalize font-bold mt-0.5">
+ {editData.include_in_mentor_salary ? "O'quvchi bepul o'qiydi, lekin mentorga puli hisoblanadi" : "O'quvchi ham, mentor ham ushbu o'quvchidan daromad olmaydi"}
+ </p>
+ </div>
+ </label>
+ </div>
+ )}
  </div>
  </div>
 

@@ -45,12 +45,19 @@ const StudentHeader = ({
  </button>
  )}
  <button
- onClick={() => { const r = prompt("O'chirish sababi:"); if (r) archiveMutation.mutate(r); }}
- className="p-2 sm:p-2.5 text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
- title="O'chirish"
- >
- <Trash2 size={18} />
- </button>
+  onClick={() => { 
+    if (studentData?.groups?.length > 1) {
+      dispatch({ type: 'TOGGLE_UNENROLL_SELECT_MODAL', payload: true });
+    } else {
+      const r = prompt("O'chirish sababi:"); 
+      if (r) archiveMutation.mutate(r); 
+    }
+  }}
+  className="p-2 sm:p-2.5 text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+  title="O'chirish"
+  >
+  <Trash2 size={18} />
+  </button>
  </>
  )}
  </div>

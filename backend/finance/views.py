@@ -89,6 +89,7 @@ class StudentPaymentViewSet(viewsets.ModelViewSet):
     search_fields = ['student__full_name', 'student__phone', 'group__name']
     ordering_fields = ['month', 'paid_at', 'created_at']
     ordering = ['-month', '-id']
+    
 
     def get_queryset(self):
         user = self.request.user
@@ -114,26 +115,6 @@ class StudentPaymentViewSet(viewsets.ModelViewSet):
                 description=f"Tahrirlandi: {updated_instance.student.full_name} to'lovi ({updated_instance.month})"
             )
 
-    @action(detail=True, methods=['get'], url_path='calculate-refund')
-    def calculate_refund(self, request, pk=None):
-        """To'lov uchun refund miqdorini hisoblash"""
-        try:
-            # QuerySet filteringdan o'tkazmaslik uchun to'g'ridan-to'g'ri olish
-            payment = Payment.objects.select_related('student', 'group').get(pk=pk)
-            if payment.student and payment.group and payment.month:
-                refund = payment.student.calculate_refund_amount(
-                    payment.month.year,
-                    payment.month.month,
-                    group=payment.group
-                )
-                return Response({
-                    'refund_amount': float(refund)
-                })
-            return Response({'refund_amount': 0})
-        except Payment.DoesNotExist:
-            return Response({'error': 'Payment not found'}, status=404)
-        except Exception as e:
-            return Response({'error': str(e)}, status=400)
 
     @action(detail=False, methods=['post'], url_path='custom-payment')
     def custom_payment(self, request):
@@ -234,17 +215,9 @@ class EmployeePaymentViewSet(viewsets.ModelViewSet):
         deductions = request.data.get('deductions', 0)
         
         with transaction.atomic():
-            # Frontend: actual | attendance (tushum KPI) | mentor_attendance (mentor dars kunlari)
-            income_type = request.data.get('income_type') or 'actual'
             try:
-                profile = payment.employee.staff_profile
-                if income_type == 'mentor_attendance':
-                    salary_base, _ = profile.calculate_attendance_based_salary(payment.month)
-                    payment.salary_base = salary_base
-                    payment.attendance_deductions = {}
-                else:
-                    # actual va attendance — backendda bir xil: davomat tushgan tushum / o'quvchi bo'yicha
-                    payment.recalculate_salary()
+                # Oylik maoshni qayta hisoblaymiz (yangi tushumlar asosida)
+                payment.recalculate_salary()
             except Exception as e:
                 logger.error(f"Salary recalculation error during confirm: {e}")
 
@@ -511,16 +484,6 @@ def trigger_monthly_payments(request):
     except Exception as e:
         return Response({'success': False, 'message': str(e)}, status=500)
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def trigger_absence_refunds(request):
-    try:
-        month_str = request.data.get('month')
-        month_date = timezone.datetime.strptime(month_str, "%Y-%m-%d").date() if month_str else timezone.localdate().replace(day=1)
-        count, amount = process_absence_refunds(month_date)
-        return Response({'success': True, 'count': count, 'amount': float(amount)}, status=200)
-    except Exception as e:
-        return Response({'success': False, 'message': str(e)}, status=500)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])

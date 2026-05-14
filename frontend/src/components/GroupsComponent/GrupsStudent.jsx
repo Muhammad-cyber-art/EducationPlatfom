@@ -125,6 +125,7 @@ export default function GroupsStudent({
             discount: { label: "Imtiyozli", color: "text-amber-500", bg: "bg-amber-500/10", border: "border-amber-500/20" },
             low_income: { label: "Kam Ta'minlangan", color: "text-indigo-400", bg: "bg-indigo-400/10", border: "border-indigo-400/20" },
             negotiated: { label: "Kelishilgan Narx", color: "text-rose-400", bg: "bg-rose-400/10", border: "border-rose-400/20" },
+            teacher_negotiated: { label: "O'qituvchi kelishgan", color: "text-cyan-400", bg: "bg-cyan-400/10", border: "border-cyan-400/20" },
           };
           const config = configs[item.status] || { label: item.status, color: "text-[var(--gold)]", bg: "bg-[var(--gold)]/10", border: "border-[var(--gold)]/20" };
 

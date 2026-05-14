@@ -8,37 +8,18 @@ export const PaymentConfirmModal = ({ isOpen, onClose, onConfirm, data, loading 
     const [amount, setAmount] = useState("");
     const [receiptImage, setReceiptImage] = useState(null);
     const [preview, setPreview] = useState(null);
-    const [noReceipt, setNoReceipt] = useState(false);
     const [notes, setNotes] = useState("");
+    const [noReceipt, setNoReceipt] = useState(false);
     const [calculateRefund, setCalculateRefund] = useState(true);
-    const [refundAmount, setRefundAmount] = useState(null);
+    const [payFullMonth, setPayFullMonth] = useState(false);
 
     // Hisoblangan summani o'rnatish
     useEffect(() => {
-        if (data?.amount) {
-            const baseAmount = Number(data.amount);
-            if (calculateRefund && refundAmount > 0) {
-                setAmount((baseAmount - refundAmount).toString());
-            } else {
-                setAmount(baseAmount.toString());
-            }
+        if (data) {
+            const currentAmount = payFullMonth ? data.fullAmount : data.accruedAmount;
+            setAmount(currentAmount?.toString() || "0");
         }
-        if (data?.ignore_refund !== undefined) setCalculateRefund(!data.ignore_refund);
-    }, [data, calculateRefund, refundAmount]);
-
-    useEffect(() => {
-        const fetchRefundAmount = async () => {
-            if (data?.id && isOpen) {
-                try {
-                    const response = await api.get(`/finance/student-payments/${data.id}/calculate-refund/`);
-                    setRefundAmount(response.data.refund_amount || 0);
-                } catch (error) {
-                    setRefundAmount(0);
-                }
-            }
-        };
-        fetchRefundAmount();
-    }, [data?.id, isOpen]);
+    }, [data, payFullMonth]);
 
     if (!isOpen) return null;
 
@@ -51,13 +32,13 @@ export const PaymentConfirmModal = ({ isOpen, onClose, onConfirm, data, loading 
     };
 
     const handleConfirmClick = () => {
-        // Backend hisoblaydi, amount jo'natilmaydi
         onConfirm({
             payment_method: method,
             receipt_image: method === 'click' ? receiptImage : null,
             is_receiptless: method === 'click' ? noReceipt : false,
             notes: notes,
-            ignore_refund: !calculateRefund
+            ignore_refund: !calculateRefund,
+            pay_full_month: payFullMonth
         });
     };
 
@@ -94,8 +75,28 @@ export const PaymentConfirmModal = ({ isOpen, onClose, onConfirm, data, loading 
                             </div>
                         </div>
                         <div className="text-right">
-                            <span className="text-xs font-black text-emerald-500">{Number(data?.amount).toLocaleString()} <span className="text-[8px] opacity-60">UZS</span></span>
+                            <span className="text-xs font-black text-emerald-500">{Number(amount).toLocaleString()} <span className="text-[8px] opacity-60">UZS</span></span>
                         </div>
+                    </div>
+
+                    {/* Payment Mode Selection (Accrual vs Full) */}
+                    <div className="w-full p-4 bg-amber-500/5 border border-amber-500/20 rounded-2xl">
+                        <label className="flex items-center justify-between cursor-pointer group">
+                            <div className="flex flex-col">
+                                <span className="text-[11px] font-black text-white uppercase tracking-wider group-hover:text-amber-500 transition-colors">To'liq oylik to'lov</span>
+                                <span className="text-[9px] text-[var(--text-muted)] font-bold">Davomatga qaramay to'liq summa yoziladi</span>
+                            </div>
+                            <div className="relative">
+                                <input 
+                                    type="checkbox" 
+                                    className="sr-only peer"
+                                    checked={payFullMonth}
+                                    onChange={(e) => setPayFullMonth(e.target.checked)}
+                                />
+                                <div className="w-10 h-5 bg-white/10 border border-white/20 rounded-full peer-checked:bg-amber-500 transition-all"></div>
+                                <div className="absolute left-1 top-1 w-3 h-3 bg-white rounded-full transition-all peer-checked:translate-x-5 shadow-sm"></div>
+                            </div>
+                        </label>
                     </div>
 
                     {/* Method Tabs */}
@@ -114,59 +115,13 @@ export const PaymentConfirmModal = ({ isOpen, onClose, onConfirm, data, loading 
                         </button>
                     </div>
 
-                    {/* Refund Toggle */}
-                    {refundAmount !== null && refundAmount > 0 && (
-                        <div className="w-full bg-[var(--bg-void)] border-2 border-[var(--border-glass)] rounded-2xl p-4">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${calculateRefund ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/10 text-amber-400 border border-amber-500/30'}`}>
-                                        <AlertCircle size={16} />
-                                    </div>
-                                    <div>
-                                        <p className="text-[10px] font-bold text-white capitalize leading-tight">Refund hisoblash</p>
-                                        <p className="text-[8px] font-medium text-[var(--text-muted)] opacity-70">Darslarni hisoblash va qaytarish</p>
-                                    </div>
-                                </div>
-                                <label className="relative inline-flex items-center cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={calculateRefund}
-                                        onChange={(e) => setCalculateRefund(e.target.checked)}
-                                        className="sr-only peer"
-                                    />
-                                    <div className="w-14 h-8 bg-[var(--bg-panel)] border-2 border-[var(--border-glass)] rounded-full peer peer-checked:after:translate-x-6 peer-checked:after:border-white after:content-[''] after:absolute after:top-[3px] after:start-[3px] after:bg-white after:border-gray-300 after:border-2 after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-emerald-500 peer-checked:border-emerald-500"></div>
-                                </label>
-                            </div>
-                            <div className="mt-3 pt-3 border-t border-[var(--border-glass)] flex items-center justify-between">
-                                <p className="text-[8px] font-medium text-[var(--text-muted)] opacity-70">
-                                    Hisoblanadigan refund:
-                                </p>
-                                <p className="text-[10px] font-bold text-emerald-400 tabular-nums">
-                                    {refundAmount.toLocaleString()} UZS
-                                </p>
-                            </div>
-                            {calculateRefund ? (
-                                <div className="mt-3 pt-3 border-t border-[var(--border-glass)]">
-                                    <p className="text-[8px] font-medium text-emerald-400 leading-relaxed">
-                                        Refund hisoblash yoqilgan. Darslarga qarab qaytarish hisoblanadi.
-                                    </p>
-                                </div>
-                            ) : (
-                                <div className="mt-3 pt-3 border-t border-[var(--border-glass)]">
-                                    <p className="text-[8px] font-medium text-amber-400 leading-relaxed">
-                                        Refund hisoblash o'chirildi. To'lov butun summa qabul qilinadi.
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-                    )}
 
                     {/* Dynamic Inputs */}
                     <div className="w-full space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         {/* Summa ko'rsatish - read-only, backend hisoblaydi */}
                         <div className="space-y-2">
                             <label className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-4">
-                                {calculateRefund ? 'Refund bilan hisoblangan summa' : 'Oylik to\'lov summasi'}
+                                {payFullMonth ? "To'liq oylik narxi" : "Hisoblangan to'lov summasi"}
                             </label>
                             <div className="relative">
                                 <input
@@ -178,29 +133,6 @@ export const PaymentConfirmModal = ({ isOpen, onClose, onConfirm, data, loading 
                                 />
                                 <span className="absolute right-6 top-1/2 -translate-y-1/2 text-[10px] font-bold text-[var(--text-muted)]">UZS</span>
                             </div>
-                            {/* Tushuntirish */}
-                            {calculateRefund && refundAmount > 0 && data?.amount && (
-                                <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-3 mt-2">
-                                    <div className="flex justify-between items-center text-[10px] mb-1">
-                                        <span className="text-[var(--text-muted)]">Oylik to'lov:</span>
-                                        <span className="text-white font-bold">{Number(data.amount).toLocaleString()} UZS</span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-[10px] mb-1">
-                                        <span className="text-emerald-400">Refund (-):</span>
-                                        <span className="text-emerald-400 font-bold">-{Number(refundAmount).toLocaleString()} UZS</span>
-                                    </div>
-                                    <div className="border-t border-[var(--border-glass)] my-1"></div>
-                                    <div className="flex justify-between items-center text-[10px]">
-                                        <span className="text-amber-400 font-bold">To'lanadigan:</span>
-                                        <span className="text-amber-400 font-bold">{Number(amount || 0).toLocaleString()} UZS</span>
-                                    </div>
-                                </div>
-                            )}
-                            {!calculateRefund && (
-                                <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3 mt-2">
-                                    <p className="text-[10px] text-amber-400 font-medium">Refund hisoblanmaydi. To'liq summa qabul qilinadi.</p>
-                                </div>
-                            )}
                         </div>
 
                         {method === 'click' && (

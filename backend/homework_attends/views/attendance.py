@@ -25,6 +25,7 @@ from permissions.permissions import HasModulePermission
 class AttendanceViewSet(viewsets.ModelViewSet):
     serializer_class = AttendanceSerializer
     permission_classes = [IsAuthenticated, HasModulePermission]
+    pagination_class = None
     module_name = 'homework'
     http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
 

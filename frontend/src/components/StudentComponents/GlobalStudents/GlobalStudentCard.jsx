@@ -64,7 +64,8 @@ const GlobalStudentCard = ({ student, onClick }) => {
  }}>
  {student.status ==='low_income' ?"Kam Ta'minlangan" :
  student.status ==='discount' ?'Imtiyozli' :
- student.status ==='negotiated' ?'Kelishilgan' :'Faol'}
+ student.status ==='negotiated' ?'Kelishilgan' :
+ student.status ==='teacher_negotiated' ?'O\'qit. kelishgan' :'Faol'}
  </span>
  </div>
  </div>

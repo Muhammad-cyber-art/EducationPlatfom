@@ -88,6 +88,6 @@ class GroupAPITests(APITestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
-        # PATCH should fail according to IsStudentGroupOwnerOrSuperAdmin
+        # PATCH should succeed since super_admin has full access
         response = self.client.patch(url, {'full_name': 'New Name'})
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)

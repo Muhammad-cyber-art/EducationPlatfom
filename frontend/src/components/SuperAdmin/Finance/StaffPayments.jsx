@@ -17,11 +17,9 @@ const StaffManagementPro = () => {
  staffSearchQuery,
  staffRefreshing,
  staffLoading,
- refundProcessing,
  filteredStaffData,
  fetchStaffData,
  handleRefreshPayments,
- handleProcessRefunds,
  setAddStaffModal,
  setActiveBranch,
  setActiveTab,
@@ -65,8 +63,6 @@ const StaffManagementPro = () => {
  setStaffSearchQuery={setStaffSearchQuery}
  handleRefreshPayments={handleRefreshPayments}
  staffRefreshing={staffRefreshing}
- handleProcessRefunds={handleProcessRefunds}
- refundProcessing={refundProcessing}
  staffLoading={staffLoading}
  filteredStaffData={filteredStaffData}
  />

@@ -1,4 +1,5 @@
 from rest_framework import permissions
+from django.db import models
 from .models import MentorGroupAssignment
 from authenticatsiya.models import BranchAccess
 
@@ -70,42 +71,36 @@ class IsStudentGroupOwnerOrSuperAdmin(permissions.BasePermission):
 
     def has_object_permission(self, request, view, obj):
         user = request.user
-        group = obj.group
-        student_branch = obj.branch or (group.branch if group else None)
-
         if user.role == 'super_admin':
             return True
 
-        # Admin o'z filialidagi talabalarni boshqara oladi
+        # Admin boshqara oladigan filiallar ID ro'yxati
+        allowed_branches = []
+        if user.branch_id:
+            allowed_branches.append(user.branch_id)
+        if hasattr(user, 'branch_accesses'):
+            allowed_branches.extend(user.branch_accesses.values_list('branch_id', flat=True))
+
+        # 1. Studentning o'z filiali ruxsat berilganlar ichidami?
+        student_main_branch = obj.branch_id
+        if student_main_branch in allowed_branches:
+            return True
+
+        # 2. Student qatnashayotgan guruhlardan birortasi Admin filialidami?
+        # Bu 'Cross-branch' (filiallararo) o'quvchilar uchun juda muhim
         if user.role == 'admin':
-            if not student_branch: return False
-            if student_branch == user.branch:
-                return True
-            return user.branch_accesses.filter(branch=student_branch).exists()
+            return obj.groups.filter(branch_id__in=allowed_branches).exists()
 
         if user.role == 'mentor':
-            # 1. Mentorning StaffPermission'i bormi?
-            try:
-                perms = user.staff_permissions.permissions or {}
-            except:
-                perms = {}
-            
-            if not perms.get('students', False):
-                # Agar ruxsati bo'lmasa, faqat ko'rish (o'z guruhidagilarni)
-                if request.method in permissions.SAFE_METHODS:
-                    if not group: return False
-                    return (
-                        group.mentor == user or
-                        group.additional_mentors.filter(mentor=user).exists()
-                    )
-                return False
-            
-            # 2. Ruxsati bo'lsa, o'z guruhidagi talabalarni boshqara oladi
-            if not group: return False
-            return (
-                group.mentor == user or
-                group.additional_mentors.filter(mentor=user).exists()
-            )
+            # Mentor uchun: O'quvchi uning guruhlaridan birortasida bormi?
+            return obj.groups.filter(
+                models.Q(mentor=user) | 
+                models.Q(additional_mentors__mentor=user)
+            ).exists()
+
+        # Qo'shimcha ravishda: Admin barcha o'quvchilarni FAQAT ko'ra olishi mumkin (Dossier uchun)
+        if request.method in permissions.SAFE_METHODS and user.role == 'admin':
+            return True
 
         return False
     

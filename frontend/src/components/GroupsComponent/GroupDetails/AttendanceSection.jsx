@@ -168,27 +168,26 @@ const AttendanceSection = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 sm:gap-3">
           {canTakeAttendance && (
             <button
               onClick={() => setIsSpecialLessonModalOpen(true)}
-              className="flex items-center justify-center w-8 sm:w-auto sm:px-3 h-8 border border-[var(--gold)]/30 text-[var(--gold)] rounded-lg font-bold text-[9px] capitalize tracking-wider transition-all hover:bg-[var(--gold)]/10 active:scale-95"
+              className="flex items-center justify-center min-w-[40px] sm:w-auto sm:px-4 h-10 sm:h-11 border border-[var(--gold)]/30 text-[var(--gold)] rounded-xl font-black text-[10px] uppercase tracking-wider transition-all hover:bg-[var(--gold)]/10 active:scale-95 shadow-lg bg-[var(--bg-panel)]"
               title="Dars qo'shish"
             >
-              <Plus size={14} /> <span className="hidden sm:inline ml-1.5">Dars qo'shish</span>
+              <Plus size={18} /> <span className="hidden sm:inline ml-2">Dars qo'shish</span>
             </button>
           )}
-
+          
           {canEditAttendance && (
             <button
               onClick={() => handleConfirmAttendance(isLessonDay)}
-              className="flex items-center justify-center w-8 sm:w-auto sm:px-4 h-8 bg-[var(--gold)] text-black rounded-lg font-bold text-[10px] capitalize tracking-wider transition-opacity hover:opacity-90 active:scale-95"
+              className="flex items-center justify-center min-w-[44px] sm:w-auto sm:px-6 h-10 sm:h-11 bg-[var(--gold)] text-black rounded-xl font-black text-[10px] uppercase tracking-widest transition-all hover:opacity-90 active:scale-95 shadow-[var(--gold-glow)]"
               title="Tayyor"
             >
-              <Check size={16} /> <span className="hidden sm:inline ml-1.5">Tayyor</span>
+              <Check size={20} strokeWidth={3} /> <span className="hidden sm:inline ml-2">Tayyor</span>
             </button>
           )}
-
 
           <button
             onClick={() => {
@@ -198,10 +197,10 @@ const AttendanceSection = ({
               queryClient.refetchQueries(['homeworks', group_id]);
               queryClient.refetchQueries(['mock-tests', group_id]);
             }}
-            className="p-1.5 sm:p-2 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--gold)] hover:border-[var(--gold)]/30 transition-all shadow-md"
+            className="flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--gold)] hover:border-[var(--gold)]/30 transition-all shadow-lg active:scale-95"
             title="Yangilash"
           >
-            <RotateCw size={16} />
+            <RotateCw size={18} />
           </button>
         </div>
       </div>

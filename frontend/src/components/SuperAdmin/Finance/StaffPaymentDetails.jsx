@@ -58,7 +58,6 @@ const StaffPaymentDetails = () => {
  } = financeState;
 
  const [selectedGroupForDebtors, setSelectedGroupForDebtors] = useState(null);
- const [selectedIncomeType, setSelectedIncomeType] = useState('actual'); // 'actual' | 'attendance'
 
  const isPercentageType = data?.salary_type ==='percentage';
  const isStudentCountType = data?.salary_type ==='student_count';
@@ -85,17 +84,13 @@ const StaffPaymentDetails = () => {
  if (!data) return 0;
  
  
- // Yangi: Mentor davomati asosidagi maosh
- if (selectedIncomeType === 'mentor_attendance' && data.attendance_based_salary?.salary) {
- return data.attendance_based_salary.salary;
- }
  
  return isPercentageType
  ? (data.calculated_commission || 0)
  : isStudentCountType
  ? (data.calculated_per_student || 0)
  : (data.salary_base || 0);
- }, [data, isPercentageType, isStudentCountType, selectedIncomeType]);
+ }, [data, isPercentageType, isStudentCountType]);
 
  const finalTotalAmount = useMemo(() => {
  if (!data) return 0;
@@ -137,7 +132,7 @@ const StaffPaymentDetails = () => {
 
  <div className="lg:col-span-9 space-y-4">
  {/* 1. Stats Cards - Asosiy statistika */}
- <PaymentStats {...{ data, isPercentageType, isStudentCountType, formatCurrency, studentCountSummary, finalTotalAmount, isSuperAdmin, onSelectIncomeType: setSelectedIncomeType }} />
+ <PaymentStats {...{ data, isPercentageType, isStudentCountType, formatCurrency, studentCountSummary, finalTotalAmount, isSuperAdmin }} />
  
  {/* 2. Payment History - To'lov tarixi */}
  <PaymentHistory {...{ data, staff_id, formatCurrency, isSuperAdmin, handleDeleteHistory, dispatch, setPayModal, setSelectedHistoryItem }} />
@@ -173,11 +168,11 @@ const StaffPaymentDetails = () => {
  onClose={() => { dispatch(setPayModal(false)); dispatch(setSelectedHistoryItem(null)); }}
  info={selectedHistoryItem || data}
  amount={selectedHistoryItem ? (selectedHistoryItem.salary_type ==='percentage' && !selectedHistoryItem.is_paid ? (selectedHistoryItem.calculated_commission || 0) : (selectedHistoryItem.total_amount || selectedHistoryItem.salary_base)) : (!data.is_paid ? (liveBaseSalary - (data.total_advances || 0)) : (data.total_amount || data.salary_base))}
- incomeType={selectedIncomeType}
+ incomeType={data?.salary_type}
  onConfirm={async (bonus, deduction) => {
  const targetId = selectedHistoryItem ? selectedHistoryItem.id : staff_id;
  try {
- await api.post(`/finance/employee-payments/${targetId}/confirm/`, { bonus, deductions: deduction, income_type: selectedIncomeType });
+ await api.post(`/finance/employee-payments/${targetId}/confirm/`, { bonus, deductions: deduction });
  toast.success("To'lov tasdiqlandi!");
  dispatch(setPayModal(false));
  dispatch(setSelectedHistoryItem(null));
@@ -186,7 +181,7 @@ const StaffPaymentDetails = () => {
  }}
  />
 
- <EditProfileModal {...{ editModal, editLoading, editForm, dispatch, updateEditForm, handleUpdate, onClose: () => dispatch(setEditModal(false)) }} />
+ <EditProfileModal isOpen={editModal} {...{ editLoading, editForm, dispatch, updateEditForm, handleUpdate, onClose: () => dispatch(setEditModal(false)) }} />
  <DebtorsModal group={selectedGroupForDebtors} onClose={() => setSelectedGroupForDebtors(null)} formatCurrency={formatCurrency} />
  </div>
  );

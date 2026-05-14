@@ -11,6 +11,7 @@ import { useInView } from'react-intersection-observer';
 import api from'../../../tokenUpdater/updater';
 import { get_user_info } from'../../Authorized/getRole';
 import toast from'react-hot-toast';
+import AmountInput from'../../Common/AmountInput';
 
 const UtilityPayments = () => {
  const navigate = useNavigate();
@@ -225,8 +226,7 @@ const UtilityPayments = () => {
  <div className="grid grid-cols-2 gap-4">
  <div className="space-y-2">
  <label className="text-[9px] font-black text-[var(--text-muted)] capitalize tracking-[0.2em] ml-1">Summa (UZS)</label>
- <input
- type="number"
+ <AmountInput
  placeholder="200 000"
  className="lux-input !w-full"
  value={formData.amount}

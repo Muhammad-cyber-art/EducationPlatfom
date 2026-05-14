@@ -41,8 +41,7 @@ const initialState = {
  staffData: [],
  staffSearchQuery:"",
  staffRefreshing: false,
- staffLoading: false,
- refundProcessing: false
+ staffLoading: false
 };
 
 const financeSlice = createSlice({
@@ -123,9 +122,6 @@ const financeSlice = createSlice({
  setStaffLoading: (state, action) => {
  state.staffLoading = action.payload;
  },
- setRefundProcessing: (state, action) => {
- state.refundProcessing = action.payload;
- },
  resetFinanceState: () => initialState
  }
 });
@@ -159,7 +155,6 @@ export const {
  setStaffSearchQuery,
  setStaffRefreshing,
  setStaffLoading,
- setRefundProcessing,
  resetFinanceState
 } = financeSlice.actions;
 

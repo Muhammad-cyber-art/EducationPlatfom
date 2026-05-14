@@ -41,6 +41,16 @@ class FinanceModelTests(TestCase):
         self.assertEqual(transaction.category, 'student_fee')
 
     def test_mentor_commission_calculation(self):
+        # Create a paid payment for the student so income is calculated
+        payment = Payment.objects.create(
+            student=self.student,
+            group=self.group,
+            month=self.payment_month,
+            amount=self.group.monthly_price,
+            is_paid=True,
+            marked_by=self.super_admin
+        )
+        
         # Create staff profile for mentor
         profile = StaffProfile.objects.create(
             user=self.mentor,
@@ -48,8 +58,6 @@ class FinanceModelTests(TestCase):
             commission_percentage=Decimal('50')
         )
         
-        # We have 1 student in group with 100,000 price.
-        # StaffProfile.calculate_monthly_income uses student count.
         income = profile.calculate_monthly_income(self.payment_month)
         self.assertEqual(income, Decimal('100000'))
         

@@ -47,8 +47,8 @@ class HomeworkAttendsTests(APITestCase):
         self.assertEqual(Attendance.objects.count(), 2)
         self.assertEqual(len(response.data), 2)
 
-    @patch('homework_attends.views.send_attendance_notification')
-    def test_confirm_attendance(self, mock_notify):
+    @patch('telegram_bot.tasks.send_attendance_notifications_task.delay')
+    def test_confirm_attendance(self, mock_notify_task):
         self.client.force_authenticate(user=self.mentor)
         url = reverse('attendance-confirm-attendance')
         today = str(timezone.localdate())
@@ -67,8 +67,8 @@ class HomeworkAttendsTests(APITestCase):
         self.assertTrue(Attendance.objects.get(student=self.student1, date=today).is_present)
         self.assertFalse(Attendance.objects.get(student=self.student2, date=today).is_present)
         
-        # Verify notifications were "sent"
-        self.assertEqual(mock_notify.call_count, 2)
+        # Verify notifications task was queued
+        self.assertEqual(mock_notify_task.call_count, 1)
 
     def test_mock_test_bulk_results(self):
         self.client.force_authenticate(user=self.mentor)

@@ -17,6 +17,8 @@ import StudentDossier from "./Student/StudentDossier";
 import StudentGroupsSection from "./Student/StudentGroupsSection";
 import StudentHistorySection from "./Student/StudentHistorySection";
 import StudentModals from "./Student/StudentModals";
+import UnenrollSelectModal from "./Student/UnenrollSelectModal";
+import JoinGroupModal from "./Student/Modals/JoinGroupModal";
 import { Loader2 } from "lucide-react";
 
 const initialState = {
@@ -36,7 +38,9 @@ const initialState = {
     isMergeModalOpen: false,
     selectedPayment: null,
     isConfirmPaymentModalOpen: false,
-    confirmPaymentData: null
+    confirmPaymentData: null,
+    isUnenrollSelectModalOpen: false,
+    isJoinGroupModalOpen: false
 };
 
 function reducer(state, action) {
@@ -52,6 +56,8 @@ function reducer(state, action) {
         case 'TOGGLE_CUSTOM_PAYMENT': return { ...state, isCustomPaymentModalOpen: action.payload };
         case 'TOGGLE_MERGE_MODAL': return { ...state, isMergeModalOpen: action.payload };
         case 'TOGGLE_CONFIRM_PAYMENT': return { ...state, isConfirmPaymentModalOpen: action.payload, confirmPaymentData: action.data || null };
+        case 'TOGGLE_UNENROLL_SELECT_MODAL': return { ...state, isUnenrollSelectModalOpen: action.payload };
+        case 'TOGGLE_JOIN_GROUP_MODAL': return { ...state, isJoinGroupModalOpen: action.payload };
         default: return state;
     }
 }
@@ -103,14 +109,20 @@ export default function StudentProfilePage() {
         const idToConfirm = paymentId || primaryPayment?.id;
         if (idToConfirm) {
             const pData = paymentsArray.find(p => p.id === idToConfirm) || primaryPayment;
-            const finalAmount = amount || pData?.amount || studentData?.custom_fee || primaryGroup?.monthly_price;
+            const g = groups.find(gr => gr.id === pData?.group) || primaryGroup;
+            
+            // To'liq oylik narxi
+            const fullAmount = (studentData?.status === 'negotiated' || studentData?.status === 'low_income') 
+                ? (studentData?.custom_fee || g?.monthly_price) 
+                : g?.monthly_price;
 
             dispatch({
                 type: 'TOGGLE_CONFIRM_PAYMENT',
                 payload: true,
                 data: {
                     id: idToConfirm,
-                    amount: finalAmount,
+                    accruedAmount: amount || pData?.amount || 0,
+                    fullAmount: fullAmount,
                     ignore_refund,
                     studentName: studentData?.full_name,
                     month: pData?.month
@@ -199,6 +211,26 @@ export default function StudentProfilePage() {
             <StudentModals
                 {...{ state, studentData, primaryGroup, paymentMutation, editPaymentMutation, customPaymentMutation, mergeMutation, handlePaymentConfirm, executePaymentConfirm, dispatch, queryClient }}
                 userData={permissions.userData}
+            />
+
+            <UnenrollSelectModal
+                isOpen={state.isUnenrollSelectModalOpen}
+                onClose={() => dispatch({ type: 'TOGGLE_UNENROLL_SELECT_MODAL', payload: false })}
+                studentData={studentData}
+                onUnenroll={(gid) => unenrollMutation.mutate(gid)}
+                onArchive={(reason) => archiveMutation.mutate(reason)}
+            />
+
+            <JoinGroupModal
+                isOpen={state.isJoinGroupModalOpen}
+                onClose={() => dispatch({ type: 'TOGGLE_JOIN_GROUP_MODAL', payload: false })}
+                student={studentData}
+                currentBranchId={branchID.currentBranchId}
+                api={api}
+                onSuccess={() => {
+                    queryClient.invalidateQueries(['student']);
+                    queryClient.invalidateQueries(['payments-all']);
+                }}
             />
         </div>
     );

@@ -1,5 +1,8 @@
+from decimal import Decimal
 from rest_framework import serializers
-from .models import Payment ,EmployeePayment, StaffProfile, EmployeeAdvance
+from .models import Payment, EmployeePayment, StaffProfile, EmployeeAdvance, FinanceTransaction
+from groups.models import Group
+from finance.utils import floor_amount, normalize_month
 
 class PaymentSerializer(serializers.ModelSerializer):
     student_name = serializers.ReadOnlyField(source='student.full_name')
@@ -9,48 +12,60 @@ class PaymentSerializer(serializers.ModelSerializer):
     student = serializers.PrimaryKeyRelatedField(read_only=True)
     group = serializers.PrimaryKeyRelatedField(read_only=True)
     month = serializers.DateField(required=False)
-    amount = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    amount = serializers.SerializerMethodField()
     marked_by = serializers.StringRelatedField(read_only=True)
-
     # Yangi maydonlar: Darslar soni, kunlik narxi va refund hisobi
     lessons_count = serializers.SerializerMethodField()
+    attended_count = serializers.SerializerMethodField()
     daily_price = serializers.SerializerMethodField()
-    absences_count = serializers.SerializerMethodField()
-    refund_amount = serializers.SerializerMethodField()
+    is_fixed_price = serializers.SerializerMethodField()
 
     class Meta:
         model = Payment
         fields = [
             'id', 'student', 'student_name', 'group', 'group_name', 
             'month', 'amount', 'is_paid', 'paid_at', 'marked_by',
-            'lessons_count', 'daily_price', 'absences_count', 'refund_amount',
-            'refund_ignored', 'payment_method', 'receipt_image', 'is_receiptless', 'notes',
+            'lessons_count', 'attended_count', 'daily_price', 
+            'is_full_amount', 'is_fixed_price',
+            'payment_method', 'receipt_image', 'is_receiptless', 'notes',
             'is_verified', 'verified_by', 'verified_at'
         ]
+
+    def get_amount(self, obj):
+        if obj.is_paid:
+            return obj.amount
+        
+        # To'lanmagan bo'lsa, real vaqtdagi davomatga qarab hisoblaymiz
+        if not obj.student or not obj.month:
+            return obj.amount or 0
+            
+        return obj.student.calculate_accrued_amount(
+            obj.month.year, obj.month.month, group=obj.group
+        )
 
     def get_lessons_count(self, obj):
         if not obj.group or not obj.month: return 0
         return len(obj.group.get_lesson_dates(obj.month.year, obj.month.month))
 
+    def get_attended_count(self, obj):
+        if not obj.group or not obj.month or not obj.student: return 0
+        from homework_attends.models import Attendance
+        return Attendance.objects.filter(
+            student=obj.student,
+            group=obj.group,
+            date__year=obj.month.year,
+            date__month=obj.month.month,
+            is_present=True
+        ).count()
+
     def get_daily_price(self, obj):
         if not obj.group or not obj.month: return 0
         return obj.group.get_daily_price(obj.month.year, obj.month.month)
 
-    def get_absences_count(self, obj):
-        if not obj.student or not obj.month:
-            return 0
-        return obj.student.get_absences_count(
-            obj.month.year, obj.month.month, group=obj.group
-        )
+    def get_is_fixed_price(self, obj):
+        if not obj.student: return False
+        return obj.student.status == 'negotiated'
 
-    def get_refund_amount(self, obj):
-        if not obj.student or not obj.month:
-            return 0
-        return obj.student.calculate_refund_amount(
-            obj.month.year, obj.month.month, group=obj.group
-        )
-
-from groups.models import Group
 
 class EmployeePaymentSerializer(serializers.ModelSerializer):
     # Employee ma'lumotlari (read-only)
@@ -96,14 +111,14 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             'fixed_salary',
             'commission_percentage',
             'per_student_amount',
-            'groups_income',           # ✅ QO'SHILDI
-            'calculated_commission',    # ✅ QO'SHILDI
-            'calculated_per_student',   # ✅ QO'SHILDI
-            'mentor_groups',            # ✅ QO'SHILDI (Guruhlar tafsiloti)
-            'attendance_based_salary',        # ✅ QO'SHILDI - Yangi: Davomat asosidagi mentor oyligi
-            'total_advances',           # ✅ QO'SHILDI
-            'advances_history',         # ✅ QO'SHILDI
-            'payment_history',          # ✅ QO'SHILDI (O'tgan oylar tarixi)
+            'groups_income',           
+            'calculated_commission',    
+            'calculated_per_student',   
+            'mentor_groups',            
+            'attendance_based_salary',
+            'total_advances',           
+            'advances_history',         
+            'payment_history',          
             'is_paid', 
             'paid_at', 
             'marked_by'
@@ -169,7 +184,6 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
         try:
             if not obj.month or not hasattr(obj.employee, 'staff_profile'):
                 return 0
-            from finance.utils import floor_amount
             profile = obj.employee.staff_profile
             # calculate_monthly_income metodini chaqiramiz (u role-ga qarab o'zi filtrlaydi)
             inc = profile.calculate_monthly_income(obj.month)
@@ -232,10 +246,6 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
         try:
             if not obj.month:
                 return None
-            
-            from finance.utils import floor_amount
-            from decimal import Decimal
-            
             # Guruhlarni aniqlash
             if obj.employee.role == 'mentor':
                 groups_qs = Group.objects.filter(mentor=obj.employee)
@@ -248,78 +258,102 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                 else:
                     return None
 
-            mentor_groups = groups_qs.select_related('branch').prefetch_related('students')
-            
-            groups_data = []
+            mentor_groups = list(groups_qs.select_related('branch').prefetch_related('students'))
+
+            if not mentor_groups:
+                return []
+
+            group_ids = [g.id for g in mentor_groups]
+
             per_student_amount = Decimal('0')
             if hasattr(obj.employee, 'staff_profile'):
                 per_student_amount = Decimal(str(obj.employee.staff_profile.per_student_amount or 0))
 
+            # BATCH QUERY 1: barcha to'lovlar bir martada
+            _all_payments = Payment.objects.filter(
+                group_id__in=group_ids,
+                month__year=obj.month.year,
+                month__month=obj.month.month
+            ).select_related('student')
+            payment_map = {(p.student_id, p.group_id): p for p in _all_payments}
+
+            # BATCH QUERY 2: barcha extra tranzaksiyalar bir martada
+            _all_extras = FinanceTransaction.objects.filter(
+                group_id__in=group_ids,
+                category='student_extra',
+                date__year=obj.month.year,
+                date__month=obj.month.month
+            )
+            from collections import defaultdict
+            extras_map = defaultdict(list)
+            for _tx in _all_extras:
+                extras_map[(_tx.student_id, _tx.group_id)].append(_tx)
+
+            _STATUS_LABELS = {
+                'regular': 'Oddiy',
+                'discount': 'Imtiyozli',
+                'low_income': "Kam ta'minlangan",
+                'negotiated': 'Kelishilgan narx',
+                'teacher_negotiated': "O'qituvchi kelishgan",
+            }
+
+            groups_data = []
+
             for group in mentor_groups:
                 group_revenue = 0
-                group_refunds = 0
                 group_extra = 0
                 expected_income = 0
-                expected_students_count = group.students.count()
                 paid_students_count = 0
-                
                 unpaid_students = []
                 paid_students = []
-                for student in group.students.all():
-                    month_payment = Payment.objects.filter(
-                        student=student,
-                        group=group,
-                        month__year=obj.month.year,
-                        month__month=obj.month.month
-                    ).first()
+                mentor_share_paid_total = Decimal('0')
+                mentor_share_expected_total = Decimal('0')
+
+                students = list(group.students.all())  # prefetch_related dan
+
+                for student in students:
+                    key = (student.id, group.id)
+                    month_payment = payment_map.get(key)  # O(1) — DB query yo'q
 
                     expected_payment = student.custom_fee if student.custom_fee is not None else group.monthly_price
-                    actual_payment = float(month_payment.amount) if month_payment and month_payment.is_paid else 0
-
-                    # Moliyaviy holatni aniqlash
                     financial_status = student.status
-                    financial_status_label = {
-                        'regular': 'Oddiy',
-                        'discount': 'Imtiyozli',
-                        'low_income': 'Kam ta\'minlangan',
-                        'negotiated': 'Kelishilgan narx'
-                    }.get(student.status, 'Oddiy')
-
-                    # To'lov sanasi va usuli
+                    financial_status_label = _STATUS_LABELS.get(student.status, 'Oddiy')
                     paid_at = month_payment.paid_at.strftime('%Y-%m-%d %H:%M') if month_payment and month_payment.paid_at else None
                     payment_method = month_payment.get_payment_method_display() if month_payment else None
-
-                    # Kelishilgan narx ma'lumotlari
                     negotiated_price = int(floor_amount(student.custom_fee)) if student.custom_fee is not None else None
                     original_price = int(floor_amount(group.monthly_price))
+
+                    # Extra tranzaksiyalar — O(1) lookup
+                    for tx in extras_map.get(key, []):
+                        if tx.transaction_type == 'income':
+                            group_extra += float(tx.amount)
+                        else:
+                            group_extra -= float(tx.amount)
+
+                    # Mentor ulushi (expected)
+                    st_expected_price = student.custom_fee if student.custom_fee is not None else group.monthly_price
+                    mentor_share_expected_total += min(Decimal(str(st_expected_price)), per_student_amount)
 
                     if month_payment:
                         expected_income += float(month_payment.amount or 0)
                         if month_payment.is_paid:
                             group_revenue += float(month_payment.amount)
                             paid_students_count += 1
-                            # Refund ma'lumotini hisoblash
-                            refund_amount = 0
-                            if month_payment.month and not month_payment.refund_ignored:
-                                refund_amount = student.calculate_refund_amount(
-                                    month_payment.month.year,
-                                    month_payment.month.month,
-                                    group=group
-                                )
+                            mentor_share_paid_total += min(Decimal(str(month_payment.amount)), per_student_amount)
                             paid_students.append({
                                 'id': student.id,
                                 'name': student.full_name,
                                 'expected': int(floor_amount(expected_payment)),
                                 'actual': int(floor_amount(month_payment.amount)),
-                                'status': 'To\'langan',
+                                'status': "To'langan",
                                 'financial_status': financial_status,
                                 'financial_status_label': financial_status_label,
                                 'paid_at': paid_at,
                                 'payment_method': payment_method,
                                 'negotiated_price': negotiated_price,
                                 'original_price': original_price,
-                                'refund_amount': int(floor_amount(refund_amount)),
-                                'refund_ignored': month_payment.refund_ignored
+                                'refund_amount': 0,
+                                'accrued_amount': int(floor_amount(month_payment.amount))
                             })
                         else:
                             unpaid_students.append({
@@ -327,7 +361,7 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                                 'name': student.full_name,
                                 'expected': int(floor_amount(month_payment.amount or 0)),
                                 'actual': 0,
-                                'status': 'To\'lanmagan',
+                                'status': "To'lanmagan",
                                 'financial_status': financial_status,
                                 'financial_status_label': financial_status_label,
                                 'paid_at': paid_at,
@@ -351,59 +385,18 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                             'original_price': original_price
                         })
 
-                    if getattr(month_payment, 'refund_ignored', False):
-                        refund = 0
-                    else:
-                        refund = float(
-                            student.calculate_refund_amount(
-                                obj.month.year, obj.month.month, group=group
-                            )
-                        )
-                    group_refunds += refund
-
-                    extra_txs = FinanceTransaction.objects.filter(
-                        student=student,
-                        group=group,
-                        category='student_extra',
-                        date__year=obj.month.year,
-                        date__month=obj.month.month
-                    )
-                    for tx in extra_txs:
-                        if tx.transaction_type == 'income':
-                            group_extra += float(tx.amount)
-                        else:
-                            group_extra -= float(tx.amount)
-
-                net = group_revenue - group_refunds + group_extra
-                
-                # Yangi logika: har bir o'quvchi uchun alohida min(to'lov, ulush) ni hisoblaymiz
-                mentor_share_paid_total = Decimal('0')
-                mentor_share_expected_total = Decimal('0')
-                
-                for student in group.students.all():
-                    # Expected share
-                    st_expected_price = student.custom_fee if student.custom_fee is not None else group.monthly_price
-                    mentor_share_expected_total += min(Decimal(str(st_expected_price)), per_student_amount)
-                    
-                    # Paid share
-                    payment = Payment.objects.filter(
-                        student=student, group=group, 
-                        month__year=obj.month.year, month__month=obj.month.month,
-                        is_paid=True
-                    ).first()
-                    if payment:
-                        mentor_share_paid_total += min(Decimal(str(payment.amount)), per_student_amount)
+                net = group_revenue + group_extra
 
                 groups_data.append({
                     'id': group.id,
                     'name': group.name,
                     'monthly_price': int(floor_amount(group.monthly_price or 0)),
                     'branch_name': group.branch.name if group.branch else None,
-                    'students_count': group.students.count(),
+                    'students_count': len(students),
                     'paid_students_count': paid_students_count,
                     'monthly_income': int(floor_amount(group_revenue)),
                     'expected_income': int(floor_amount(expected_income)),
-                    'refund_amount': int(floor_amount(group_refunds)),
+                    'refund_amount': 0,
                     'extra_income': int(floor_amount(group_extra)),
                     'real_income': int(floor_amount(net)),
                     'mentor_share_paid': int(floor_amount(mentor_share_paid_total)),
@@ -412,10 +405,12 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                     'paid_students': paid_students[:15],
                     'is_faol': group.is_faol
                 })
-            
+
             return groups_data
-            
+
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             print(f"mentor_groups olishda xato: {e}")
             return None
 
@@ -567,7 +562,6 @@ class BranchFinanceDetailSerializer(serializers.Serializer):
     period = serializers.DictField()
 
 
-from .models import FinanceTransaction
 
 class FinanceTransactionSerializer(serializers.ModelSerializer):
     marked_by_name = serializers.SerializerMethodField()

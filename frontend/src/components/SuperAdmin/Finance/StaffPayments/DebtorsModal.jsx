@@ -15,6 +15,7 @@ const DebtorsModal = ({ group, onClose, formatCurrency }) => {
             'discount': { icon: Crown, color: 'text-purple-300', bg: 'bg-purple-500/20', border: 'border-purple-500/30' },
             'low_income': { icon: HandHeart, color: 'text-amber-300', bg: 'bg-amber-500/20', border: 'border-amber-500/30' },
             'negotiated': { icon: DollarSign, color: 'text-blue-300', bg: 'bg-blue-500/20', border: 'border-blue-500/30' },
+            'teacher_negotiated': { icon: Crown, color: 'text-cyan-300', bg: 'bg-cyan-500/20', border: 'border-cyan-500/30' },
             'regular': { icon: CheckCircle2, color: 'text-emerald-300', bg: 'bg-emerald-500/20', border: 'border-emerald-500/30' }
         };
         const config = statusConfig[status] || statusConfig['regular'];

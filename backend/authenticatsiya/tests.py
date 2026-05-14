@@ -133,15 +133,15 @@ class AuthAPITests(APITestCase):
         # UsersListView only returns mentors for non-superadmin, 
         # but for superadmin it returns all users.
         # We have super_admin, admin, mentor = 3 users
-        self.assertEqual(len(response.data), 3)
+        self.assertEqual(len(response.data.get('results', response.data)), 3)
         
         # Admin sees mentors in their branches
         self.client.force_authenticate(user=self.admin)
         response = self.client.get(url)
         # Should see mentor1 (in Tashkent)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(response.data.get('results', response.data)), 1)
         
         # If we add a mentor in Samarkand, they should see them too (since admin has access to branch2)
         User.objects.create_user(username='sam_mentor', password='pw', role='mentor', branch=self.branch2)
         response = self.client.get(url)
-        self.assertEqual(len(response.data), 2) # mentor1 and sam_mentor
+        self.assertEqual(len(response.data.get('results', response.data)), 2) # mentor1 and sam_mentor
