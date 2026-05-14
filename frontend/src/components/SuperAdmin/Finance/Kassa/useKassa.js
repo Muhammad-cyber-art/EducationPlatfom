@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useEffect, useCallback, useMemo, useReducer } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../../../tokenUpdater/updater";
 import toast from "react-hot-toast";
@@ -18,31 +18,84 @@ const getDateRange = (dateFilter) => {
     return { date_gte: start, date_lte: end };
 };
 
-export const useKassa = () => {
-    const navigate = useNavigate();
-    const [payments, setPayments] = useState([]);
-    const [withdrawals, setWithdrawals] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [branches, setBranches] = useState([]);
-    const [selectedPayment, setSelectedPayment] = useState(null);
-    const [showDetailModal, setShowDetailModal] = useState(false);
-    const [showWithdrawModal, setShowWithdrawModal] = useState(false);
-    const [withdrawData, setWithdrawData] = useState({ amount: "", description: "" });
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [activeTab, setActiveTab] = useState("incomes");
-
-    const [filters, setFilters] = useState({
+const initialState = {
+    payments: [],
+    withdrawals: [],
+    loading: true,
+    branches: [],
+    selectedPayment: null,
+    showDetailModal: false,
+    showWithdrawModal: false,
+    withdrawData: { amount: "", description: "" },
+    isSubmitting: false,
+    activeTab: "incomes",
+    filters: {
         branch: "",
         method: "",
         search: "",
         date: ""
-    });
+    }
+};
+
+function kassaReducer(state, action) {
+    switch (action.type) {
+        case 'SET_PAYMENTS':
+            return { ...state, payments: typeof action.payload === 'function' ? action.payload(state.payments) : action.payload };
+        case 'SET_WITHDRAWALS':
+            return { ...state, withdrawals: action.payload };
+        case 'SET_LOADING':
+            return { ...state, loading: action.payload };
+        case 'SET_BRANCHES':
+            return { ...state, branches: action.payload };
+        case 'SET_SELECTED_PAYMENT':
+            return { ...state, selectedPayment: action.payload };
+        case 'SET_SHOW_DETAIL_MODAL':
+            return { ...state, showDetailModal: action.payload };
+        case 'SET_SHOW_WITHDRAW_MODAL':
+            return { ...state, showWithdrawModal: action.payload };
+        case 'SET_WITHDRAW_DATA':
+            return { ...state, withdrawData: typeof action.payload === 'function' ? action.payload(state.withdrawData) : action.payload };
+        case 'SET_IS_SUBMITTING':
+            return { ...state, isSubmitting: action.payload };
+        case 'SET_ACTIVE_TAB':
+            return { ...state, activeTab: action.payload };
+        case 'SET_FILTERS':
+            return { ...state, filters: typeof action.payload === 'function' ? action.payload(state.filters) : action.payload };
+        case 'RESET_WITHDRAW_DATA':
+            return { ...state, withdrawData: { amount: "", description: "" } };
+        case 'VERIFY_PAYMENT_SUCCESS':
+            return {
+                ...state,
+                payments: state.payments.map(p => p.id === action.payload ? { ...p, is_verified: true } : p)
+            };
+        default:
+            return state;
+    }
+}
+
+export const useKassa = () => {
+    const navigate = useNavigate();
+    const [state, dispatch] = useReducer(kassaReducer, initialState);
+
+    const {
+        payments,
+        withdrawals,
+        loading,
+        branches,
+        selectedPayment,
+        showDetailModal,
+        showWithdrawModal,
+        withdrawData,
+        isSubmitting,
+        activeTab,
+        filters
+    } = state;
 
     const userInfo = useMemo(() => get_user_info(), []);
 
     const fetchKassaData = useCallback(async () => {
         try {
-            setLoading(true);
+            dispatch({ type: 'SET_LOADING', payload: true });
             const { date_gte, date_lte } = getDateRange(filters.date);
 
             const params = {
@@ -60,7 +113,7 @@ export const useKassa = () => {
             }
 
             const payRes = await api.get("/finance/student-payments/", { params });
-            setPayments(payRes.data.results || payRes.data);
+            dispatch({ type: 'SET_PAYMENTS', payload: payRes.data.results || payRes.data });
 
             const transParams = {
                 transaction_type: 'expense',
@@ -75,12 +128,15 @@ export const useKassa = () => {
             }
 
             const transRes = await api.get("/finance/transactions/", { params: transParams });
-            setWithdrawals((transRes.data.results || transRes.data).filter(t => t.category === 'owner_withdrawal' || t.category === 'other'));
+            dispatch({
+                type: 'SET_WITHDRAWALS',
+                payload: (transRes.data.results || transRes.data).filter(t => t.category === 'owner_withdrawal' || t.category === 'other')
+            });
         } catch (error) {
             console.error("Error fetching kassa data:", error);
             toast.error("Ma'lumotlarni yuklashda xatolik.");
         } finally {
-            setLoading(false);
+            dispatch({ type: 'SET_LOADING', payload: false });
         }
     }, [filters.branch, filters.date, filters.method, filters.search]);
 
@@ -88,7 +144,7 @@ export const useKassa = () => {
         const fetchBranches = async () => {
             try {
                 const res = await api.get("/add_branch/branches/");
-                setBranches(res.data.results || res.data);
+                dispatch({ type: 'SET_BRANCHES', payload: res.data.results || res.data });
             } catch (err) { console.error(err); }
         };
         fetchBranches();
@@ -101,7 +157,10 @@ export const useKassa = () => {
     const handleAmountChange = useCallback((e) => {
         const val = e.target.value.replace(/\D/g, "");
         const formatted = val ? Number(val).toLocaleString() : "";
-        setWithdrawData(prev => ({ ...prev, amount: formatted }));
+        dispatch({
+            type: 'SET_WITHDRAW_DATA',
+            payload: prev => ({ ...prev, amount: formatted })
+        });
     }, []);
 
     const handleWithdraw = useCallback(async (e) => {
@@ -113,7 +172,7 @@ export const useKassa = () => {
         }
 
         try {
-            setIsSubmitting(true);
+            dispatch({ type: 'SET_IS_SUBMITTING', payload: true });
             await api.post("/finance/transactions/", {
                 transaction_type: 'expense',
                 category: 'owner_withdrawal',
@@ -124,13 +183,13 @@ export const useKassa = () => {
                 date: filters.date || new Date().toISOString().split('T')[0]
             });
             toast.success("Pul olish muvaffaqiyatli qayd etildi!");
-            setShowWithdrawModal(false);
-            setWithdrawData({ amount: "", description: "" });
+            dispatch({ type: 'SET_SHOW_WITHDRAW_MODAL', payload: false });
+            dispatch({ type: 'RESET_WITHDRAW_DATA' });
             fetchKassaData();
         } catch (error) {
             toast.error("Xatolik yuz berdi");
         } finally {
-            setIsSubmitting(false);
+            dispatch({ type: 'SET_IS_SUBMITTING', payload: false });
         }
     }, [withdrawData.amount, withdrawData.description, filters.branch, filters.date, fetchKassaData]);
 
@@ -139,7 +198,7 @@ export const useKassa = () => {
             const res = await api.post(`/finance/student-payments/${paymentId}/verify/`);
             if (res.data.status === 'success') {
                 toast.success("To'lov muvaffaqiyatli tasdiqlandi!");
-                setPayments(prev => prev.map(p => p.id === paymentId ? { ...p, is_verified: true } : p));
+                dispatch({ type: 'VERIFY_PAYMENT_SUCCESS', payload: paymentId });
             }
         } catch (error) {
             toast.error(error.response?.data?.detail || "Tasdiqlashda xatolik");
@@ -151,12 +210,23 @@ export const useKassa = () => {
     const totalWithdrawn = useMemo(() => withdrawals.reduce((sum, w) => sum + Number(w.amount), 0), [withdrawals]);
 
     const clearFilters = useCallback(() => {
-        setFilters({ branch: "", method: "", search: "", date: "" });
+        dispatch({ type: 'SET_FILTERS', payload: { branch: "", method: "", search: "", date: "" } });
     }, []);
 
     const setToday = useCallback(() => {
-        setFilters(prev => ({ ...prev, date: new Date().toISOString().split('T')[0] }));
+        dispatch({
+            type: 'SET_FILTERS',
+            payload: prev => ({ ...prev, date: new Date().toISOString().split('T')[0] })
+        });
     }, []);
+
+    // Setters wrap dispatch to keep backward compatibility if they are used as standalone setters in the UI
+    const setSelectedPayment = useCallback((val) => dispatch({ type: 'SET_SELECTED_PAYMENT', payload: val }), []);
+    const setShowDetailModal = useCallback((val) => dispatch({ type: 'SET_SHOW_DETAIL_MODAL', payload: val }), []);
+    const setShowWithdrawModal = useCallback((val) => dispatch({ type: 'SET_SHOW_WITHDRAW_MODAL', payload: val }), []);
+    const setWithdrawData = useCallback((val) => dispatch({ type: 'SET_WITHDRAW_DATA', payload: val }), []);
+    const setActiveTab = useCallback((val) => dispatch({ type: 'SET_ACTIVE_TAB', payload: val }), []);
+    const setFilters = useCallback((val) => dispatch({ type: 'SET_FILTERS', payload: val }), []);
 
     return {
         navigate,
@@ -189,3 +259,4 @@ export const useKassa = () => {
         fetchKassaData
     };
 };
+
