@@ -125,7 +125,8 @@ export default function StudentProfilePage() {
                     fullAmount: fullAmount,
                     ignore_refund,
                     studentName: studentData?.full_name,
-                    month: pData?.month
+                    month: pData?.month,
+                    refundAmount: pData?.refund_amount || 0
                 }
             });
         } else {
@@ -196,7 +197,7 @@ export default function StudentProfilePage() {
 
                     <div className="xl:col-span-8 space-y-6">
                         <StudentGroupsSection
-                            {...{ groups, paymentsAllGroups, showGroupMenu, dispatch, unenrollMutation, handlePaymentConfirm, navigate }}
+                            {...{ studentData, groups, paymentsAllGroups, showGroupMenu, dispatch, unenrollMutation, handlePaymentConfirm, navigate }}
                             canConfirmPayment={permissions.canConfirmPayment}
                         />
 

@@ -26,8 +26,8 @@ const StudentHistorySection = ({
  {payments.length > 0 ? (
  <div className="divide-y divide-[var(--border-glass)]">
  {payments.map((p) => (
- <div key={p.id} className="p-6 flex items-center justify-between group hover:bg-[var(--gold-dim)] transition-colors">
- <div className="flex items-center gap-5">
+ <div key={p.id} className="p-6 flex flex-col xl:flex-row xl:items-center justify-between gap-6 group hover:bg-[var(--gold-dim)] transition-colors">
+ <div className="flex items-start sm:items-center gap-5 w-full xl:w-auto">
  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-[10px] border border-[var(--border-glass)] ${p.is_paid ?'bg-emerald-500 shadow-[0_0_15px_#10b98120] text-black' :'bg-red-500 shadow-[0_0_15px_#ef444420] text-white'}`}>
  {new Date(p.month).toLocaleDateString('uz-UZ', { month:'short' }).toUpperCase()}
  </div>
@@ -68,15 +68,7 @@ const StudentHistorySection = ({
  <PaymentCheckout payment={p} onConfirm={handlePaymentConfirm} />
  ) : <XCircle size={20} className="text-red-500 opacity-30" />}
 
- {canConfirmPayment && (
- <button
- onClick={() => dispatch({ type:'TOGGLE_EDIT_PAYMENT', payload: true, payment: p })}
- className="p-3 bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-black rounded-xl transition-all"
- title="Summani tahrirlash"
- >
- <Edit3 size={18} />
- </button>
- )}
+
 
  {userRole ==='super_admin' && (
  <button

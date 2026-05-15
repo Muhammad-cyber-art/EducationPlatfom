@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { CreditCard, Loader2, Banknote, Smartphone, Image as ImageIcon, CheckCircle2, AlertCircle } from "lucide-react";
 import api from "../../../../tokenUpdater/updater";
+import AmountInput from "../../../Common/AmountInput";
 
 export const PaymentConfirmModal = ({ isOpen, onClose, onConfirm, data, loading }) => {
     const [method, setMethod] = useState("cash");
@@ -11,15 +12,22 @@ export const PaymentConfirmModal = ({ isOpen, onClose, onConfirm, data, loading 
     const [notes, setNotes] = useState("");
     const [noReceipt, setNoReceipt] = useState(false);
     const [calculateRefund, setCalculateRefund] = useState(true);
-    const [payFullMonth, setPayFullMonth] = useState(false);
+
+    // Boshlang'ich holatni o'rnatish
+    useEffect(() => {
+        if (data) {
+            setCalculateRefund(!data.ignore_refund);
+        }
+    }, [data]);
 
     // Hisoblangan summani o'rnatish
     useEffect(() => {
         if (data) {
-            const currentAmount = payFullMonth ? data.fullAmount : data.accruedAmount;
+            const refund = data.refundAmount || 0;
+            const currentAmount = calculateRefund ? Math.max(0, data.fullAmount - refund) : data.fullAmount;
             setAmount(currentAmount?.toString() || "0");
         }
-    }, [data, payFullMonth]);
+    }, [data, calculateRefund]);
 
     if (!isOpen) return null;
 
@@ -38,7 +46,8 @@ export const PaymentConfirmModal = ({ isOpen, onClose, onConfirm, data, loading 
             is_receiptless: method === 'click' ? noReceipt : false,
             notes: notes,
             ignore_refund: !calculateRefund,
-            pay_full_month: payFullMonth
+            pay_full_month: false,
+            amount: amount
         });
     };
 
@@ -79,25 +88,27 @@ export const PaymentConfirmModal = ({ isOpen, onClose, onConfirm, data, loading 
                         </div>
                     </div>
 
-                    {/* Payment Mode Selection (Accrual vs Full) */}
-                    <div className="w-full p-4 bg-amber-500/5 border border-amber-500/20 rounded-2xl">
-                        <label className="flex items-center justify-between cursor-pointer group">
-                            <div className="flex flex-col">
-                                <span className="text-[11px] font-black text-white uppercase tracking-wider group-hover:text-amber-500 transition-colors">To'liq oylik to'lov</span>
-                                <span className="text-[9px] text-[var(--text-muted)] font-bold">Davomatga qaramay to'liq summa yoziladi</span>
-                            </div>
-                            <div className="relative">
-                                <input 
-                                    type="checkbox" 
-                                    className="sr-only peer"
-                                    checked={payFullMonth}
-                                    onChange={(e) => setPayFullMonth(e.target.checked)}
-                                />
-                                <div className="w-10 h-5 bg-white/10 border border-white/20 rounded-full peer-checked:bg-amber-500 transition-all"></div>
-                                <div className="absolute left-1 top-1 w-3 h-3 bg-white rounded-full transition-all peer-checked:translate-x-5 shadow-sm"></div>
-                            </div>
-                        </label>
-                    </div>
+                    {/* Payment Mode Selection (Refund Mode) */}
+                    {data?.refundAmount > 0 && (
+                        <div className="w-full p-4 bg-amber-500/5 border border-amber-500/20 rounded-2xl animate-in fade-in zoom-in">
+                            <label className="flex items-center justify-between cursor-pointer group">
+                                <div className="flex flex-col">
+                                    <span className="text-[11px] font-black text-white uppercase tracking-wider group-hover:text-amber-500 transition-colors">Refund qo'llash (Chegirma)</span>
+                                    <span className="text-[9px] text-[var(--text-muted)] font-bold">Qoldirilgan darslar uchun chegirma qo'llash</span>
+                                </div>
+                                <div className="relative">
+                                    <input 
+                                        type="checkbox" 
+                                        className="sr-only peer"
+                                        checked={calculateRefund}
+                                        onChange={(e) => setCalculateRefund(e.target.checked)}
+                                    />
+                                    <div className="w-10 h-5 bg-white/10 border border-white/20 rounded-full peer-checked:bg-amber-500 transition-all"></div>
+                                    <div className="absolute left-1 top-1 w-3 h-3 bg-white rounded-full transition-all peer-checked:translate-x-5 shadow-sm"></div>
+                                </div>
+                            </label>
+                        </div>
+                    )}
 
                     {/* Method Tabs */}
                     <div className="w-full grid grid-cols-2 gap-2 bg-[var(--bg-void)] p-1.5 rounded-[2rem] border border-[var(--border-glass)]">
@@ -121,14 +132,13 @@ export const PaymentConfirmModal = ({ isOpen, onClose, onConfirm, data, loading 
                         {/* Summa ko'rsatish - read-only, backend hisoblaydi */}
                         <div className="space-y-2">
                             <label className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest ml-4">
-                                {payFullMonth ? "To'liq oylik narxi" : "Hisoblangan to'lov summasi"}
+                                {calculateRefund && data?.refundAmount > 0 ? "Chegirmali to'lov summasi" : "To'liq oylik to'lov summasi"}
                             </label>
                             <div className="relative">
-                                <input
-                                    type="text"
-                                    value={Number(amount || 0).toLocaleString()}
-                                    readOnly
-                                    className="w-full bg-[var(--bg-void)] border border-[var(--border-glass)] rounded-2xl py-4 px-6 text-xl font-black text-emerald-400 focus:border-amber-500/50 outline-none transition-all cursor-not-allowed"
+                                <AmountInput
+                                    value={amount}
+                                    onChange={(e) => setAmount(e.target.value)}
+                                    className="w-full bg-[var(--bg-void)] border border-[var(--border-glass)] rounded-2xl py-4 px-6 text-xl font-black text-emerald-400 focus:border-amber-500/50 outline-none transition-all cursor-text"
                                     placeholder="0"
                                 />
                                 <span className="absolute right-6 top-1/2 -translate-y-1/2 text-[10px] font-bold text-[var(--text-muted)]">UZS</span>

@@ -393,8 +393,12 @@ class BranchFinanceDetailView(APIView):
 
     def get(self, request, branch_id):
         try:
-            if request.user.role == 'admin' and request.user.branch_id != int(branch_id):
-                return Response({"error": "Siz faqat o'z filialingiz statistikalarini ko'ra olasiz"}, status=403)
+            if request.user.role == 'admin':
+                allowed_branches = [request.user.branch_id] if request.user.branch_id else []
+                if hasattr(request.user, 'branch_accesses'):
+                    allowed_branches.extend(request.user.branch_accesses.values_list('branch_id', flat=True))
+                if int(branch_id) not in allowed_branches:
+                    return Response({"error": "Siz faqat o'z filialingiz statistikalarini ko'ra olasiz"}, status=403)
             month, year = _parse_month_year(request.query_params)
             data = get_branch_finance_stats(branch_id, month, year)
             return Response(data)
@@ -424,8 +428,12 @@ class AbsentTodayStudentsView(APIView):
     def get(self, request, branch_id):
         user = request.user
         # Permission check
-        if user.role == 'admin' and user.branch_id != int(branch_id):
-             return Response({"error": "Ruxsat yo'q"}, status=403)
+        if user.role == 'admin':
+            allowed_branches = [user.branch_id] if user.branch_id else []
+            if hasattr(user, 'branch_accesses'):
+                allowed_branches.extend(user.branch_accesses.values_list('branch_id', flat=True))
+            if int(branch_id) not in allowed_branches:
+                return Response({"error": "Ruxsat yo'q"}, status=403)
         
         today = timezone.localdate()
         search = request.query_params.get('search', '').strip()

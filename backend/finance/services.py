@@ -96,9 +96,15 @@ def generate_monthly_payments(month_date=None):
     active_groups = [g for g in Group.objects.filter(is_faol=True).prefetch_related('students') if g.is_logic_enabled()]
     for group in active_groups:
         for student in group.students.all():
-            # NEW LOGIC: Dastlabki summa davomatga qarab (negotiated uchun to'liq) hisoblanadi.
-            accrued = student.calculate_accrued_amount(month_date.year, month_date.month, group=group)
-            payment_amount = Decimal(str(accrued))
+            # REFUND LOGIC: Boshlang'ich summa qilib to'liq narx belgilanadi.
+            base_price = group.monthly_price
+            if student.status in ['low_income', 'negotiated']:
+                if student.custom_fee is not None: base_price = student.custom_fee
+            
+            if student.status == 'teacher_negotiated':
+                payment_amount = Decimal('0')
+            else:
+                payment_amount = Decimal(str(floor_amount(base_price)))
             
             _, created = Payment.objects.get_or_create(
                 student=student,
@@ -212,25 +218,43 @@ def confirm_student_payment(request_user, payment, data):
     from finance.utils import floor_amount
     logger = logging.getLogger(__name__)
 
-    # NEW LOGIC: To'lov miqdori o'sha vaqtdagi davomatga qarab hisoblanadi (Accrual)
+    # REFUND LOGIC: To'lov miqdori qoldirilgan darslar bo'yicha hisoblanadi (Chegirma/Jarima)
     pay_full_month = str(data.get('pay_full_month', False)).lower() in ['true', '1', 'yes']
+    ignore_refund = str(data.get('ignore_refund', False)).lower() in ['true', '1', 'yes']
 
-    if pay_full_month:
-        # To'liq oylik to'lov logikasi
-        if payment.student.status in ['low_income', 'negotiated']:
-            base_amount = payment.student.custom_fee if payment.student.custom_fee is not None else payment.group.monthly_price
-        else:
-            base_amount = payment.group.monthly_price
-        payment.amount = Decimal(str(base_amount))
+    if payment.student.status in ['low_income', 'negotiated']:
+        base_amount = payment.student.custom_fee if payment.student.custom_fee is not None else payment.group.monthly_price
     else:
-        # Davomatga ko'ra hisoblash
-        accrued_amount = payment.student.calculate_accrued_amount(
+        base_amount = payment.group.monthly_price
+
+    if pay_full_month or payment.student.status == 'negotiated' or ignore_refund:
+        # To'liq oylik to'lash yoki kelishilgan narx
+        final_amount = Decimal(str(floor_amount(base_amount)))
+        payment.refund_amount = Decimal('0')
+        if ignore_refund:
+            payment.refund_ignored = True
+    elif payment.student.status == 'teacher_negotiated':
+        final_amount = Decimal('0')
+        payment.refund_amount = Decimal('0')
+    else:
+        # Jarimani aniqlash
+        refund_val = payment.student.calculate_refund_amount(
             payment.month.year,
             payment.month.month,
             group=payment.group,
         )
-        payment.amount = Decimal(str(accrued_amount))
-    
+        payment.refund_amount = Decimal(str(refund_val))
+        payment.refund_ignored = False
+        final_amount = Decimal(str(max(0, floor_amount(base_amount) - refund_val)))
+        
+    provided_amount = data.get('amount')
+    if provided_amount is not None and str(provided_amount).strip():
+        try:
+            final_amount = Decimal(str(provided_amount).strip())
+        except Exception:
+            pass
+
+    payment.amount = final_amount
     payment.save()
 
     # Yangi maydonlarni extract qilamiz
@@ -447,18 +471,30 @@ def get_branch_finance_stats(branch_id, month, year):
                     if student.status in ['low_income', 'negotiated']:
                         if student.custom_fee is not None: base_price = student.custom_fee
 
-                    # Accrued hisoblash (O'qituvchi kelishgan bo'lsa 0)
+                    # REFUND LOGIC: Kutilayotgan daromad = Asosiy narx - Jarima
                     if student.status == 'teacher_negotiated':
-                        accrued = 0
+                        expected_student_income = 0
                     elif student.status == 'negotiated':
-                        accrued = floor_amount(base_price)
+                        expected_student_income = floor_amount(base_price)
                     else:
-                        # Pre-fetched davomatdan foydalanamiz
+                        passed_lessons = [d for d in lesson_dates if d <= today]
+                        join_date = enrollment.joined_at.date()
+                        passed_lessons = [d for d in passed_lessons if d >= join_date]
+                        
+                        passed_count = len(passed_lessons)
                         present_count = att_map.get((student.id, group.id), 0)
+                        absences = max(0, passed_count - present_count)
+                        
                         daily_price = floor_amount(base_price / days_count) if days_count > 0 else 0
-                        accrued = floor_amount(daily_price * present_count)
+                        refund = floor_amount(daily_price * absences)
+                        
+                        base_floor = floor_amount(base_price)
+                        if refund > base_floor:
+                            refund = base_floor
+                            
+                        expected_student_income = max(0, base_floor - refund)
                     
-                    g_accrued += float(accrued)
+                    g_accrued += float(expected_student_income)
 
                 expected_income += Decimal(str(g_accrued))
                 

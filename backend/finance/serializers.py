@@ -18,15 +18,51 @@ class PaymentSerializer(serializers.ModelSerializer):
     student_name = serializers.ReadOnlyField(source='student.full_name')
     group_name = serializers.ReadOnlyField(source='group.name')
     branch_name = serializers.ReadOnlyField(source='group.branch.name')
+    lessons_count = serializers.SerializerMethodField()
+    daily_price = serializers.SerializerMethodField()
+    absences_count = serializers.SerializerMethodField()
+    refund_amount = serializers.SerializerMethodField()
     
     class Meta:
         model = Payment
         fields = [
             'id', 'student', 'student_name', 'group', 'group_name',
             'branch_name', 'amount', 'month', 'is_paid', 'paid_at',
-            'created_at'
+            'created_at', 'refund_amount', 'refund_ignored', 'notes',
+            'lessons_count', 'daily_price', 'absences_count'
         ]
         read_only_fields = ['id', 'created_at', 'paid_at']
+
+    def get_lessons_count(self, obj):
+        try:
+            return len(obj.group.get_lesson_dates(obj.month.year, obj.month.month))
+        except Exception:
+            return 0
+            
+    def get_daily_price(self, obj):
+        try:
+            from finance.utils import floor_amount
+            lessons_count = self.get_lessons_count(obj)
+            if lessons_count > 0:
+                base_price = obj.student.custom_fee if obj.student.custom_fee is not None and obj.student.status in ['low_income', 'negotiated'] else obj.group.monthly_price
+                return float(floor_amount(float(base_price) / lessons_count))
+            return 0
+        except Exception:
+            return 0
+            
+    def get_absences_count(self, obj):
+        try:
+            return obj.student.get_absences_count(obj.month.year, obj.month.month, group=obj.group)
+        except Exception:
+            return 0
+
+    def get_refund_amount(self, obj):
+        if obj.is_paid:
+            return float(obj.refund_amount) if obj.refund_amount else 0
+        try:
+            return float(obj.student.calculate_refund_amount(obj.month.year, obj.month.month, group=obj.group))
+        except Exception:
+            return 0
 
 class EmployeePaymentSerializer(serializers.ModelSerializer):
     employee_first_name = serializers.ReadOnlyField(source='employee.first_name')
@@ -209,14 +245,24 @@ class StaffProfileSerializer(serializers.ModelSerializer):
     role = serializers.CharField(source='user.role', read_only=True)
     branch_name = serializers.CharField(source='user.branch.name', read_only=True)
     salary_display = serializers.CharField(source='get_salary_display', read_only=True)
+    current_payment_id = serializers.SerializerMethodField()
 
     class Meta:
         model = StaffProfile
         fields = [
             'id', 'user', 'full_name', 'username', 'role', 'branch_name',
             'salary_type', 'fixed_salary', 'commission_percentage',
-            'per_student_amount', 'salary_display', 'karta'
+            'per_student_amount', 'salary_display', 'karta', 'current_payment_id'
         ]
+
+    def get_current_payment_id(self, obj):
+        try:
+            from django.utils import timezone
+            current_month = timezone.localdate().replace(day=1)
+            payment = EmployeePayment.objects.filter(employee=obj.user, month=current_month).first()
+            return payment.id if payment else None
+        except Exception:
+            return None
 
 class BranchStatSerializer(serializers.Serializer):
     name = serializers.CharField()

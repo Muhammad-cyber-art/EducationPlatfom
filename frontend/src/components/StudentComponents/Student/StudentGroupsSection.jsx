@@ -3,6 +3,7 @@ import { GraduationCap, MoreVertical, LogIn, LogOut, CheckCircle2, XCircle, User
 import { PaymentCheckout } from "./Helpers";
 
 const StudentGroupsSection = ({
+    studentData,
     groups,
     paymentsAllGroups,
     showGroupMenu,
@@ -117,13 +118,6 @@ const StudentGroupsSection = ({
                                     {groupPayment && canConfirmPayment && (
                                         <>
                                             <PaymentCheckout payment={groupPayment} onConfirm={handlePaymentConfirm} />
-                                            <button
-                                                onClick={() => dispatch({ type: 'TOGGLE_EDIT_PAYMENT', payload: true, payment: groupPayment })}
-                                                className="p-3 bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-black rounded-xl transition-all"
-                                                title="To'lovni tahrirlash"
-                                            >
-                                                <Edit3 size={18} />
-                                            </button>
                                         </>
                                     )}
                                 </div>
