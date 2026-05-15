@@ -188,39 +188,138 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
     @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_mentor_groups(self, obj) -> list:
         try:
-            if not obj.month: return None
+            if not obj.month or not hasattr(obj.employee, 'staff_profile'):
+                return []
+            
+            profile = obj.employee.staff_profile
+            per_student_rate = float(profile.per_student_amount)
+            is_percentage = profile.salary_type == 'percentage'
+            is_student_count = profile.salary_type == 'student_count'
+            commission_pct = float(profile.commission_percentage) / 100.0 if is_percentage else 0
+
             if obj.employee.role == 'mentor':
                 groups_qs = Group.objects.filter(mentor=obj.employee)
             elif obj.employee.role == 'admin' and obj.employee.branch:
                 groups_qs = Group.objects.filter(branch=obj.employee.branch)
             else:
-                return None
+                return []
 
-            mentor_groups = list(groups_qs.select_related('branch').prefetch_related('students'))
+            mentor_groups = list(groups_qs.select_related('branch').prefetch_related('students', 'old_students_fk'))
             if not mentor_groups: return []
             group_ids = [g.id for g in mentor_groups]
 
-            _all_payments = Payment.objects.filter(group_id__in=group_ids, month__year=obj.month.year, month__month=obj.month.month).select_related('student')
+            # Barcha to'lovlarni bitta queryda olamiz
+            _all_payments = Payment.objects.filter(
+                group_id__in=group_ids, 
+                month__year=obj.month.year, 
+                month__month=obj.month.month
+            ).select_related('student')
+            
             payment_map = {(p.student_id, p.group_id): p for p in _all_payments}
 
             groups_data = []
             for group in mentor_groups:
-                group_revenue = Decimal('0')
-                students = group.students.all()
-                for student in students:
-                    p = payment_map.get((student.id, group.id))
-                    if p and p.is_paid:
-                        group_revenue += Decimal(str(p.amount))
+                group_real_income = Decimal('0')
+                group_expected_income = Decimal('0')
+                mentor_share_paid = Decimal('0')
+                mentor_share_expected = Decimal('0')
                 
+                paid_students = []
+                unpaid_students = []
+                
+                # Guruhga tegishli barcha o'quvchilarni yig'amiz
+                all_students_map = {}
+                
+                # 1. GroupEnrollment orqali (Yangi tizim)
+                for enr in group.enrollments.select_related('student').all():
+                    if enr.student:
+                        all_students_map[enr.student.id] = enr.student
+                
+                # 2. Legacy ForeignKey orqali (Eski tizim)
+                for st in group.old_students_fk.all():
+                    all_students_map[st.id] = st
+                
+                all_students = list(all_students_map.values())
+                
+                print(f"DEBUG: Group {group.name} has {len(all_students)} students")
+                
+                for student in all_students:
+                    p = payment_map.get((student.id, group.id))
+                    
+                    # Talaba uchun bazaviy narxni aniqlash
+                    if student.status in ['low_income', 'negotiated']:
+                        base_price = float(student.custom_fee if student.custom_fee is not None else group.monthly_price)
+                    else:
+                        base_price = float(group.monthly_price)
+                    
+                    
+                    base_price_floored = float(floor_amount(base_price))
+                    
+                    # Talaba ma'lumotlari modal uchun
+                    student_info = {
+                        'id': student.id,
+                        'name': student.full_name,
+                        'status': student.get_status_display(),
+                        'financial_status': student.status,
+                        'financial_status_label': student.get_status_display(),
+                        'negotiated_price': float(student.custom_fee) if student.custom_fee else None,
+                        'expected': base_price_floored,
+                        'actual': 0,
+                        'refund_amount': 0,
+                        'refund_ignored': False,
+                        'paid_at': None,
+                        'payment_method': None
+                    }
+
+                    if p:
+                        student_info['actual'] = float(p.amount) if p.is_paid else 0
+                        student_info['refund_amount'] = float(p.refund_amount) if p.refund_amount else 0
+                        student_info['refund_ignored'] = p.refund_ignored
+                        student_info['paid_at'] = p.paid_at.strftime('%Y-%m-%d %H:%M') if p.paid_at else None
+                        student_info['payment_method'] = p.get_payment_method_display() if p.payment_method else None
+                        
+                        if p.is_paid:
+                            actual_amount = Decimal(str(p.amount))
+                            group_real_income += actual_amount
+                            paid_students.append(student_info)
+                            
+                            # Mentor ulushini hisoblash
+                            if is_percentage:
+                                mentor_share_paid += actual_amount * Decimal(str(commission_pct))
+                            elif is_student_count:
+                                mentor_share_paid += Decimal(str(min(float(actual_amount), per_student_rate)))
+                        else:
+                            unpaid_students.append(student_info)
+                    else:
+                        # To'lov yaratilmagan holat
+                        unpaid_students.append(student_info)
+                    
+                    # Kutilayotgan tushum (refundlarni hisobga olmaganda)
+                    group_expected_income += Decimal(str(base_price_floored))
+                    if is_percentage:
+                        mentor_share_expected += Decimal(str(base_price_floored)) * Decimal(str(commission_pct))
+                    elif is_student_count:
+                        mentor_share_expected += Decimal(str(per_student_rate))
+
                 groups_data.append({
                     'id': group.id,
                     'name': group.name,
+                    'monthly_price': float(group.monthly_price),
                     'students_count': len(students),
-                    'monthly_income': int(floor_amount(group_revenue)),
+                    'paid_students_count': len(paid_students),
+                    'real_income': int(floor_amount(group_real_income)),
+                    'monthly_income': int(floor_amount(group_real_income)), # Legacy support
+                    'expected_income': int(floor_amount(group_expected_income)),
+                    'mentor_share_paid': int(floor_amount(mentor_share_paid)),
+                    'mentor_share_expected': int(floor_amount(mentor_share_expected)),
+                    'paid_students': paid_students,
+                    'unpaid_students': unpaid_students,
                 })
             return groups_data
-        except:
-            return None
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"get_mentor_groups error: {e}")
+            return []
 
     @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_advances_history(self, obj) -> list:
