@@ -21,8 +21,8 @@ const getBaseUrl = () => {
  return `${origin}/api/`;
  }
 
- // Development (Localhost)
- return"http://127.0.0.1:8000/api/";
+  // Development (Localhost)
+  return "http://localhost:8000/api/";
 };
 
 const BASE_URL = getBaseUrl();

@@ -90,25 +90,7 @@ def generate_daily_full_report(target_date=None):
         
         row_idx += 1
 
-    # 2. Guruhsiz o'quvchilarni oxiriga qo'shamiz
-    students_without_groups = Student.objects.exclude(id__in=reported_student_ids).order_by('full_name')
-    for student in students_without_groups:
-        row_data = [
-            row_idx,
-            student.branch.name if student.branch else "Filialsiz",
-            "Guruhsiz",
-            student.full_name,
-            student.phone or "-",
-            student.parent_phone or "-",
-            "Noma'lum"
-        ]
-        ws.append(row_data)
-        for cell in ws[ws.max_row]:
-            cell.border = border
-            cell.alignment = Alignment(vertical="center", horizontal="left")
-            if cell.column in [1, 7]:
-                cell.alignment = Alignment(horizontal="center", vertical="center")
-        row_idx += 1
+    # 2. Guruhsiz o'quvchilarni oxiriga qo'shmaymiz (talabga asosan olib tashlandi)
 
     # --- Ustun kengliklarini avtomatik sozlash ---
     dims = {
@@ -243,12 +225,42 @@ def get_full_monthly_report(year, month):
         ])
 
     # ================================================================
+    # 3.5-SAHIFA: ADMIN HARAJATLARI (MAYDA CHIQIMLAR)
+    # ================================================================
+    from finance.models import AdminExpense
+    ws_admin = wb.create_sheet("Admin Harajatlari")
+    headers_admin = [
+        "№", "Filial", "Harajat Nomi", "Summa", "Kiritdi", "Sana", "Tavsif"
+    ]
+    ws_admin.append(headers_admin)
+    for cell in ws_admin[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = align_center
+        cell.border = border
+
+    admin_expenses = AdminExpense.objects.filter(
+        date__year=year, date__month=month
+    ).select_related('branch', 'marked_by').order_by('date')
+
+    for i, ae in enumerate(admin_expenses, 1):
+        ws_admin.append([
+            i,
+            ae.branch.name if ae.branch else "-",
+            ae.title,
+            ae.amount,
+            ae.marked_by.get_full_name() or ae.marked_by.username if ae.marked_by else "Tizim",
+            ae.date.strftime("%Y-%m-%d"),
+            ae.description or "-"
+        ])
+
+    # ================================================================
     # 4-SAHIFA: FILIALLAR VA UMUMIY STATISTIKA (TUGATILDI)
     # ================================================================
     ws3 = wb.create_sheet("Umumiy Statistika")
     headers3 = [
         "Filial Nomi", "O'quvchilar To'lovi", "Qo'shimcha Kirim", 
-        "Xodimlar Maoshi", "Refundlar (Chiqim)", "Kommunal To'lovlar",
+        "Xodimlar Maoshlari", "Admin Harajatlari", "Refundlar (Chiqim)", "Kommunal To'lovlar",
         "Boshqa Chiqimlar", "SOF FOYDA", "Qarzdorlik"
     ]
     ws3.append(headers3)
@@ -262,6 +274,7 @@ def get_full_monthly_report(year, month):
     grand_income_fees = 0
     grand_income_extra = 0
     grand_expense_salary = 0
+    grand_expense_admin = 0
     grand_expense_refund = 0
     grand_expense_utility = 0
     grand_expense_other = 0
@@ -278,16 +291,20 @@ def get_full_monthly_report(year, month):
         expense_utility = FinanceTransaction.objects.filter(branch=branch, date__year=year, date__month=month, transaction_type='expense', category='utility').aggregate(total=Sum('amount'))['total'] or 0
         expense_other = FinanceTransaction.objects.filter(branch=branch, date__year=year, date__month=month, transaction_type='expense').exclude(category__in=['salary', 'refund', 'utility']).aggregate(total=Sum('amount'))['total'] or 0
         
-        # 3. Qarzdorlik
+        # 3. Admin Harajatlari
+        expense_admin = AdminExpense.objects.filter(branch=branch, date__year=year, date__month=month).aggregate(total=Sum('amount'))['total'] or 0
+        
+        # 4. Qarzdorlik
         debt = Payment.objects.filter(group__branch=branch, month__year=year, month__month=month, is_paid=False).aggregate(total=Sum('amount'))['total'] or 0
         
-        net_profit = (income_fees + income_extra) - (expense_salary + expense_refund + expense_utility + expense_other)
+        net_profit = (income_fees + income_extra) - (expense_salary + expense_admin + expense_refund + expense_utility + expense_other)
         
         ws3.append([
             branch.name, 
             income_fees, 
             income_extra, 
             expense_salary, 
+            expense_admin,
             expense_refund, 
             expense_utility,
             expense_other, 
@@ -298,18 +315,20 @@ def get_full_monthly_report(year, month):
         grand_income_fees += income_fees
         grand_income_extra += income_extra
         grand_expense_salary += expense_salary
+        grand_expense_admin += expense_admin
         grand_expense_refund += expense_refund
         grand_expense_utility += expense_utility
         grand_expense_other += expense_other
         grand_debt += debt
 
     # Jami qatori
-    total_net = (grand_income_fees + grand_income_extra) - (grand_expense_salary + grand_expense_refund + grand_expense_utility + grand_expense_other)
+    total_net = (grand_income_fees + grand_income_extra) - (grand_expense_salary + grand_expense_admin + grand_expense_refund + grand_expense_utility + grand_expense_other)
     total_row = [
         "UMUMIY JAMI", 
         grand_income_fees, 
         grand_income_extra, 
         grand_expense_salary, 
+        grand_expense_admin,
         grand_expense_refund, 
         grand_expense_utility,
         grand_expense_other, 
