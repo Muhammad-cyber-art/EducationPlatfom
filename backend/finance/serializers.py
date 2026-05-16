@@ -204,7 +204,12 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             else:
                 return []
 
-            mentor_groups = list(groups_qs.select_related('branch').prefetch_related('students', 'old_students_fk'))
+            mentor_groups = list(groups_qs.select_related('branch').prefetch_related(
+                'students', 
+                'old_students_fk',
+                'enrollments',
+                'enrollments__student'
+            ))
             if not mentor_groups: return []
             group_ids = [g.id for g in mentor_groups]
 
@@ -305,7 +310,7 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                     'id': group.id,
                     'name': group.name,
                     'monthly_price': float(group.monthly_price),
-                    'students_count': len(students),
+                    'students_count': len(all_students),
                     'paid_students_count': len(paid_students),
                     'real_income': int(floor_amount(group_real_income)),
                     'monthly_income': int(floor_amount(group_real_income)), # Legacy support

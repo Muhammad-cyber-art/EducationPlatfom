@@ -60,28 +60,6 @@ def _safe_attendance_stats_for_user(user, today):
         logger.exception("Attendance user statistikasi xatoligi: user_id=%s", getattr(user, "id", None))
         return {"absent": 0, "total": 0}
 
-def generate_monthly_student_payments(month_date=None):
-    """
-    Har oy barcha faol guruhlardagi studentlar uchun payment yaratadi
-    """
-    if month_date is None:
-        month_date = timezone.localdate().replace(day=1)
-
-    with transaction.atomic():
-        # User talabi: Boshlanish sanasi kelmaguncha to'lovlar yaratilmasligi kerak
-        active_groups = [g for g in Group.objects.filter(is_faol=True) if g.is_logic_enabled()]
-
-        for group in active_groups:
-            for student in group.students.all():
-                Payment.objects.get_or_create(
-                    student=student,
-                    group=group,
-                    month=month_date,
-                    defaults={
-                        'amount': floor_amount(group.monthly_price),
-                        'is_paid': False
-                    }
-                )
                 
 @transaction.atomic
 def generate_monthly_payments(month_date=None):

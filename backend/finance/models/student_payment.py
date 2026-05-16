@@ -72,32 +72,34 @@ class Payment(models.Model):
         return f"{self.student.full_name} - {self.group.name} - {self.month.strftime('%B %Y') if self.month else 'No month'}"
 
     def mark_as_paid(self, admin_user, method='cash', receipt=None, notes=None, is_receiptless=False, is_full_amount=False):
-        if not self.is_paid:
-            self.is_paid = True
-            self.marked_by = admin_user
-            self.paid_at = timezone.now()
-            self.payment_method = method
-            self.is_receiptless = is_receiptless
-            self.is_full_amount = is_full_amount
-            if receipt: self.receipt_image = receipt
-            if notes: self.notes = notes
-            self.save()
-            
-            # ✅ Centralized Finance Ledger ga yozish
-            from finance.models import FinanceTransaction
-            FinanceTransaction.objects.get_or_create(
-                related_id=f"STP-{self.id}",
-                defaults={
-                    'transaction_type': 'income',
-                    'category': 'student_fee',
-                    'amount': self.amount,
-                    'date': self.paid_at.date(),
-                    'marked_by': admin_user,
-                    'branch': self.student.branch,
-                    'title': f"To'lov: {self.student.full_name}",
-                    'description': f"{self.group.name} ({'To''liq' if self.is_full_amount else 'Davomat'}) {self.month.strftime('%Y-%m')} to'lovi. Usul: {self.get_payment_method_display()}. {'(Cheksiz)' if self.is_receiptless else ''} {self.notes or ''}",
-                }
-            )
+        from django.db import transaction
+        with transaction.atomic():
+            if not self.is_paid:
+                self.is_paid = True
+                self.marked_by = admin_user
+                self.paid_at = timezone.now()
+                self.payment_method = method
+                self.is_receiptless = is_receiptless
+                self.is_full_amount = is_full_amount
+                if receipt: self.receipt_image = receipt
+                if notes: self.notes = notes
+                self.save()
+                
+                # ✅ Centralized Finance Ledger ga yozish
+                from finance.models import FinanceTransaction
+                FinanceTransaction.objects.get_or_create(
+                    related_id=f"STP-{self.id}",
+                    defaults={
+                        'transaction_type': 'income',
+                        'category': 'student_fee',
+                        'amount': self.amount,
+                        'date': self.paid_at.date(),
+                        'marked_by': admin_user,
+                        'branch': self.student.branch,
+                        'title': f"To'lov: {self.student.full_name}",
+                        'description': f"{self.group.name} ({'To''liq' if self.is_full_amount else 'Davomat'}) {self.month.strftime('%Y-%m')} to'lovi. Usul: {self.get_payment_method_display()}. {'(Cheksiz)' if self.is_receiptless else ''} {self.notes or ''}",
+                    }
+                )
     def save(self, *args, **kwargs):
         if self.month:
             from finance.utils import normalize_month

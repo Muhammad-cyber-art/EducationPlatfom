@@ -246,21 +246,30 @@ class Student(models.Model):
         # Faqat o'tib bo'lgan dars kunlarini olamiz
         passed_lessons = [d for d in lesson_dates if d <= today]
         
+        # Jami o'tib ketgan darslar soni (bu o'quvchi guruhda bo'lgan yoki bo'lmaganidan qat'iy nazar)
+        total_passed = len(passed_lessons)
+
         enrollment = self.enrollments.filter(group=target_group).first()
         if enrollment:
             join_date = enrollment.joined_at.date()
-            passed_lessons = [d for d in passed_lessons if d >= join_date]
-        
-        present_count = self.attendances.filter(
-            group=target_group,
-            date__year=year, 
-            date__month=month, 
-            date__in=passed_lessons,
-            is_present=True
-        ).count()
-        
-        absences = len(passed_lessons) - present_count
-        return max(0, absences)
+            # O'quvchi guruhda bo'lgan paytdagi o'tilgan darslar
+            active_passed_lessons = [d for d in passed_lessons if d >= join_date]
+            
+            # Kelgan kunlar soni
+            present_count = self.attendances.filter(
+                group=target_group,
+                date__year=year, 
+                date__month=month, 
+                date__in=active_passed_lessons,
+                is_present=True
+            ).count()
+            
+            # Qoldirgan darslar = (Jami o'tib ketgan darslar) - (Kelgan darslar)
+            # Bu yerda o'quvchi guruhga kelguncha bo'lgan darslar ham "qoldirilgan" (absences) deb hisoblanadi
+            absences = total_passed - present_count
+            return max(0, absences)
+            
+        return total_passed
 
     def calculate_accrued_amount(self, year, month, group=None):
         """
@@ -312,25 +321,25 @@ class Student(models.Model):
         Dars qoldirganlik uchun refund (chegirma) summasini hisoblash.
 
         Mantiq: oy narxi (individual yoki guruh) oydagi rejalashtirilgan darslar soniga
-        bo'linadi — kunlik narx. Har bir *o'tib bo'lgan* darsda kelmagan kun uchun
-        bitta kunlik narx miqdorida chegirma qo'llanadi (1 ta qoldirish ham hisobga olinadi).
-
-        Cheklovlar:
-        - Kelajakdagi darslar qo'shimcha qoldirish sifatida hisoblanmaydi (get_absences_count).
+        bo'linadi — kunlik narx.
+        
+        get_absences_count allaqachon pre-join darslarni ham hisobga oladi,
+        shuning uchun bu yerda alohida qo'shish shart emas.
         """
         from finance.utils import floor_amount
         target_group = group or self.group
         if not target_group:
             return 0
 
+        # get_absences_count endi pre-join darslarni ham o'z ichiga oladi
         absences = self.get_absences_count(year, month, group=target_group)
+
         if absences <= 0:
             return 0
 
-        # Refund hisoblash uchun har doim guruh narxidan foydalanamiz
-        # chunki imtiyozli o'quvchilar uchun custom_fee 0 bo'lishi mumkin
+        lesson_dates = target_group.get_lesson_dates(year, month)
         base_price = target_group.monthly_price
-        lessons_count = len(target_group.get_lesson_dates(year, month))
+        lessons_count = len(lesson_dates)
         if lessons_count <= 0:
             return 0
 

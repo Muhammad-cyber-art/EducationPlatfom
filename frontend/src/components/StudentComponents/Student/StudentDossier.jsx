@@ -3,13 +3,13 @@ import { Phone, FileText, Send, User, ShieldCheck, CreditCard, Save } from"lucid
 import { ProfileAttribute } from"./Helpers";
 
 const StudentDossier = ({
- studentData,
- student_id,
- canConfirmPayment,
- dispatch
+    studentData,
+    student_id,
+    canConfirmPayment,
+    dispatch
 }) => {
- return (
- <div className="xl:col-span-4 space-y-8">
+    return (
+        <div className="space-y-6 sm:space-y-8">
  {/* IDENTIFICATION DOSSIER */}
  <div className="lux-card space-y-6">
  <div className="flex items-center gap-3 px-1">

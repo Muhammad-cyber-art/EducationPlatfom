@@ -176,7 +176,7 @@ export default function StudentProfilePage() {
     const { isEditing, editData, showGroupMenu, previewImage } = state;
 
     return (
-        <div className="p-3 sm:p-6 space-y-6 sm:space-y-10">
+        <div className="p-3 sm:p-6 lg:p-8 max-w-[1600px] mx-auto space-y-6 sm:space-y-8 lg:space-y-12 bg-[var(--bg-void)]/20 min-h-screen">
             <StudentHeader
                 {...{ studentData, isEditing, userRole, handleSaveEdit, dispatch, archiveMutation, student_id }}
                 canEditStudent={permissions.canEditStudent}
@@ -187,15 +187,21 @@ export default function StudentProfilePage() {
             />
 
             {isEditing ? (
-                <StudentEditForm {...{ editData, branchGroups, editMutation, dispatch, handleSaveEdit }} />
+                <div className="max-w-4xl mx-auto">
+                    <StudentEditForm {...{ editData, branchGroups, editMutation, dispatch, handleSaveEdit }} />
+                </div>
             ) : (
-                <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 sm:gap-10">
-                    <StudentDossier
-                        {...{ studentData, student_id, dispatch }}
-                        canConfirmPayment={permissions.canConfirmPayment}
-                    />
+                <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 lg:gap-8 xl:gap-10 items-start">
+                    {/* Left Sidebar: Dossier */}
+                    <div className="xl:col-span-4 xl:sticky xl:top-6">
+                        <StudentDossier
+                            {...{ studentData, student_id, dispatch }}
+                            canConfirmPayment={permissions.canConfirmPayment}
+                        />
+                    </div>
 
-                    <div className="xl:col-span-8 space-y-6">
+                    {/* Right Content: Groups & History */}
+                    <div className="xl:col-span-8 space-y-6 lg:space-y-8">
                         <StudentGroupsSection
                             {...{ studentData, groups, paymentsAllGroups, showGroupMenu, dispatch, unenrollMutation, handlePaymentConfirm, navigate }}
                             canConfirmPayment={permissions.canConfirmPayment}

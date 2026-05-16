@@ -138,9 +138,7 @@ const StaffPaymentDetails = () => {
  <PaymentHistory {...{ data, staff_id, formatCurrency, isSuperAdmin, handleDeleteHistory, dispatch, setPayModal, setSelectedHistoryItem }} />
  
  {/* 3. KPI Table - Guruhlar va o'quvchilar */}
- {data.salary_type !== 'fixed' && (
  <KpiTable {...{ data, isPercentageType, isStudentCountType, formatCurrency, setSelectedGroupForDebtors }} />
- )}
  
  {/* 4. Advance History - Avanslar */}
  <AdvanceHistory {...{ data, formatCurrency, isSuperAdmin, handleDeleteAdvance }} />

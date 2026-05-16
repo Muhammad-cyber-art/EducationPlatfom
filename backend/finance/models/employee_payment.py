@@ -133,51 +133,53 @@ class EmployeePayment(models.Model):
 
     def mark_as_paid(self, super_admin_user):
         """To'lovni tasdiqlashda summani qulflash (snapshot)"""
-        if not self.is_paid:
-            # To'lanayotgan paytda oxirgi marta qayta hisoblab olish (ixtiyoriy, lekin aniqlik uchun yaxshi)
-            try:
-                if hasattr(self.employee, 'staff_profile'):
-                    st = self.employee.staff_profile.salary_type
-                    # Foiz — mentor va admin; o'quvchi soni — faqat mentor guruhlari bilan
-                    if st == 'percentage' or (
-                        st == 'student_count' and self.employee.role == 'mentor'
-                    ):
-                        self.recalculate_salary()
-            except Exception as e:
-                # Agar qayta hisoblashda xatolik bo'lsa, davom etamiz
-                print(f"Recalculate error: {e}")
-            
-            self.is_paid = True
-            self.paid_at = timezone.now()
-            self.marked_by = super_admin_user
-            self.save()
-            
-            # ✅ Centralized Finance Ledger ga yozish
-            try:
-                # Branch mavjudligini tekshirish
-                if not self.employee.branch:
-                    print(f"Warning: Employee {self.employee.id} has no branch assigned")
-                    return  # Transaction yaratmasdan chiqamiz
+        from django.db import transaction
+        with transaction.atomic():
+            if not self.is_paid:
+                # To'lanayotgan paytda oxirgi marta qayta hisoblab olish (ixtiyoriy, lekin aniqlik uchun yaxshi)
+                try:
+                    if hasattr(self.employee, 'staff_profile'):
+                        st = self.employee.staff_profile.salary_type
+                        # Foiz — mentor va admin; o'quvchi soni — faqat mentor guruhlari bilan
+                        if st == 'percentage' or (
+                            st == 'student_count' and self.employee.role == 'mentor'
+                        ):
+                            self.recalculate_salary()
+                except Exception as e:
+                    # Agar qayta hisoblashda xatolik bo'lsa, davom etamiz
+                    print(f"Recalculate error: {e}")
                 
-                from finance.models import FinanceTransaction
-                FinanceTransaction.objects.get_or_create(
-                    related_id=f"EMP-{self.id}",
-                    defaults={
-                        'transaction_type': 'expense',
-                        'category': 'salary',
-                        'amount': self.total_amount,
-                        'date': self.paid_at.date(),
-                        'marked_by': super_admin_user,
-                        'branch': self.employee.branch,
-                        'title': f"Maosh: {self.employee.get_full_name() or self.employee.username}",
-                        'description': f"{self.month.strftime('%Y-%m')} oyi uchun xizmat haqi",
-                    }
-                )
-            except Exception as e:
-                # Transaction yaratishda xatolik bo'lsa, log qilamiz
-                print(f"FinanceTransaction creation error: {e}")
-                import traceback
-                traceback.print_exc()
+                self.is_paid = True
+                self.paid_at = timezone.now()
+                self.marked_by = super_admin_user
+                self.save()
+                
+                # ✅ Centralized Finance Ledger ga yozish
+                try:
+                    # Branch mavjudligini tekshirish
+                    if not self.employee.branch:
+                        print(f"Warning: Employee {self.employee.id} has no branch assigned")
+                        return  # Transaction yaratmasdan chiqamiz
+                    
+                    from finance.models import FinanceTransaction
+                    FinanceTransaction.objects.get_or_create(
+                        related_id=f"EMP-{self.id}",
+                        defaults={
+                            'transaction_type': 'expense',
+                            'category': 'salary',
+                            'amount': self.total_amount,
+                            'date': self.paid_at.date(),
+                            'marked_by': super_admin_user,
+                            'branch': self.employee.branch,
+                            'title': f"Maosh: {self.employee.get_full_name() or self.employee.username}",
+                            'description': f"{self.month.strftime('%Y-%m')} oyi uchun xizmat haqi",
+                        }
+                    )
+                except Exception as e:
+                    # Transaction yaratishda xatolik bo'lsa, log qilamiz
+                    print(f"FinanceTransaction creation error: {e}")
+                    import traceback
+                    traceback.print_exc()
 
     def recalculate_salary(self):
         """Maoshni StaffProfile bo'yicha qayta hisoblash"""
