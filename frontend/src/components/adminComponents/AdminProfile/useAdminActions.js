@@ -64,11 +64,11 @@ export const useAdminActions = (admin_id, admin, dispatch, navigate, refetchBran
  };
 
  const LogOut = () => {
- if (window.confirm("Tizimdan chiqmoqchimisiz?")) {
- localStorage.clear();
- navigate("/");
- }
- };
+    if (window.confirm("Tizimdan chiqmoqchimisiz?")) {
+      localStorage.clear();
+      window.location.href = "/";
+    }
+  };
 
  return {
  archiveMutation,

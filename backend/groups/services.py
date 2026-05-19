@@ -232,16 +232,29 @@ def merge_student_profiles(master, duplicate_id):
 def assign_waiting_student_to_group(waiting_student, group_id, request_user):
     """Kutish zalidagi o'quvchini guruhga biriktirish"""
     group = get_object_or_404(Group, id=group_id)
-    
     with transaction.atomic():
         from archivebase.models import ArchivedStudent
         from archivebase.services import restore_student_from_archive
+        import re
         
         # 1. Avval faol o'quvchilar orasidan qidiramiz (Dublikatni oldini olish uchun)
         student = Student.objects.filter(
             full_name=waiting_student.full_name,
             phone=waiting_student.phone
         ).first()
+
+        # Telefon raqami formati har xil bo'lsa, tozalab qidiramiz (Senior Fix)
+        if not student and waiting_student.phone:
+            clean_p = re.sub(r'\D', '', waiting_student.phone)
+            if len(clean_p) >= 9:
+                last_9 = clean_p[-9:]
+                candidates = Student.objects.filter(full_name=waiting_student.full_name)
+                for cand in candidates:
+                    if cand.phone:
+                        cand_clean = re.sub(r'\D', '', cand.phone)
+                        if cand_clean.endswith(last_9):
+                            student = cand
+                            break
 
         if student:
             # O'quvchi allaqachon mavjud bo'lsa, uning guruhini yangilab qo'yamiz (agar bo'sh bo'lsa)
@@ -251,10 +264,33 @@ def assign_waiting_student_to_group(waiting_student, group_id, request_user):
                 student.save()
         else:
             # 2. Arxivdan qidiramiz
-            archived = ArchivedStudent.objects.filter(
-                full_name=waiting_student.full_name,
-                metadata__phone=waiting_student.phone
-            ).order_by('-archived_at').first()
+            archived = None
+            
+            # A) Birinchi navbatda Oldingi ID orqali qidirib ko'ramiz (Senior Fix - eng aniq bog'liqlik)
+            old_id_match = re.search(r"Oldingi ID:\s*(\d+)", waiting_student.notes or "")
+            if old_id_match:
+                old_id = int(old_id_match.group(1))
+                archived = ArchivedStudent.objects.filter(original_id=old_id).order_by('-archived_at').first()
+            
+            # B) Agar ID orqali topilmasa, ism va telefon raqami bo'yicha aniq moslikni qidiramiz
+            if not archived:
+                archived = ArchivedStudent.objects.filter(
+                    full_name=waiting_student.full_name,
+                    metadata__phone=waiting_student.phone
+                ).order_by('-archived_at').first()
+            
+            # C) Agar hali ham topilmasa, telefon raqami formatidan qat'i nazar oxirgi 9 ta raqam bo'yicha qidiramiz
+            if not archived and waiting_student.phone:
+                clean_p = re.sub(r'\D', '', waiting_student.phone)
+                if len(clean_p) >= 9:
+                    last_9 = clean_p[-9:]
+                    name_matches = ArchivedStudent.objects.filter(full_name=waiting_student.full_name)
+                    for candidate in name_matches:
+                        cand_phone = candidate.metadata.get('phone') or ""
+                        cand_clean = re.sub(r'\D', '', cand_phone)
+                        if cand_clean.endswith(last_9):
+                            archived = candidate
+                            break
 
             if archived:
                 student = restore_student_from_archive(archived.id, request_user)

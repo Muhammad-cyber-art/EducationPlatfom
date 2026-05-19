@@ -11,7 +11,7 @@ from .utils import send_telegram_message_async, get_student_telegram_ids
 def sync_student_telegram_id(sender, instance, created, **kwargs):
     """
     Yangi o'quvchi qo'shilganda yoki tahrirlanganda, agar uning telefon raqami 
-    boshqa bir o'quvchida mavjud bo'lsa va unga Telegram ID biriktirilgan bo'lsa, o'sha IDni nusxalaymiz.
+    boshqa bir o'quvchida (faol yoki arxivlangan) mavjud bo'lsa va unga Telegram ID biriktirilgan bo'lsa, o'sha IDni nusxalaymiz.
     """
     import re
     update_fields = {}
@@ -22,23 +22,41 @@ def sync_student_telegram_id(sender, instance, created, **kwargs):
         if clean_phone.isdigit() and len(clean_phone) >= 9:
             last_9 = clean_phone[-9:]
             
-            # Telegram IDga ega bo'lgan boshqa o'quvchilarni tekshiramiz
+            # Telegram IDga ega bo'lgan boshqa faol o'quvchilarni tekshiramiz
             candidates = Student.objects.exclude(id=instance.id).filter(
                 Q(telegram_id__isnull=False, telegram_id__gt='') | 
                 Q(parent_telegram_id__isnull=False, parent_telegram_id__gt='')
             )
             
+            found = False
             for other in candidates:
                 if other.phone:
                     other_clean = re.sub(r'\D', '', other.phone)
                     if other_clean.endswith(last_9):
                         update_fields['telegram_id'] = other.telegram_id or other.parent_telegram_id
+                        found = True
                         break
                 if other.parent_phone:
                     other_p_clean = re.sub(r'\D', '', other.parent_phone)
                     if other_p_clean.endswith(last_9):
                         update_fields['telegram_id'] = other.parent_telegram_id or other.telegram_id
+                        found = True
                         break
+
+            # Agar faol o'quvchilar orasidan topilmasa, arxivlanganlardan qidiramiz (Senior Fix)
+            if not found:
+                from archivebase.models import ArchivedStudent
+                archived_candidates = ArchivedStudent.objects.filter(
+                    Q(metadata__telegram_id__isnull=False) | Q(metadata__parent_telegram_id__isnull=False)
+                )
+                for arch in archived_candidates:
+                    meta = arch.metadata
+                    arch_phone = meta.get('phone')
+                    if arch_phone:
+                        arch_phone_clean = re.sub(r'\D', '', arch_phone)
+                        if arch_phone_clean.endswith(last_9):
+                            update_fields['telegram_id'] = meta.get('telegram_id') or meta.get('parent_telegram_id')
+                            break
     
     # 2. Ota-ona raqami orqali qidirish
     if instance.parent_phone and not instance.parent_telegram_id:
@@ -46,23 +64,41 @@ def sync_student_telegram_id(sender, instance, created, **kwargs):
         if clean_p.isdigit() and len(clean_p) >= 9:
             last_9_p = clean_p[-9:]
             
-            # Telegram IDga ega bo'lgan boshqa o'quvchilarni tekshiramiz
+            # Telegram IDga ega bo'lgan boshqa faol o'quvchilarni tekshiramiz
             candidates = Student.objects.exclude(id=instance.id).filter(
                 Q(telegram_id__isnull=False, telegram_id__gt='') | 
                 Q(parent_telegram_id__isnull=False, parent_telegram_id__gt='')
             )
             
+            found_p = False
             for other_p in candidates:
                 if other_p.parent_phone:
                     other_p_clean = re.sub(r'\D', '', other_p.parent_phone)
                     if other_p_clean.endswith(last_9_p):
                         update_fields['parent_telegram_id'] = other_p.parent_telegram_id or other_p.telegram_id
+                        found_p = True
                         break
                 if other_p.phone:
                     other_clean = re.sub(r'\D', '', other_p.phone)
                     if other_clean.endswith(last_9_p):
                         update_fields['parent_telegram_id'] = other_p.telegram_id or other_p.parent_telegram_id
+                        found_p = True
                         break
+
+            # Agar faol o'quvchilar orasidan topilmasa, arxivlanganlardan qidiramiz (Senior Fix)
+            if not found_p:
+                from archivebase.models import ArchivedStudent
+                archived_candidates = ArchivedStudent.objects.filter(
+                    Q(metadata__telegram_id__isnull=False) | Q(metadata__parent_telegram_id__isnull=False)
+                )
+                for arch_p in archived_candidates:
+                    meta_p = arch_p.metadata
+                    arch_p_phone = meta_p.get('parent_phone') or meta_p.get('phone')
+                    if arch_p_phone:
+                        arch_p_clean = re.sub(r'\D', '', arch_p_phone)
+                        if arch_p_clean.endswith(last_9_p):
+                            update_fields['parent_telegram_id'] = meta_p.get('parent_telegram_id') or meta_p.get('telegram_id')
+                            break
     
     if update_fields:
         Student.objects.filter(id=instance.id).update(**update_fields)

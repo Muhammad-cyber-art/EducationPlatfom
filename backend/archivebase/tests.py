@@ -1,10 +1,13 @@
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from branches.models import Branch
-from groups.models import Group, Student
+from groups.models import Group, Student, WaitingStudent
 from finance.models import Payment
-from archivebase.models import ArchivedStudent, ArchivedGroup, ArchivedStaff
-from archivebase.services import move_student_to_archive, move_group_to_archive, restore_student_from_archive
+from archivebase.models import ArchivedStudent, ArchivedGroup, ArchivedStaff, ArchivedLid
+from archivebase.services import (
+    move_student_to_archive, move_group_to_archive, restore_student_from_archive,
+    move_lid_to_archive, restore_lid_from_archive
+)
 from django.utils import timezone
 from decimal import Decimal
 
@@ -67,3 +70,35 @@ class ArchiveServiceTests(TestCase):
         
         self.assertEqual(archived_group.full_name, "G1")
         self.assertEqual(archived_group.mentor_name, "mentor1")
+
+    def test_move_lid_to_archive(self):
+        waiting_student = WaitingStudent.objects.create(
+            branch=self.branch,
+            full_name="Waiting Lead 1",
+            phone="998901234567",
+            subject="English"
+        )
+        archived = move_lid_to_archive(waiting_student, self.super_admin, "Lead test reason")
+        
+        self.assertFalse(WaitingStudent.objects.filter(id=waiting_student.id).exists())
+        self.assertEqual(ArchivedLid.objects.count(), 1)
+        self.assertEqual(archived.full_name, "Waiting Lead 1")
+        self.assertEqual(archived.phone, "998901234567")
+        self.assertEqual(archived.subject, "English")
+        self.assertEqual(archived.reason, "Lead test reason")
+
+    def test_restore_lid(self):
+        waiting_student = WaitingStudent.objects.create(
+            branch=self.branch,
+            full_name="Waiting Lead 2",
+            phone="998907654321",
+            subject="Math"
+        )
+        archived = move_lid_to_archive(waiting_student, self.super_admin, "Archive reason")
+        
+        restored = restore_lid_from_archive(archived.id, self.super_admin)
+        archived.delete()
+        self.assertEqual(restored.full_name, "Waiting Lead 2")
+        self.assertEqual(restored.phone, "998907654321")
+        self.assertEqual(restored.subject, "Math")
+        self.assertFalse(ArchivedLid.objects.filter(id=archived.id).exists())

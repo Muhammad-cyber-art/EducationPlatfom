@@ -4,13 +4,17 @@ from .permission import IsArchiveAdmin
 from rest_framework import viewsets, permissions, status, mixins
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import ArchivedStudent, ArchivedStaff, ArchivedGroup, PaymentArchive
-from .serializers import ArchivedStudentSerializer, ArchivedStaffSerializer, ArchivedGroupSerializer, PaymentArchiveSerializer
+from .models import ArchivedStudent, ArchivedStaff, ArchivedGroup, PaymentArchive, ArchivedLid
+from .serializers import (
+    ArchivedStudentSerializer, ArchivedStaffSerializer, ArchivedGroupSerializer, 
+    PaymentArchiveSerializer, ArchivedLidSerializer
+)
 from .services import send_to_archive
 from .services import (
     restore_student_from_archive,
     restore_staff_from_archive,
-    restore_group_from_archive
+    restore_group_from_archive,
+    restore_lid_from_archive
 )
 from rest_framework import filters # Qidiruv uchun
 from django_filters.rest_framework import DjangoFilterBackend # Filtr uchun
@@ -362,3 +366,111 @@ class ArchivedHomeworkViewSet(viewsets.ReadOnlyModelViewSet):
             "success": True, 
             "message": f"{count} ta ma'lumot arxivdan butunlay o'chirib tashlandi."
         })
+
+
+class ArchivedLidViewSet(mixins.DestroyModelMixin, viewsets.ReadOnlyModelViewSet):
+    """Faqat ko'rish va o'chirish (Arxivdan butunlay)"""
+    queryset = ArchivedLid.objects.all().order_by('-archived_at')
+    serializer_class = ArchivedLidSerializer
+    permission_classes = [IsArchiveAdmin]
+    pagination_class = StandardResultsSetPagination
+    
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    search_fields = ['full_name', 'branch_name', 'phone', 'subject']
+    
+    def get_queryset(self):
+        user = self.request.user
+        branch_id = self.request.query_params.get('branch_id') or self.request.query_params.get('branch')
+        qs = self.queryset
+
+        if user.role == 'super_admin':
+            if branch_id:
+                return qs.filter(metadata__branch_id=branch_id)
+            return qs
+
+        if user.role == 'admin':
+            allowed = [user.branch_id] if user.branch_id else []
+            allowed.extend(user.branch_accesses.values_list('branch_id', flat=True))
+            # ArchivedLid doesn't have direct branch field, but has branch_name or metadata branch_id.
+            # We can filter metadata__branch_id__in or metadata__branch__in
+            return qs.filter(metadata__branch_id__in=allowed)
+
+        return qs.none()
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        Arxivdan butunlay o'chirish.
+        Ruxsat: Super Admin va Admin
+        """
+        user = request.user
+        if user.role not in ['super_admin', 'admin']:
+            return Response(
+                {"error": "Juda uzr, faqat admin va super_admin o'chira oladi"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'], url_path='restore')
+    def restore(self, request, pk=None):
+        """
+        Arxivlangan lidni qayta tiklash.
+        Ruxsat: Super Admin va Admin
+        """
+        user = request.user
+        
+        # Ruxsat tekshirish
+        if user.role not in ['super_admin', 'admin']:
+            return Response(
+                {"error": "Faqat admin va super_admin tiklashi mumkin"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        archived = self.get_object()
+        
+        try:
+            waiting_student = restore_lid_from_archive(archived.id, user)
+            archived.delete() # Arxivdan o'chirish
+            return Response({
+                "success": True,
+                "message": f"{waiting_student.full_name} muvaffaqiyatli tiklandi",
+                "waiting_student_id": waiting_student.id
+            }, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response(
+                {"error": f"Tiklashda xato: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=False, methods=['post'], url_path='bulk-restore')
+    def bulk_restore(self, request):
+        """Ko'plab lidlarni bir vaqtda arxivdan tiklash"""
+        user = request.user
+        if user.role not in ['super_admin', 'admin']:
+            return Response({"error": "Faqat adminlar tiklashi mumkin"}, status=403)
+            
+        ids = request.data.get('ids', [])
+        results = []
+        errors = []
+        
+        for sid in ids:
+            try:
+                archived = ArchivedLid.objects.filter(id=sid).first()
+                if archived:
+                    waiting_student = restore_lid_from_archive(archived.id, user)
+                    archived.delete()
+                    results.append(sid)
+            except Exception as e:
+                errors.append({"id": sid, "error": str(e)})
+                
+        return Response({"status": f"{len(results)} ta lid tiklandi", "results": results, "errors": errors})
+
+    @action(detail=False, methods=['post'], url_path='bulk-delete')
+    def bulk_delete(self, request):
+        """Ko'plab lidlarni bir vaqtda arxivdan butunlay o'chirish"""
+        user = request.user
+        if user.role not in ['super_admin', 'admin']:
+            return Response({"error": "Faqat adminlar o'chira oladi"}, status=403)
+            
+        ids = request.data.get('ids', [])
+        ArchivedLid.objects.filter(id__in=ids).delete()
+        return Response({"status": "Lidlar arxivdan butunlay o'chirildi"})

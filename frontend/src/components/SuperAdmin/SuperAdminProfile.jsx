@@ -17,9 +17,8 @@ const SuperAdminProfile = () => {
 
  function LogOut() {
  if (window.confirm("Tizimdan chiqmoqchimisiz?")) {
- localStorage.removeItem('access_token');
- localStorage.removeItem('refresh_token');
- navigate('/');
+ localStorage.clear();
+ window.location.href = "/";
  }
  }
 

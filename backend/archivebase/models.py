@@ -28,6 +28,15 @@ class ArchivedStudent(ArchiveBase):
     class Meta:
         verbose_name = "Arxivlangan Student"
 
+class ArchivedLid(ArchiveBase):
+    branch_name = models.CharField(max_length=200, blank=True, null=True)
+    phone = models.CharField(max_length=25, blank=True, null=True)
+    subject = models.CharField(max_length=100, blank=True, null=True)
+
+    class Meta:
+        verbose_name = "Arxivlangan Lid"
+        verbose_name_plural = "Arxivlangan Lidlar"
+
 class ArchivedStaff(ArchiveBase):
     ROLE_CHOICES = [('mentor', 'Mentor'), ('admin', 'Admin')]
     role = models.CharField(max_length=10, choices=ROLE_CHOICES)

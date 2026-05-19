@@ -630,6 +630,13 @@ class WaitingStudentViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({"error": str(e)}, status=400)
 
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        reason = request.query_params.get('reason', '') or request.data.get('reason', '') or "Kutish zalidan o'chirildi"
+        from archivebase.services import move_lid_to_archive
+        move_lid_to_archive(instance, request.user, reason)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     @action(detail=False, methods=['post'], url_path='bulk-delete')
     def bulk_delete(self, request):
         student_ids = request.data.get('student_ids', [])
@@ -637,10 +644,14 @@ class WaitingStudentViewSet(viewsets.ModelViewSet):
             return Response({"error": "Talabalar tanlanmagan"}, status=400)
         
         students = self.get_queryset().filter(id__in=student_ids)
-        count = students.count()
-        students.delete()
+        count = 0
+        from archivebase.services import move_lid_to_archive
+        reason = request.data.get('reason', 'Guruhli o\'chirish (Kutish zali)')
+        for student in students:
+            move_lid_to_archive(student, request.user, reason)
+            count += 1
         
-        return Response({"status": "success", "message": f"{count} ta o'quvchi o'chirildi"}, status=200)
+        return Response({"status": "success", "message": f"{count} ta o'quvchi o'chirildi va arxivlandi"}, status=200)
 
 class AdminViewSet(viewsets.ReadOnlyModelViewSet):
     """Adminlar ro'yxati (ReadOnly)"""
