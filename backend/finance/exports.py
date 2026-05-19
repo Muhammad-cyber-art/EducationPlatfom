@@ -38,7 +38,13 @@ def export_absent_students_to_excel(queryset, branch_name):
         ws.cell(row=row_num, column=3).value = att.group.name if att.group else "Noma'lum"
         ws.cell(row=row_num, column=4).value = att.student.phone if att.student else ""
 
+    from urllib.parse import quote
+    raw_filename = f"kelmaganlar_{branch_name}_{today}.xlsx"
+    # Remove characters that can break the HTTP header or represent directory traversal
+    safe_filename = raw_filename.replace('\n', '').replace('\r', '').replace('"', '_').replace('/', '_').replace('\\', '_')
+    encoded_filename = quote(safe_filename)
+
     response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    response['Content-Disposition'] = f'attachment; filename="kelmaganlar_{branch_name}_{today}.xlsx"'
+    response['Content-Disposition'] = f'attachment; filename="{encoded_filename}"; filename*=utf-8\'\'{encoded_filename}'
     wb.save(response)
     return response

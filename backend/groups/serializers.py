@@ -453,6 +453,7 @@ class GroupSerializer(serializers.ModelSerializer):
     def get_students(self, obj) -> list:
         """
         N+1 muammosini bartaraf etish: barcha to'lov ma'lumotlarini bitta so'rovda olamiz.
+        Faqat guruhda faol (is_active=True) bo'lgan o'quvchilar ro'yxatini qaytaramiz.
         """
         request = self.context.get('request')
         if request and request.query_params.get('exclude_students') == 'true':
@@ -462,18 +463,19 @@ class GroupSerializer(serializers.ModelSerializer):
         from finance.models import Payment
         from django.db.models import Q
 
-        students_qs = obj.students.select_related('group', 'branch').all()
+        # Faqat ushbu guruhda active bo'lgan o'quvchilarni tanlab olamiz
+        active_student_ids = list(obj.enrollments.filter(is_active=True).values_list('student_id', flat=True))
+        students_qs = Student.objects.filter(id__in=active_student_ids).select_related('group', 'branch')
+        
         today = timezone.now().date()
         month_start = today.replace(day=1)
 
         # Barcha studentlar uchun ushbu oydagi to'lovlarni BITTA so'rovda olamiz
-        student_ids = list(students_qs.values_list('id', flat=True))
         payments = Payment.objects.filter(
-            student_id__in=student_ids,
+            student_id__in=active_student_ids,
             month=month_start,
             group=obj
         ).values('student_id', 'id', 'is_paid')
-
 
         # To'lovlarni dict ga aylantiramiz: {student_id: {id, is_paid}}
         payment_map = {p['student_id']: p for p in payments}
@@ -484,6 +486,9 @@ class GroupSerializer(serializers.ModelSerializer):
             # Enrollment sanasini olish
             enrollment = student.enrollments.filter(group=obj).first()
             joined_at = enrollment.joined_at if enrollment else student.joined_at
+            
+            # Iso formatda chiroyli ko'rinishga keltirish (Frontend split('T')[0] uchun)
+            joined_at_str = joined_at.isoformat() if joined_at else None
 
             result.append({
                 'id': student.id,
@@ -498,7 +503,7 @@ class GroupSerializer(serializers.ModelSerializer):
                 'parent_telegram_id': student.parent_telegram_id,
                 'current_payment_status': payment_info['is_paid'] if payment_info else False,
                 'current_payment_id': payment_info['id'] if payment_info else None,
-                'joined_at': joined_at,
+                'joined_at': joined_at_str,
             })
         return result
 

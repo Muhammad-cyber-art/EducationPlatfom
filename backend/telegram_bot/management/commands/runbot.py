@@ -1,4 +1,5 @@
 import logging
+import re
 from django.core.management.base import BaseCommand
 from django.conf import settings
 from django.db.models import Q
@@ -56,14 +57,15 @@ def get_and_update_students(clean_phone, chat_id):
     Telefon raqami bo'yicha barcha mos keluvchi o'quvchilarni topish va 
     ularning Telegram IDlarini yangilash.
     """
-    clean_phone = clean_phone.replace(' ', '').replace('-', '').replace('+', '')
+    # Telefon raqamidan faqat raqamlarni qoldiramiz (qavslar, chiziqlar, plyus va bo'shliqlarni yo'qotadi)
+    clean_phone = re.sub(r'\D', '', clean_phone)
     if len(clean_phone) < 7:
         return []
 
     last_9 = clean_phone[-9:]
     
-    # Bazadagi o'quvchilarni olamiz (faqat raqami borlarni)
-    all_students = Student.objects.exclude(phone='', parent_phone='')
+    # Bazadagi barcha o'quvchilarni tekshiramiz
+    all_students = Student.objects.all()
     
     found_student_info = []
     seen_entries = set()
@@ -73,14 +75,14 @@ def get_and_update_students(clean_phone, chat_id):
         
         # Student o'zining raqami
         if student.phone:
-            s_phone_clean = student.phone.replace(' ', '').replace('-', '').replace('+', '')
+            s_phone_clean = re.sub(r'\D', '', student.phone)
             if last_9 in s_phone_clean:
                 student.telegram_id = chat_id
                 is_match = True
         
         # Ota-ona raqami
         if student.parent_phone:
-            p_phone_clean = student.parent_phone.replace(' ', '').replace('-', '').replace('+', '')
+            p_phone_clean = re.sub(r'\D', '', student.parent_phone)
             if last_9 in p_phone_clean:
                 student.parent_telegram_id = chat_id
                 is_match = True
@@ -89,11 +91,9 @@ def get_and_update_students(clean_phone, chat_id):
             student.save()
             # Guruh nomini ham qo'shamiz
             group_name = student.group.name if student.group else "Guruhsiz"
-            # Ismdagi ortiqcha bo'shliqlarni olib tashlaymiz va formatlaymiz
             full_name = student.full_name.strip()
             entry = f"{full_name} ({group_name})"
             
-            # Har xil yozilgan (masalan: "Ali" va "ali") ismlarni bitta deb hisoblash uchun
             if entry.lower() not in seen_entries:
                 found_student_info.append(entry)
                 seen_entries.add(entry.lower())
@@ -105,13 +105,8 @@ async def contact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     contact = update.message.contact
     phone = contact.phone_number
     
-    # Raqamni normallash (masalan: +998901234567 -> 998901234567)
-    clean_phone = phone.replace('+', '').replace(' ', '')
-    if clean_phone.startswith('998'):
-        clean_phone = clean_phone # To'liq format
-    elif len(clean_phone) == 9:
-        clean_phone = '998' + clean_phone
-
+    # Faqat raqamlar qolishini ta'minlash (xavfsiz va aniq moslik uchun)
+    clean_phone = re.sub(r'\D', '', phone)
     chat_id = str(update.effective_chat.id)
     
     # Studentlarni qidirish va yangilash

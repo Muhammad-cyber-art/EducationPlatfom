@@ -25,10 +25,18 @@ export const useWaitingHall = (activeBranchId) => {
  if (!activeBranchId) return;
  setLoadingGroups(true);
  try {
- const res = await api.get(`/groups/?branch_id=${activeBranchId}`);
- setGroups(res.data.results || res.data);
+ const res = await api.get(`/groups/nested_groups/?branch_id=${activeBranchId}&page_size=200`);
+ const data = res.data;
+ if (data && Array.isArray(data.results)) {
+  setGroups(data.results);
+ } else if (Array.isArray(data)) {
+  setGroups(data);
+ } else {
+  setGroups([]);
+ }
  } catch (error) {
  toast.error("Guruhlarni yuklashda xato!");
+ setGroups([]);
  } finally {
  setLoadingGroups(false);
  }

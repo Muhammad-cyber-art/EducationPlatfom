@@ -302,6 +302,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'finance.tasks.generate_monthly_payments_task',
         'schedule': crontab(day_of_month=1, hour=0, minute=5), # Har oyning 1-kuni 00:05 da
     },
+    'check-uncollected-reports-every-30-minutes': {
+        'task': 'reports.tasks.alert_uncollected_reports_task',
+        'schedule': crontab(minute='*/30'), # Har 30 daqiqada fonda tekshirish
+    },
 }
 
 # Production Optimization & Logging

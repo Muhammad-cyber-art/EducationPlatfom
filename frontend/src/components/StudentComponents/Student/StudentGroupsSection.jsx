@@ -73,8 +73,14 @@ const StudentGroupsSection = ({
                                         <button
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                if (window.confirm("Guruhdan chiqarishni tasdiqlaysizmi?")) unenrollMutation.mutate(group.id);
                                                 dispatch({ type: 'TOGGLE_MENU', payload: false });
+                                                if (studentData?.groups?.length > 1) {
+                                                    dispatch({ type: 'TOGGLE_UNENROLL_SELECT_MODAL', payload: true });
+                                                } else {
+                                                    if (window.confirm("Guruhdan chiqarishni tasdiqlaysizmi?")) {
+                                                        unenrollMutation.mutate(group.id);
+                                                    }
+                                                }
                                             }}
                                             className="w-full flex items-center gap-2.5 px-4 py-3 text-[9px] font-black text-red-500 uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors"
                                         >

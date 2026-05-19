@@ -165,7 +165,15 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         if export_mode == 'excel':
             wb = openpyxl.Workbook()
             ws = wb.active
-            ws.title = f"Davomat_{group.name[:20]}"
+            
+            # openpyxl sheet title has strict rules: max 31 chars, no forbidden chars: \ / ? * : [ ]
+            safe_sheet_name = f"Davomat_{group.name[:20]}"
+            for char in r"\/?:*[]":
+                safe_sheet_name = safe_sheet_name.replace(char, "")
+            safe_sheet_name = safe_sheet_name.strip()[:30]
+            if not safe_sheet_name:
+                safe_sheet_name = "Davomat"
+            ws.title = safe_sheet_name
             
             header_font = Font(bold=True, color="FFFFFF")
             header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
@@ -220,9 +228,15 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                         cell.font = Font(color="FF0000", bold=True)
                     cell.alignment = center_align
 
-
+            from urllib.parse import quote
+            # Format filename safely to avoid UnicodeEncodeError in Content-Disposition header
+            raw_filename = f"davomat_{group.name}_{year}_{month}.xlsx"
+            # Remove characters that can break the HTTP header or represent directory traversal
+            safe_filename = raw_filename.replace('\n', '').replace('\r', '').replace('"', '_').replace('/', '_').replace('\\', '_')
+            encoded_filename = quote(safe_filename)
+            
             response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-            response['Content-Disposition'] = f'attachment; filename="davomat_{group.name}_{year}_{month}.xlsx"'
+            response['Content-Disposition'] = f'attachment; filename="{encoded_filename}"; filename*=utf-8\'\'{encoded_filename}'
             wb.save(response)
             return response
 

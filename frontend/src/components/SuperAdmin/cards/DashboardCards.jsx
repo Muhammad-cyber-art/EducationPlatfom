@@ -50,7 +50,7 @@ export const BroadcastSection = ({ message, setMessage, isGlobal, setIsGlobal, o
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded-lg bg-[var(--bg-void)] border border-[var(--border-glass)] flex items-center justify-center text-[var(--gold)] shadow-inner group-hover:scale-110 transition-transform duration-500">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>
                         </div>
                         <div>
                             <h3 className="text-xs font-black text-[var(--text-primary)] capitalize tracking-tight">Tezkor xabar</h3>
@@ -63,7 +63,7 @@ export const BroadcastSection = ({ message, setMessage, isGlobal, setIsGlobal, o
                         className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border transition-all cursor-pointer select-none active:scale-95
  ${isGlobal ? "bg-[var(--gold-dim)] border-[var(--gold)]/30 text-[var(--gold)]" : "bg-[var(--bg-void)]/60 border-[var(--border-glass)] text-[var(--text-secondary)]"}`}
                     >
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={isGlobal ? "animate-spin-slow" : "opacity-40"}><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={isGlobal ? "animate-spin-slow" : "opacity-40"}><circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" /></svg>
                         <span className="text-[7px] font-black capitalize tracking-wider">{isGlobal ? "Barchaga" : "Filial"}</span>
                     </div>
                 </div>
@@ -72,7 +72,7 @@ export const BroadcastSection = ({ message, setMessage, isGlobal, setIsGlobal, o
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     placeholder={isGlobal ? "BARCHAGA XABAR..." : "FILIALGA XABAR..."}
-                    className="w-full bg-[var(--bg-void)]/40 border border-[var(--border-glass)] focus:border-[var(--gold)]/50 rounded-lg p-3 text-[10px] font-bold text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-all min-h-[80px] resize-none shadow-inner capitalize tracking-wide"
+                    className="w-full bg-black/40 border border-[var(--border-glass)] focus:border-[var(--gold)]/50 rounded-lg p-3 text-[10px] font-bold text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-all min-h-[80px] resize-none shadow-inner capitalize tracking-wide"
                 />
                 <div className="flex justify-end">
                     <button
@@ -81,7 +81,7 @@ export const BroadcastSection = ({ message, setMessage, isGlobal, setIsGlobal, o
                         className="lux-btn !h-8 !px-4 !bg-[var(--gold)] !text-black !border-none !rounded-md shadow-[0_0_20px_rgba(184,134,11,0.3)] hover:shadow-[0_0_30px_rgba(184,134,11,0.5)] transition-all flex items-center gap-1.5 relative overflow-hidden group/btn"
                     >
                         <div className="absolute inset-0 bg-white/20 translate-y-full group-hover/btn:translate-y-0 transition-transform duration-300" />
-                        {loading ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>}
+                        {loading ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>}
                         <span className="text-[8px] font-black capitalize tracking-[0.15em] relative z-10">{loading ? "Yuborilmoqda..." : "Yuborish"}</span>
                     </button>
                 </div>

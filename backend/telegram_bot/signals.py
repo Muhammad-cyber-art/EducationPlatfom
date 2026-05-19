@@ -13,43 +13,56 @@ def sync_student_telegram_id(sender, instance, created, **kwargs):
     Yangi o'quvchi qo'shilganda yoki tahrirlanganda, agar uning telefon raqami 
     boshqa bir o'quvchida mavjud bo'lsa va unga Telegram ID biriktirilgan bo'lsa, o'sha IDni nusxalaymiz.
     """
+    import re
     update_fields = {}
     
-    # O'quvchi raqami orqali qidirish
+    # 1. O'quvchi raqami orqali qidirish
     if instance.phone and not instance.telegram_id:
-        clean_phone = instance.phone.replace(' ', '').replace('-', '').replace('+', '')
+        clean_phone = re.sub(r'\D', '', instance.phone)
         if clean_phone.isdigit() and len(clean_phone) >= 9:
             last_9 = clean_phone[-9:]
-            other = Student.objects.filter(
-                Q(phone__endswith=last_9) | Q(parent_phone__endswith=last_9)
-            ).exclude(id=instance.id).filter(
+            
+            # Telegram IDga ega bo'lgan boshqa o'quvchilarni tekshiramiz
+            candidates = Student.objects.exclude(id=instance.id).filter(
                 Q(telegram_id__isnull=False, telegram_id__gt='') | 
                 Q(parent_telegram_id__isnull=False, parent_telegram_id__gt='')
-            ).first()
+            )
             
-            if other:
-                if other.phone and last_9 in other.phone.replace(' ', ''):
-                    update_fields['telegram_id'] = other.telegram_id
-                elif other.parent_phone and last_9 in other.parent_phone.replace(' ', ''):
-                    update_fields['telegram_id'] = other.parent_telegram_id
+            for other in candidates:
+                if other.phone:
+                    other_clean = re.sub(r'\D', '', other.phone)
+                    if other_clean.endswith(last_9):
+                        update_fields['telegram_id'] = other.telegram_id or other.parent_telegram_id
+                        break
+                if other.parent_phone:
+                    other_p_clean = re.sub(r'\D', '', other.parent_phone)
+                    if other_p_clean.endswith(last_9):
+                        update_fields['telegram_id'] = other.parent_telegram_id or other.telegram_id
+                        break
     
-    # Ota-ona raqami orqali qidirish
+    # 2. Ota-ona raqami orqali qidirish
     if instance.parent_phone and not instance.parent_telegram_id:
-        clean_p = instance.parent_phone.replace(' ', '').replace('-', '').replace('+', '')
+        clean_p = re.sub(r'\D', '', instance.parent_phone)
         if clean_p.isdigit() and len(clean_p) >= 9:
             last_9_p = clean_p[-9:]
-            other_p = Student.objects.filter(
-                Q(phone__endswith=last_9_p) | Q(parent_phone__endswith=last_9_p)
-            ).exclude(id=instance.id).filter(
+            
+            # Telegram IDga ega bo'lgan boshqa o'quvchilarni tekshiramiz
+            candidates = Student.objects.exclude(id=instance.id).filter(
                 Q(telegram_id__isnull=False, telegram_id__gt='') | 
                 Q(parent_telegram_id__isnull=False, parent_telegram_id__gt='')
-            ).first()
+            )
             
-            if other_p:
-                if other_p.parent_phone and last_9_p in other_p.parent_phone.replace(' ', ''):
-                    update_fields['parent_telegram_id'] = other_p.parent_telegram_id
-                elif other_p.phone and last_9_p in other_p.phone.replace(' ', ''):
-                    update_fields['parent_telegram_id'] = other_p.telegram_id
+            for other_p in candidates:
+                if other_p.parent_phone:
+                    other_p_clean = re.sub(r'\D', '', other_p.parent_phone)
+                    if other_p_clean.endswith(last_9_p):
+                        update_fields['parent_telegram_id'] = other_p.parent_telegram_id or other_p.telegram_id
+                        break
+                if other_p.phone:
+                    other_clean = re.sub(r'\D', '', other_p.phone)
+                    if other_clean.endswith(last_9_p):
+                        update_fields['parent_telegram_id'] = other_p.telegram_id or other_p.parent_telegram_id
+                        break
     
     if update_fields:
         Student.objects.filter(id=instance.id).update(**update_fields)

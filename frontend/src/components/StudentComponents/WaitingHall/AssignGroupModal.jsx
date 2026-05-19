@@ -10,6 +10,8 @@ const AssignGroupModal = ({
  loadingGroups,
  onAssign
 }) => {
+ const safeGroups = Array.isArray(groups) ? groups : (groups && Array.isArray(groups.results) ? groups.results : []);
+
  if (!isOpen || !student) return null;
 
  return createPortal(
@@ -32,10 +34,10 @@ const AssignGroupModal = ({
  <div className="py-20 flex justify-center">
  <Loader2 className="animate-spin text-[var(--gold)]" size={32} />
  </div>
- ) : groups.length === 0 ? (
+ ) : safeGroups.length === 0 ? (
  <div className="text-center py-10 opacity-50 text-sm text-[var(--text-muted)] capitalize tracking-widest">Faol guruhlar topilmadi.</div>
  ) : (
- groups.map(group => (
+ safeGroups.map(group => (
  <button
  key={group.id}
  onClick={() => onAssign(student.id, group.id)}

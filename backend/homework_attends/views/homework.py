@@ -87,3 +87,64 @@ class HomeworkViewSet(ModelViewSet):
             return Response({"status": "updated", "new_status": new_status})
         except (HomeworkSubmission.DoesNotExist, ValueError, TypeError):
             return Response({"error": "Topshiriq topilmadi"}, status=404)
+
+    @action(detail=False, methods=['get'])
+    def weekly_summary(self, request):
+        user = request.user
+        branch_id = request.query_params.get('branch_id')
+        
+        if user.role == 'admin':
+            if user.branch:
+                branch_id = user.branch.id
+            else:
+                return Response([])
+                
+        if not branch_id:
+            return Response({"error": "branch_id parameter is required"}, status=400)
+            
+        from django.utils import timezone
+        from datetime import timedelta
+        from django.db.models import Count, Q
+        
+        seven_days_ago = timezone.now() - timedelta(days=7)
+        
+        queryset = Homework.objects.filter(
+            group__branch_id=branch_id,
+            created_at__gte=seven_days_ago
+        ).select_related('group', 'mentor').annotate(
+            total_submissions=Count('submissions'),
+            full_submissions=Count('submissions', filter=Q(submissions__status='full')),
+            half_submissions=Count('submissions', filter=Q(submissions__status='half')),
+            not_submitted_submissions=Count('submissions', filter=Q(submissions__status='not_submitted')),
+        ).order_by('-created_at')
+        
+        # Pagination logikasini qo'llaymiz
+        from rest_framework.pagination import PageNumberPagination
+        paginator = PageNumberPagination()
+        paginator.page_size = 10
+        
+        page = paginator.paginate_queryset(queryset, request)
+        
+        data = []
+        target_set = page if page is not None else queryset
+        
+        for hw in target_set:
+            data.append({
+                "id": hw.id,
+                "title": hw.title,
+                "group_name": hw.group.name if hw.group else "Nomalum",
+                "group_id": hw.group.id if hw.group else None,
+                "mentor_name": hw.mentor.get_full_name() if hw.mentor and hasattr(hw.mentor, 'get_full_name') else (hw.mentor.username if hw.mentor else "Tizim"),
+                "created_at": hw.created_at.strftime('%Y-%m-%d'),
+                "stats": {
+                    "total": hw.total_submissions,
+                    "full": hw.full_submissions,
+                    "half": hw.half_submissions,
+                    "not_submitted": hw.not_submitted_submissions,
+                }
+            })
+            
+        if page is not None:
+            return paginator.get_paginated_response(data)
+            
+        return Response(data)
