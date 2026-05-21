@@ -17,6 +17,12 @@ class MonthlyFinanceQuerySerializer(serializers.Serializer):
     year = serializers.IntegerField(required=False)
     month = serializers.IntegerField(required=False)
 
+class PendingNotificationResponseSerializer(serializers.Serializer):
+    pending_daily = serializers.BooleanField()
+    pending_monthly = serializers.BooleanField()
+    daily_message = serializers.CharField(allow_null=True)
+    monthly_message = serializers.CharField(allow_null=True)
+
 class DailyReportExportView(APIView):
     permission_classes = [IsAuthenticated]
     
@@ -99,6 +105,7 @@ class MonthlyFinanceExportView(APIView):
 class CheckPendingNotificationsView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(responses={200: PendingNotificationResponseSerializer})
     def get(self, request):
         user = request.user
         if user.role not in ['admin', 'super_admin']:

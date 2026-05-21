@@ -33,13 +33,13 @@ class PaymentSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'paid_at']
 
-    def get_lessons_count(self, obj):
+    def get_lessons_count(self, obj) -> int:
         try:
             return len(obj.group.get_lesson_dates(obj.month.year, obj.month.month))
         except Exception:
             return 0
             
-    def get_daily_price(self, obj):
+    def get_daily_price(self, obj) -> float:
         try:
             from finance.utils import floor_amount
             lessons_count = self.get_lessons_count(obj)
@@ -50,13 +50,13 @@ class PaymentSerializer(serializers.ModelSerializer):
         except Exception:
             return 0
             
-    def get_absences_count(self, obj):
+    def get_absences_count(self, obj) -> int:
         try:
             return obj.student.get_absences_count(obj.month.year, obj.month.month, group=obj.group)
         except Exception:
             return 0
 
-    def get_refund_amount(self, obj):
+    def get_refund_amount(self, obj) -> float:
         if obj.is_paid:
             return float(obj.refund_amount) if obj.refund_amount else 0
         try:
@@ -359,7 +359,7 @@ class StaffProfileSerializer(serializers.ModelSerializer):
             'per_student_amount', 'salary_display', 'karta', 'current_payment_id'
         ]
 
-    def get_current_payment_id(self, obj):
+    def get_current_payment_id(self, obj) -> int:
         try:
             from django.utils import timezone
             current_month = timezone.localdate().replace(day=1)

@@ -443,6 +443,8 @@ class WaitingStudent(models.Model):
     phone = models.CharField(max_length=20, verbose_name="Telefon")
     subject = models.CharField(max_length=100, blank=True, null=True, verbose_name="Qiziqqan fan")
     notes = models.TextField(blank=True, verbose_name="Izoh")
+    telegram_id = models.CharField(max_length=20, blank=True, null=True, verbose_name="Telegram Chat ID")
+    parent_telegram_id = models.CharField(max_length=20, blank=True, null=True, verbose_name="Ota-ona Telegram Chat ID")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

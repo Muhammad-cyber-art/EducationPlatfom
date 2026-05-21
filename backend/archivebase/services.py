@@ -106,7 +106,9 @@ def move_student_to_waiting_hall(student, archived_by, reason: str = "", branch=
         full_name=student.full_name,
         phone=student.phone,
         branch=target_branch,
-        notes=f"{reason} | Oldingi ID: {student.id}"
+        notes=f"{reason} | Oldingi ID: {student.id}",
+        telegram_id=student.telegram_id,
+        parent_telegram_id=student.parent_telegram_id
     )
     return waiting, archived
 

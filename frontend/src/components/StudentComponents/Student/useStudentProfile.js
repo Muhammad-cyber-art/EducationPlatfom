@@ -46,6 +46,12 @@ export const useStudentProfile = (student_id, branchID, dispatch) => {
  });
  const paymentsAllGroups = paymentsAllGroupsRaw?.results || paymentsAllGroupsRaw || [];
 
+ const { data: studentHistory, isLoading: historyLoading } = useQuery({
+ queryKey: ['student-history', student_id],
+ queryFn: () => api.get(`/finance/student-payments/student-history/${student_id}/`).then(res => res.data),
+ enabled: !!student_id && !!userData.id
+ });
+
  const { data: branchGroupsRaw } = useQuery({
  queryKey: ['groups-list', branchID],
  queryFn: () => api.get(`/groups/nested_groups/?branch_id=${branchID}`).then(res => res.data),
@@ -70,10 +76,12 @@ export const useStudentProfile = (student_id, branchID, dispatch) => {
  return {
  studentData,
  paymentsAllGroups,
+ studentHistory,
  branchGroups,
  transfers,
  studentLoading,
  paymentLoading,
+ historyLoading,
  permissions,
  userRole
  };

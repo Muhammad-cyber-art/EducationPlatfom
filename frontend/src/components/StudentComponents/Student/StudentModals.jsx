@@ -54,6 +54,7 @@ const StudentModals = ({
  loading={customPaymentMutation.isPending}
  studentName={studentData?.full_name}
  adminName={userData?.first_name ? `${userData.first_name} ${userData.last_name ||''}` : userData?.username}
+ groups={studentData?.groups || []}
  />
 
  <TransferStudentModal
@@ -66,6 +67,7 @@ const StudentModals = ({
  onSuccess={() => {
  queryClient.invalidateQueries(['student']);
  queryClient.invalidateQueries(['payments-all']);
+ queryClient.invalidateQueries(['student-history', studentData?.id]);
  }}
  />
 

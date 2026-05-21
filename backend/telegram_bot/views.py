@@ -20,12 +20,16 @@ class BroadcastMessageView(APIView):
         branch_id = request.data.get('branch_id')
         send_to_all_branches = request.data.get('send_to_all_branches', False)
         message = request.data.get('message')
+        target_audience = request.data.get('target_audience', 'active_students')
 
         if not message:
             return Response({"error": "Xabar matni kiritilmadi"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Base Queryset for students
-        students_qs = Student.objects.all()
+        target_chat_ids = set()
+
+        if target_audience == 'active_students':
+            # Base Queryset for students
+            students_qs = Student.objects.all()
 
         # 1. Global (Barcha filiallar) - Faqat Super Admin uchun
         if send_to_all_branches:
@@ -69,13 +73,29 @@ class BroadcastMessageView(APIView):
             pass # Barcha o'quvchilarga boradi (Global)
         
         else:
-            return Response({"error": "Maqsadli guruh yoki filial ko'rsatilmadi"}, status=status.HTTP_400_BAD_REQUEST)
+            if target_audience == 'active_students':
+                return Response({"error": "Maqsadli guruh yoki filial ko'rsatilmadi"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Xabarlarni yuborish uchun ID-larni yig'amiz
-        target_chat_ids = set()
-        for student in students_qs:
-            chat_ids = get_student_telegram_ids(student)
-            target_chat_ids.update(chat_ids)
+        if target_audience == 'active_students':
+            # Xabarlarni yuborish uchun ID-larni yig'amiz
+            for student in students_qs:
+                chat_ids = get_student_telegram_ids(student)
+                target_chat_ids.update(chat_ids)
+        elif target_audience == 'waiting_students':
+            from groups.models import WaitingStudent
+            ws_qs = WaitingStudent.objects.all()
+            if branch_id:
+                ws_qs = ws_qs.filter(branch_id=branch_id)
+            for ws in ws_qs:
+                if ws.telegram_id: target_chat_ids.add(ws.telegram_id)
+                if ws.parent_telegram_id: target_chat_ids.add(ws.parent_telegram_id)
+        elif target_audience == 'archived_students':
+            from archivebase.models import ArchivedStudent
+            archived_qs = ArchivedStudent.objects.all()
+            for arc in archived_qs:
+                meta = arc.metadata or {}
+                if meta.get('telegram_id'): target_chat_ids.add(meta.get('telegram_id'))
+                if meta.get('parent_telegram_id'): target_chat_ids.add(meta.get('parent_telegram_id'))
         
         # Yakuniy xabar mazmuni
         final_message = message

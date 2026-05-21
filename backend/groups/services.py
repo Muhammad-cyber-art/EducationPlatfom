@@ -80,7 +80,9 @@ def unenroll_student_from_group(group, student_id, request_user):
                 full_name=student.full_name,
                 phone=student.phone,
                 branch=group.branch,
-                notes=f"{group.name} guruhidan chiqarildi | Tizimda boshqa guruhlarda faol"
+                notes=f"{group.name} guruhidan chiqarildi | Tizimda boshqa guruhlarda faol",
+                telegram_id=student.telegram_id,
+                parent_telegram_id=student.parent_telegram_id
             )
             
             # Legacy fieldlarni va branchni qolgan guruhlardan biriga yangilaymiz
@@ -269,7 +271,9 @@ def assign_waiting_student_to_group(waiting_student, group_id, request_user):
                     group=group,
                     full_name=waiting_student.full_name,
                     phone=waiting_student.phone,
-                    notes=waiting_student.notes
+                    notes=waiting_student.notes,
+                    telegram_id=waiting_student.telegram_id,
+                    parent_telegram_id=waiting_student.parent_telegram_id
                 )
         
         # Many-to-Many link

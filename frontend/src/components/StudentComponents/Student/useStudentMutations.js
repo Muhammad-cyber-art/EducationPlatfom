@@ -42,6 +42,7 @@ export const useStudentMutations = (student_id, dispatch, navigate) => {
   },
  onSuccess: () => {
  queryClient.invalidateQueries(['payments-all']);
+ queryClient.invalidateQueries(['student-history', student_id]);
  dispatch({ type:'TOGGLE_MODAL', payload: false });
  toast.success("To'lov tasdiqlandi.");
  }
@@ -53,6 +54,7 @@ export const useStudentMutations = (student_id, dispatch, navigate) => {
  },
  onSuccess: () => {
  queryClient.invalidateQueries(['payments-all']);
+ queryClient.invalidateQueries(['student-history', student_id]);
  dispatch({ type:'TOGGLE_EDIT_PAYMENT', payload: false });
  toast.success("To'lov tahrirlandi.");
  }
@@ -67,8 +69,12 @@ export const useStudentMutations = (student_id, dispatch, navigate) => {
  },
  onSuccess: () => {
  queryClient.invalidateQueries(['payments-all']);
+ queryClient.invalidateQueries(['student-history', student_id]);
  dispatch({ type:'TOGGLE_CUSTOM_PAYMENT', payload: false });
  toast.success("To'lov qabul qilindi.");
+ },
+ onError: (err) => {
+ toast.error(err.response?.data?.error || err.response?.data?.detail || "To'lovni qabul qilishda xatolik yuz berdi");
  }
  });
 
@@ -96,6 +102,7 @@ export const useStudentMutations = (student_id, dispatch, navigate) => {
  onSuccess: (res) => {
  queryClient.invalidateQueries(['student']);
  queryClient.invalidateQueries(['payments-all']);
+ queryClient.invalidateQueries(['student-history', student_id]);
  dispatch({ type:'TOGGLE_MERGE_MODAL', payload: false });
  toast.success(res.data.message ||"Muvaffaqiyatli birlashtirildi.");
  },

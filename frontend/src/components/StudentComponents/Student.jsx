@@ -71,7 +71,7 @@ export default function StudentProfilePage() {
 
     // Data & Mutations
     const {
-        studentData, paymentsAllGroups, branchGroups, transfers,
+        studentData, paymentsAllGroups, studentHistory, branchGroups, transfers,
         studentLoading, permissions, userRole
     } = useStudentProfile(student_id, branchID.currentBranchId, dispatch);
 
@@ -85,22 +85,26 @@ export default function StudentProfilePage() {
     const primaryPayment = paymentsArray.find(p => p.group === primaryGroup.id) || {};
 
     const payments = useMemo(() => {
-        return paymentsArray.flatMap(gp => {
-            const groupInfo = groups.find(g => g.id === gp.group);
-            const history = gp.payment_history || [];
-            return [
-                { ...gp, group_name: groupInfo?.name || "Eski guruh" },
-                ...history.map(h => ({ ...h, group_name: groupInfo?.name || "Eski guruh" }))
-            ];
+        const historyPayments = studentHistory?.monthly_payments || [];
+        return historyPayments.map(p => {
+            const groupInfo = groups.find(g => g.id === p.group);
+            return {
+                ...p,
+                group_name: groupInfo?.name || p.group_name || "Eski guruh"
+            };
         }).sort((a, b) => new Date(b.month) - new Date(a.month));
-    }, [paymentsArray, groups]);
+    }, [studentHistory?.monthly_payments, groups]);
 
     const extraTransactions = useMemo(() => {
-        return paymentsArray.flatMap(gp => {
-            const groupInfo = groups.find(g => g.id === gp.group);
-            return (gp.extra_transactions || []).map(t => ({ ...t, group_name: groupInfo?.name || "Eski guruh" }));
+        const historyExtras = studentHistory?.extra_transactions || [];
+        return historyExtras.map(tx => {
+            const groupInfo = groups.find(g => g.id === tx.group);
+            return {
+                ...tx,
+                group_name: groupInfo?.name || "Eski guruh"
+            };
         });
-    }, [paymentsArray, groups]);
+    }, [studentHistory?.extra_transactions, groups]);
 
     // Handlers
     const handleSaveEdit = () => editMutation.mutate(state.editData);
@@ -154,6 +158,7 @@ export default function StudentProfilePage() {
             await api.delete(`/finance/student-payments/${paymentId}/`);
             toast.success("Muvaffaqiyatli o'chirildi");
             queryClient.invalidateQueries(['payments-all']);
+            queryClient.invalidateQueries(['student-history', student_id]);
         } catch (err) { toast.error("Xatolik!"); }
     };
 
@@ -237,6 +242,7 @@ export default function StudentProfilePage() {
                 onSuccess={() => {
                     queryClient.invalidateQueries(['student']);
                     queryClient.invalidateQueries(['payments-all']);
+                    queryClient.invalidateQueries(['student-history', student_id]);
                 }}
             />
         </div>
