@@ -38,7 +38,7 @@ const ArchiveTable = ({
   onClearAll
 }) => {
   if (isLoading) return <LoadingState />;
-  if (data.length === 0) return <EmptyState label={type ==='students' ?'membership' : type ==='staff' ?'delegates' :'units'} />;
+  if (data.length === 0) return <EmptyState label={type ==='students' ?'membership' : type ==='lids' ?'leads' : type ==='staff' ?'delegates' :'units'} />;
 
   const markedCount = Object.keys(markedItems).length;
 
@@ -60,10 +60,10 @@ const ArchiveTable = ({
     />
   </th>
   <th className="px-8 py-6">
-  {type ==='students' ?"O'quvchi ma'lumotlari" : type ==='staff' ?"Xodim ma'lumotlari" :"Guruh nomi"}
+  {type ==='students' ?"O'quvchi ma'lumotlari" : type === 'lids' ? "Lid ma'lumotlari" : type ==='staff' ?"Xodim ma'lumotlari" :"Guruh nomi"}
   </th>
   <th className="px-8 py-6 hidden md:table-cell">
-  {type ==='students' ?"Oxirgi faol guruhi" : type ==='staff' ?"Vazifasi" :"Yo'nalish"}
+  {type ==='students' ?"Oxirgi faol guruhi" : type === 'lids' ? "Qiziqqan fani" : type ==='staff' ?"Vazifasi" :"Yo'nalish"}
   </th>
   <th className="px-8 py-6 hidden lg:table-cell">O'chirilgan sana</th>
   <th className="px-8 py-6 text-right">Amallar</th>
@@ -82,17 +82,17 @@ const ArchiveTable = ({
   </td>
   <td className="px-8 py-5">
   <div className="flex items-center gap-4">
-  <div className={`w-10 h-10 rounded-xl bg-[var(--bg-void)] border border-[var(--border-glass)] flex items-center justify-center ${type ==='staff' ?'text-indigo-400' : type ==='groups' ?'text-orange-400' :'text-[var(--gold)]'}`}>
-  {type ==='students' ? <User size={18} /> : type ==='staff' ? <Users size={18} /> : <Layers size={18} />}
+  <div className={`w-10 h-10 rounded-xl bg-[var(--bg-void)] border border-[var(--border-glass)] flex items-center justify-center ${type ==='staff' ?'text-indigo-400' : type === 'lids' ? 'text-teal-400' : type ==='groups' ?'text-orange-400' :'text-[var(--gold)]'}`}>
+  {type ==='students' ? <User size={18} /> : type === 'lids' ? <User size={18} /> : type ==='staff' ? <Users size={18} /> : <Layers size={18} />}
   </div>
   <div>
   <p className="text-sm font-bold text-white capitalize tracking-tight">{item.full_name}</p>
-  {type ==='staff' && <p className="text-[8px] font-black text-[var(--gold)] capitalize tracking-[0.2em]">{item.phone}</p>}
+  {(type ==='staff' || type === 'lids') && <p className="text-[8px] font-black text-[var(--gold)] capitalize tracking-[0.2em]">{item.phone}</p>}
   </div>
   </div>
   </td>
   <td className="px-8 py-5 text-[10px] font-bold text-[var(--text-secondary)] hidden md:table-cell capitalize tracking-widest">
-  {type ==='students' ? (item.last_group_name ||"GURUHSZ") : type ==='staff' ? item.role : (item.subject ||"UMUMIY")}
+  {type ==='students' ? (item.last_group_name ||"GURUHSZ") : type === 'lids' ? (item.subject || "FAN TANLANMAGAN") : type ==='staff' ? item.role : (item.subject ||"UMUMIY")}
   </td>
   <td className="px-8 py-5 text-[9px] font-black text-[var(--text-muted)] hidden lg:table-cell capitalize tracking-widest">
   {formatDate(item.archived_at)}

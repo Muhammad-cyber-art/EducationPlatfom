@@ -38,7 +38,7 @@ export default function MentorProfilePage({ viewMode ="all" }) {
  function LogOut() {
  if (window.confirm("Tizimdan chiqmoqchimisiz?")) {
  localStorage.clear();
- navigate("/");
+ window.location.href = "/";
  }
  }
 

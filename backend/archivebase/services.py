@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from django.forms.models import model_to_dict
 from django.db import transaction
-from .models import ArchivedStudent, ArchivedStaff ,ArchivedGroup
+from .models import ArchivedStudent, ArchivedStaff, ArchivedGroup, ArchivedLid
 from finance.models import Payment
 import json
 def json_serializable_convert(obj):
@@ -168,7 +168,7 @@ def move_staff_to_archive(staff, archived_by, reason: str = "") -> ArchivedStaff
     staff.delete()
     return archived
 def send_to_archive(instance, request_user, reason: str = ""):
-    from groups.models import Student
+    from groups.models import Student, WaitingStudent
     from django.contrib.auth import get_user_model
     User = get_user_model()
 
@@ -177,6 +177,9 @@ def send_to_archive(instance, request_user, reason: str = ""):
     
     if isinstance(instance, User):
         return move_staff_to_archive(instance, archived_by=request_user, reason=reason)
+    
+    if isinstance(instance, WaitingStudent):
+        return move_lid_to_archive(instance, archived_by=request_user, reason=reason)
     
     raise ValueError(f"Archive qo'llab-quvvatlanmagan model: {type(instance).__name__}")
 
@@ -510,3 +513,60 @@ def restore_group_from_archive(archived_group_id, restored_by):
     )
     
     return group
+
+
+@transaction.atomic
+def move_lid_to_archive(waiting_student, archived_by, reason: str = "") -> ArchivedLid:
+    from groups.models import WaitingStudent
+    
+    # 1. Ma'lumotlarni dict ko'rinishida yig'amiz
+    waiting_data = model_to_dict(waiting_student)
+    cleaned_data = json_serializable_convert(waiting_data)
+    
+    # Qo'shimcha fieldlarni qo'shish
+    cleaned_data["created_at"] = waiting_student.created_at.isoformat() if waiting_student.created_at else None
+    cleaned_data["phone"] = waiting_student.phone
+    cleaned_data["branch_id"] = waiting_student.branch_id
+    
+    # 2. Arxiv yozuvi yaratish
+    archived = ArchivedLid.objects.create(
+        original_id=waiting_student.id,
+        full_name=waiting_student.full_name,
+        branch_name=getattr(waiting_student.branch, "name", "Noma'lum"),
+        phone=waiting_student.phone,
+        subject=waiting_student.subject,
+        archived_by=archived_by,
+        reason=reason,
+        metadata=cleaned_data,
+    )
+    
+    # 3. DB dan o'chirish
+    waiting_student.delete()
+    return archived
+
+
+@transaction.atomic
+def restore_lid_from_archive(archived_id, restored_by) -> 'WaitingStudent':
+    from groups.models import WaitingStudent
+    from branches.models import Branch
+    
+    archived = ArchivedLid.objects.get(id=archived_id)
+    metadata = archived.metadata
+    
+    # Branch aniqlash
+    branch_id = metadata.get('branch_id') or metadata.get('branch')
+    branch = Branch.objects.filter(id=branch_id).first()
+    if not branch:
+        branch = Branch.objects.first()
+        if not branch:
+            raise ValueError("Kutish zaliga tiklash uchun kamida bitta filial bo'lishi kerak")
+            
+    waiting_student = WaitingStudent.objects.create(
+        branch=branch,
+        full_name=archived.full_name,
+        phone=archived.phone or '',
+        subject=archived.subject or '',
+        notes=metadata.get('notes', '')
+    )
+    
+    return waiting_student

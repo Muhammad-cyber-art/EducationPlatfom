@@ -35,6 +35,7 @@ export default function ArchivePage() {
     studentsQuery,
     staffQuery,
     groupsQuery,
+    lidsQuery,
     restoreMutation,
     deleteMutation,
     bulkRestoreMutation,
@@ -85,11 +86,18 @@ export default function ArchivePage() {
 
   const tabs = [
     { id: "students", label: "O'quvchilar", icon: User, count: studentsQuery.data?.length || 0 },
+    { id: "lids", label: "Lidlar (Kutish zali)", icon: Users, count: lidsQuery.data?.length || 0 },
     { id: "staff", label: "Xodimlar", icon: Users, count: staffQuery.data?.length || 0 },
     { id: "groups", label: "Guruhlar", icon: Layers, count: groupsQuery.data?.length || 0 },
   ];
 
-  const currentQuery = activeTab === "students" ? studentsQuery : activeTab === "staff" ? staffQuery : groupsQuery;
+  const currentQuery = activeTab === "students" 
+    ? studentsQuery 
+    : activeTab === "lids" 
+    ? lidsQuery 
+    : activeTab === "staff" 
+    ? staffQuery 
+    : groupsQuery;
 
   return (
     <div className="animate-lux-fade space-y-10 pb-20 relative">

@@ -31,6 +31,9 @@ export const useArchive = (debouncedSearch, activeBranchId) => {
  if (type ==='staff') {
  return item.branch_id === activeBranchId || item.metadata?.branch === activeBranchId;
  }
+ if (type === 'lids') {
+ return item.metadata?.branch_id === activeBranchId || item.metadata?.branch === activeBranchId;
+ }
  return item.metadata?.branch === activeBranchId;
  });
  }
@@ -40,6 +43,7 @@ export const useArchive = (debouncedSearch, activeBranchId) => {
  const studentsQuery = createArchiveQuery("students");
  const staffQuery = createArchiveQuery("staff");
  const groupsQuery = createArchiveQuery("groups");
+ const lidsQuery = createArchiveQuery("lids");
 
  // Mutations
  const restoreMutation = useMutation({
@@ -90,6 +94,7 @@ export const useArchive = (debouncedSearch, activeBranchId) => {
  studentsQuery,
  staffQuery,
  groupsQuery,
+ lidsQuery,
  restoreMutation,
  deleteMutation,
  bulkRestoreMutation,

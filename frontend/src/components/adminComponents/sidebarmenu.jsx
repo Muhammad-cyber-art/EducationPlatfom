@@ -62,12 +62,12 @@ export default function SideBar({ isOpen, onClose }) {
  return `${basePath}?branch=${currentBranchParam}`;
  };
 
- const handleLogout = () => {
- if (confirm("Tizimdan chiqmoqchimisiz?")) {
- localStorage.clear();
- navigate('/');
- }
- };
+  const handleLogout = () => {
+    if (confirm("Tizimdan chiqmoqchimisiz?")) {
+      localStorage.clear();
+      window.location.href = "/";
+    }
+  };
 
  return (
  <>

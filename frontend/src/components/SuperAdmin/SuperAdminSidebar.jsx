@@ -45,7 +45,7 @@ export default function SuperAdminSidebar() {
  const handleLogout = () => {
  if (confirm("Tizimdan chiqmoqchimisiz?")) {
  localStorage.clear();
- navigate('/');
+ window.location.href = "/";
  }
  };
 
