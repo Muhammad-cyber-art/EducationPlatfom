@@ -1,5 +1,6 @@
 import React from "react";
-import { GraduationCap, MoreVertical, LogIn, LogOut, CheckCircle2, XCircle, User, CreditCard, DollarSign } from "lucide-react";
+import { GraduationCap, MoreVertical, LogIn, LogOut, CheckCircle2, XCircle, User, DollarSign, Clock } from "lucide-react";
+import { getPaymentStatus } from "./paymentStatus";
 
 const StudentGroupsSection = ({
     studentData,
@@ -15,6 +16,10 @@ const StudentGroupsSection = ({
             {groups?.map(group => {
                 const paymentsArray = Array.isArray(paymentsAllGroups) ? paymentsAllGroups : [];
                 const groupPayment = paymentsArray.find(p => p.group === group.id);
+                const payStatus = getPaymentStatus(groupPayment);
+                const progressPct = groupPayment?.amount > 0 && payStatus.key === 'partial'
+                    ? Math.min(100, Math.round((payStatus.paidAmount / Number(groupPayment.amount)) * 100))
+                    : payStatus.key === 'paid' ? 100 : 8;
 
                 return (
                     <div 
@@ -95,13 +100,18 @@ const StudentGroupsSection = ({
                         <div className="mt-auto p-4 sm:p-5 bg-[var(--bg-void)]/30 border-t border-[var(--border-glass)] space-y-4">
                             <div className="flex justify-between items-center gap-4">
                                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                                    <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl flex items-center justify-center border ${groupPayment?.is_paid ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
-                                        {groupPayment?.is_paid ? <CheckCircle2 size={16} className="sm:w-5 sm:h-5" /> : <XCircle size={16} className="sm:w-5 sm:h-5" />}
+                                    <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl flex items-center justify-center border ${payStatus.badgeClass}`}>
+                                        {payStatus.key === 'paid' ? <CheckCircle2 size={16} className="sm:w-5 sm:h-5" /> : payStatus.key === 'partial' ? <Clock size={16} className="sm:w-5 sm:h-5" /> : <XCircle size={16} className="sm:w-5 sm:h-5" />}
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                        <h3 className={`text-[11px] sm:text-xs font-black uppercase tracking-widest leading-none ${groupPayment?.is_paid ? 'text-emerald-500' : 'text-red-500'}`}>
-                                            {groupPayment?.is_paid ? "To'langan" : "Qarzdorlik"}
+                                        <h3 className={`text-[11px] sm:text-xs font-black uppercase tracking-widest leading-none ${payStatus.textClass}`}>
+                                            {payStatus.label}
                                         </h3>
+                                        {payStatus.key === 'partial' && (
+                                            <p className="text-[8px] font-black text-amber-500/90 uppercase tracking-widest mt-1">
+                                                Qolgan: {Math.floor(payStatus.remainingAmount).toLocaleString()} UZS
+                                            </p>
+                                        )}
                                         <div className="flex items-center gap-2 mt-1.5">
                                             <span className="text-[9px] font-bold text-[var(--text-muted)] whitespace-nowrap">
                                                 Dars: {groupPayment?.attended_count || 0}/{groupPayment?.lessons_count || 0}
@@ -137,7 +147,8 @@ const StudentGroupsSection = ({
                             {/* PROGRESS BAR */}
                             <div className="h-1 w-full bg-[var(--bg-void)] rounded-full overflow-hidden shadow-inner">
                                 <div 
-                                    className={`h-full transition-all duration-1000 ${groupPayment?.is_paid ? 'bg-emerald-500 w-full' : 'bg-red-500 w-1/12'}`}
+                                    className={`h-full transition-all duration-1000 ${payStatus.barClass}`}
+                                    style={{ width: `${progressPct}%` }}
                                 ></div>
                             </div>
                         </div>

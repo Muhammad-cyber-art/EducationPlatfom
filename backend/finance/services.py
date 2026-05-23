@@ -225,15 +225,28 @@ def confirm_student_payment(request_user, payment, data):
         payment.refund_ignored = False
         final_amount = Decimal(str(max(0, floor_amount(base_amount) - refund_val)))
         
+    # Kutilayotgan oylik summa (qarz)
+    payment.amount = final_amount
+    payment.save()
+
+    is_partial_payment = str(data.get('is_partial_payment', False)).lower() in ['true', '1', 'yes']
+
     provided_amount = data.get('amount')
+    installment_amount = None
     if provided_amount is not None and str(provided_amount).strip():
         try:
-            final_amount = Decimal(str(provided_amount).strip())
+            installment_amount = Decimal(str(provided_amount).strip())
         except Exception:
             pass
 
-    payment.amount = final_amount
-    payment.save()
+    if installment_amount is None:
+        remaining = payment.remaining_amount
+        installment_amount = remaining if remaining > 0 else final_amount
+    elif not is_partial_payment:
+        # To'liq to'lash: qolgan summani yopish
+        remaining = payment.remaining_amount
+        if remaining > 0:
+            installment_amount = remaining
 
     # Yangi maydonlarni extract qilamiz
     method = data.get('payment_method', 'cash')
@@ -256,15 +269,18 @@ def confirm_student_payment(request_user, payment, data):
     ).count()
     
     notes_parts.append(f"Davomat: {present_count}/{len(lesson_dates)} dars")
+    if is_partial_payment:
+        notes_parts.append("Bo'lib to'lov")
     notes = " | ".join(notes_parts)
 
-    payment.mark_as_paid(
-        request_user, 
-        method=method, 
-        receipt=receipt, 
-        notes=notes, 
+    payment.apply_payment(
+        request_user,
+        installment_amount,
+        method=method,
+        receipt=receipt,
+        notes=notes,
         is_receiptless=is_receiptless,
-        is_full_amount=pay_full_month
+        is_full_amount=pay_full_month and not is_partial_payment,
     )
     
     # Mentor oyligini qayta hisoblash
@@ -302,9 +318,10 @@ def get_finance_dashboard_stats(user, month, year):
     total_expense = _to_decimal(
         FinanceTransaction.objects.filter(transaction_filter, transaction_type='expense').aggregate(total=Sum('amount'))['total']
     )
-    total_debt = _to_decimal(
-        Payment.objects.filter(payment_filter, is_paid=False).aggregate(total=Sum('amount'))['total']
-    )
+    unpaid_payments = Payment.objects.filter(payment_filter, is_paid=False)
+    total_debt = Decimal('0')
+    for p in unpaid_payments.only('amount', 'paid_amount'):
+        total_debt += p.remaining_amount
 
     branches_data = []
     if user.role == 'super_admin':

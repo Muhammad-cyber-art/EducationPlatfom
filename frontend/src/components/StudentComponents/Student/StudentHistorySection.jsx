@@ -1,5 +1,6 @@
 import React from "react";
-import { History, CheckCircle2, Edit3, Trash2, XCircle, ArrowUpRight, ArrowDownRight, ChevronRight, LogIn, CreditCard } from "lucide-react";
+import { History, CheckCircle2, Trash2, XCircle, ArrowUpRight, ArrowDownRight, ChevronRight, LogIn, CreditCard, Clock } from "lucide-react";
+import { getPaymentStatus } from "./paymentStatus";
 
 const StudentHistorySection = ({
     payments,
@@ -25,10 +26,12 @@ const StudentHistorySection = ({
                 <div className="divide-y divide-[var(--border-glass)]">
                     {payments.length > 0 ? (
                         <div className="divide-y divide-[var(--border-glass)]">
-                            {payments.map((p) => (
+                            {payments.map((p) => {
+                                const status = getPaymentStatus(p);
+                                return (
                                 <div key={p.id} className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group hover:bg-[var(--gold)]/[0.03] transition-colors">
                                     <div className="flex items-center gap-4 flex-1 min-w-0">
-                                        <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center font-black text-[9px] border border-[var(--border-glass)] shrink-0 ${p.is_paid ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
+                                        <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center font-black text-[9px] border shrink-0 ${status.badgeClass}`}>
                                             {new Date(p.month).toLocaleDateString('uz-UZ', { month: 'short' }).toUpperCase()}
                                         </div>
                                         <div className="min-w-0 flex-1">
@@ -64,11 +67,32 @@ const StudentHistorySection = ({
                                         <div className="flex items-center gap-3">
                                             {p.is_paid ? (
                                                 <div className="flex flex-col items-end">
-                                                    <p className="text-xs sm:text-sm font-black text-[var(--text-primary)] tabular-nums">{p.amount?.toLocaleString()} UZS</p>
+                                                    <p className="text-xs sm:text-sm font-black text-[var(--text-primary)] tabular-nums">{(p.paid_amount ?? p.amount)?.toLocaleString()} UZS</p>
                                                     <div className="flex items-center gap-1 text-emerald-500">
                                                         <CheckCircle2 size={12} />
                                                         <span className="text-[8px] font-black uppercase tracking-widest">To'langan</span>
                                                     </div>
+                                                </div>
+                                            ) : p.is_partial ? (
+                                                <div className="flex flex-col items-end gap-1">
+                                                    <p className="text-xs sm:text-sm font-black text-amber-400 tabular-nums">
+                                                        {Math.floor(status.paidAmount || 0).toLocaleString()} UZS
+                                                    </p>
+                                                    <div className="flex items-center gap-1 text-amber-400">
+                                                        <Clock size={12} />
+                                                        <span className="text-[8px] font-black uppercase tracking-widest">Bo'lib to'langan</span>
+                                                    </div>
+                                                    <p className="text-[8px] font-black text-amber-500/80 uppercase tracking-widest">
+                                                        Qolgan: {Math.floor(status.remainingAmount || 0).toLocaleString()} UZS
+                                                    </p>
+                                                    {canConfirmPayment && (
+                                                        <button
+                                                            onClick={() => handlePaymentConfirm(p.id)}
+                                                            className="mt-1 flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 text-amber-400 hover:bg-amber-500 hover:text-black rounded-lg border border-amber-500/30 transition-all font-black text-[8px] uppercase tracking-widest"
+                                                        >
+                                                            <CreditCard size={12} /> Davom etish
+                                                        </button>
+                                                    )}
                                                 </div>
                                             ) : canConfirmPayment ? (
                                                 <button
@@ -96,7 +120,7 @@ const StudentHistorySection = ({
                                         </div>
                                     </div>
                                 </div>
-                            ))}
+                            );})}
                         </div>
                     ) : null}
 

@@ -116,6 +116,10 @@ export default function StudentProfilePage() {
                 ? (studentData?.custom_fee || g?.monthly_price) 
                 : g?.monthly_price;
 
+            const remainingAmount = pData?.is_partial
+                ? (pData?.remaining_amount ?? Math.max(0, Number(pData?.amount || 0) - Number(pData?.paid_amount || 0)))
+                : null;
+
             dispatch({
                 type: 'TOGGLE_CONFIRM_PAYMENT',
                 payload: true,
@@ -123,6 +127,9 @@ export default function StudentProfilePage() {
                     id: idToConfirm,
                     accruedAmount: amount || pData?.amount || 0,
                     fullAmount: fullAmount,
+                    remainingAmount,
+                    paidAmount: pData?.paid_amount || 0,
+                    isPartial: !!pData?.is_partial,
                     ignore_refund,
                     studentName: studentData?.full_name,
                     month: pData?.month,
@@ -135,15 +142,12 @@ export default function StudentProfilePage() {
     };
 
     const executePaymentConfirm = (paymentDetails) => {
-        const { id, amount } = state.confirmPaymentData || {};
+        const { id } = state.confirmPaymentData || {};
         if (id) {
             paymentMutation.mutate({
                 id,
-                amount,
-                ignore_refund: paymentDetails.ignore_refund,
-                ...paymentDetails
+                ...paymentDetails,
             });
-            dispatch({ type: 'TOGGLE_CONFIRM_PAYMENT', payload: false });
         }
     };
 

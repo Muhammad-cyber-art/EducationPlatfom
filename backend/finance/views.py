@@ -136,12 +136,19 @@ class StudentPaymentViewSet(viewsets.ModelViewSet):
     def confirm(self, request, pk=None):
         payment = self.get_object()
         if payment.is_paid:
-            return Response({"detail": "Ushbu to'lov allaqachon amalga oshirilgan"}, status=400)
+            return Response({"detail": "Ushbu to'lov allaqachon to'liq amalga oshirilgan"}, status=400)
 
         try:
             updated_payment = confirm_student_payment(request.user, payment, request.data)
+            message = "To'lov muvaffaqiyatli qabul qilindi"
+            if updated_payment.is_partial and not updated_payment.is_paid:
+                message = (
+                    f"Bo'lib to'lov qabul qilindi. "
+                    f"Qolgan: {float(updated_payment.remaining_amount):,.0f} UZS"
+                )
             return Response({
                 "status": "success",
+                "message": message,
                 "data": PaymentSerializer(updated_payment).data
             })
         except Exception as e:
