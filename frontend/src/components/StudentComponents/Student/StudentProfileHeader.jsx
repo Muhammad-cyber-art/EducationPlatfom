@@ -1,5 +1,6 @@
 import React from"react";
-import { User, Camera, ShieldCheck, Activity, Send, Phone } from"lucide-react";
+import { User, Camera, ShieldCheck, Activity, Send, Phone, Clock } from"lucide-react";
+import { getPaymentStatus } from "./paymentStatus";
 
 const StudentProfileHeader = ({
  studentData,
@@ -11,12 +12,13 @@ const StudentProfileHeader = ({
  dispatch,
  handleImageChange
 }) => {
+ const payStatus = getPaymentStatus(primaryPayment);
  return (
  <div className="flex flex-col md:flex-row items-center md:items-start gap-6 pb-10 border-b border-[var(--border-glass)] relative">
  <div className="relative group/avatar shrink-0">
  <div
  className="w-24 h-24 sm:w-32 sm:h-32 rounded-[2rem] overflow-hidden bg-[var(--bg-panel)] border border-[var(--border-glass)] p-1.5 shadow-lg relative"
- style={{ boxShadow: window.innerWidth > 1024 ? `0 20px 50px ${primaryPayment?.is_paid ?"#10b98115" :"#ef444415"}` :'none' }}
+ style={{ boxShadow: window.innerWidth > 1024 ? `0 20px 50px ${payStatus.shadowColor}` :'none' }}
  >
  <div className="w-full h-full rounded-[1.6rem] overflow-hidden bg-[var(--bg-void)] flex items-center justify-center relative">
  {previewImage ? (
@@ -40,9 +42,9 @@ const StudentProfileHeader = ({
  </div>
  </div>
  <div
- className={`absolute -bottom-2 -right-2 w-8 h-8 rounded-full border-[6px] border-[var(--bg-void)] shadow-2xl flex items-center justify-center ${primaryPayment?.is_paid ?"bg-emerald-500" :"bg-red-500"}`}
+ className={`absolute -bottom-2 -right-2 w-8 h-8 rounded-full border-[6px] border-[var(--bg-void)] shadow-2xl flex items-center justify-center ${payStatus.ringClass}`}
  >
- {primaryPayment?.is_paid ? <ShieldCheck size={12} className="text-white" /> : <Activity size={12} className="text-white" />}
+ {payStatus.key === 'paid' ? <ShieldCheck size={12} className="text-white" /> : payStatus.key === 'partial' ? <Clock size={12} className="text-white" /> : <Activity size={12} className="text-white" />}
  </div>
  </div>
 

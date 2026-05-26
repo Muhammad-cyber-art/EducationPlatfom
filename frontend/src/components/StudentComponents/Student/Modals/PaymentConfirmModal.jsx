@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { CreditCard, Loader2, Banknote, Smartphone, Image as ImageIcon, CheckCircle2, AlertCircle } from "lucide-react";
-import api from "../../../../tokenUpdater/updater";
 import AmountInput from "../../../Common/AmountInput";
+import { PaymentTypeChoiceModal } from "./PaymentTypeChoiceModal";
 
 export const PaymentConfirmModal = ({ isOpen, onClose, onConfirm, data, loading }) => {
     const [method, setMethod] = useState("cash");
@@ -12,6 +12,7 @@ export const PaymentConfirmModal = ({ isOpen, onClose, onConfirm, data, loading 
     const [notes, setNotes] = useState("");
     const [noReceipt, setNoReceipt] = useState(false);
     const [calculateRefund, setCalculateRefund] = useState(true);
+    const [showTypeChoice, setShowTypeChoice] = useState(false);
 
     // Boshlang'ich holatni o'rnatish
     useEffect(() => {
@@ -21,15 +22,41 @@ export const PaymentConfirmModal = ({ isOpen, onClose, onConfirm, data, loading 
     }, [data]);
 
     // Hisoblangan summani o'rnatish
-    useEffect(() => {
-        if (data) {
-            const refund = data.refundAmount || 0;
-            const currentAmount = calculateRefund ? Math.max(0, data.fullAmount - refund) : data.fullAmount;
-            setAmount(currentAmount?.toString() || "0");
-        }
+    const expectedAmount = useMemo(() => {
+        if (!data) return 0;
+        const refund = data.refundAmount || 0;
+        const base = calculateRefund ? Math.max(0, (data.fullAmount || 0) - refund) : (data.fullAmount || 0);
+        const remaining = data.remainingAmount;
+        if (remaining != null && remaining > 0) return remaining;
+        return base;
     }, [data, calculateRefund]);
 
+    useEffect(() => {
+        if (data) {
+            setAmount(String(Math.floor(expectedAmount) || 0));
+        }
+    }, [data, expectedAmount]);
+
+    useEffect(() => {
+        if (!isOpen) setShowTypeChoice(false);
+    }, [isOpen]);
+
     if (!isOpen) return null;
+
+    const buildPayload = (isPartial, payAmount) => ({
+        payment_method: method,
+        receipt_image: method === 'click' ? receiptImage : null,
+        is_receiptless: method === 'click' ? noReceipt : false,
+        notes: notes,
+        ignore_refund: !calculateRefund,
+        pay_full_month: !isPartial,
+        is_partial_payment: isPartial,
+        amount: String(Math.floor(payAmount)),
+    });
+
+    const submitPayment = (isPartial, payAmount) => {
+        onConfirm(buildPayload(isPartial, payAmount));
+    };
 
     const handleFileChange = (e) => {
         const file = e.target.files[0];
@@ -40,15 +67,14 @@ export const PaymentConfirmModal = ({ isOpen, onClose, onConfirm, data, loading 
     };
 
     const handleConfirmClick = () => {
-        onConfirm({
-            payment_method: method,
-            receipt_image: method === 'click' ? receiptImage : null,
-            is_receiptless: method === 'click' ? noReceipt : false,
-            notes: notes,
-            ignore_refund: !calculateRefund,
-            pay_full_month: false,
-            amount: amount
-        });
+        const entered = Math.floor(Number(amount) || 0);
+        const expected = Math.floor(expectedAmount || 0);
+
+        if (expected > 0 && entered !== expected) {
+            setShowTypeChoice(true);
+            return;
+        }
+        submitPayment(false, entered || expected);
     };
 
     const formatDate = (dateStr) => {
@@ -60,6 +86,21 @@ export const PaymentConfirmModal = ({ isOpen, onClose, onConfirm, data, loading 
     };
 
     return createPortal(
+        <>
+        <PaymentTypeChoiceModal
+            isOpen={showTypeChoice}
+            onClose={() => setShowTypeChoice(false)}
+            enteredAmount={amount}
+            expectedAmount={expectedAmount}
+            onChooseFull={() => {
+                setShowTypeChoice(false);
+                submitPayment(false, expectedAmount);
+            }}
+            onChoosePartial={() => {
+                setShowTypeChoice(false);
+                submitPayment(true, amount);
+            }}
+        />
         <div className="fixed inset-0 z-[3000] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md overflow-y-auto">
             <div className="bg-[var(--bg-panel)] border-2 border-amber-500/30 w-full max-w-lg rounded-[2.5rem] p-8 md:p-10 shadow-[0_0_50px_rgba(245,158,11,0.15)] animate-in zoom-in-95 duration-200 my-auto">
                 <div className="flex flex-col items-center space-y-6">
@@ -223,7 +264,8 @@ export const PaymentConfirmModal = ({ isOpen, onClose, onConfirm, data, loading 
                     </div>
                 </div>
             </div>
-        </div>,
+        </div>
+        </>,
         document.body
     );
 };

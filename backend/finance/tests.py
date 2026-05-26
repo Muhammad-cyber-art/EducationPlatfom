@@ -34,11 +34,33 @@ class FinanceModelTests(TestCase):
         self.assertTrue(payment.is_paid)
         self.assertEqual(payment.marked_by, self.super_admin)
         
-        # Check FinanceTransaction
-        transaction = FinanceTransaction.objects.get(related_id=f"STP-{payment.id}")
+        # Check FinanceTransaction (bo'lib-to'lov yozuvlari INS prefiksi bilan)
+        transaction = FinanceTransaction.objects.filter(related_id__startswith=f"STP-{payment.id}").first()
+        self.assertIsNotNone(transaction)
         self.assertEqual(transaction.amount, payment.amount)
         self.assertEqual(transaction.transaction_type, 'income')
         self.assertEqual(transaction.category, 'student_fee')
+        self.assertEqual(payment.paid_amount, payment.amount)
+
+    def test_partial_payment_flow(self):
+        payment = Payment.objects.create(
+            student=self.student,
+            group=self.group,
+            month=self.payment_month,
+            amount=Decimal('100000'),
+        )
+        payment.apply_payment(self.super_admin, Decimal('40000'), is_full_amount=False)
+        payment.refresh_from_db()
+        self.assertFalse(payment.is_paid)
+        self.assertTrue(payment.is_partial)
+        self.assertEqual(payment.paid_amount, Decimal('40000'))
+        self.assertEqual(payment.remaining_amount, Decimal('60000'))
+
+        payment.apply_payment(self.super_admin, Decimal('60000'))
+        payment.refresh_from_db()
+        self.assertTrue(payment.is_paid)
+        self.assertFalse(payment.is_partial)
+        self.assertEqual(payment.paid_amount, Decimal('100000'))
 
     def test_mentor_commission_calculation(self):
         # Create a paid payment for the student so income is calculated
@@ -88,6 +110,22 @@ class FinanceAPITests(APITestCase):
         self.payment.refresh_from_db()
         self.assertTrue(self.payment.is_paid)
         self.assertEqual(self.payment.marked_by, self.admin)
+
+    def test_admin_confirms_partial_payment(self):
+        self.client.force_authenticate(user=self.admin)
+        url = reverse('student-payment-confirm', kwargs={'pk': self.payment.pk})
+        response = self.client.post(url, {
+            'amount': '50000',
+            'is_partial_payment': 'true',
+            'payment_method': 'cash',
+            'ignore_refund': 'true',
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.payment.refresh_from_db()
+        self.assertTrue(self.payment.is_partial)
+        self.assertFalse(self.payment.is_paid)
+        self.assertEqual(self.payment.paid_amount, Decimal('50000'))
+        self.assertEqual(self.payment.remaining_amount, Decimal('50000'))
 
     def test_super_admin_confirms_salary(self):
         # Create salary record

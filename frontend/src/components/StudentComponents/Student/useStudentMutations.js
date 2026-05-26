@@ -27,7 +27,7 @@ export const useStudentMutations = (student_id, dispatch, navigate) => {
  });
 
  const paymentMutation = useMutation({
-   mutationFn: async ({ id, amount, ignore_refund, payment_method, receipt_image, notes, is_receiptless, pay_full_month }) => {
+   mutationFn: async ({ id, amount, ignore_refund, payment_method, receipt_image, notes, is_receiptless, pay_full_month, is_partial_payment }) => {
      const formData = new FormData();
      if (amount) formData.append('amount', amount);
      if (ignore_refund !== undefined) formData.append('ignore_refund', ignore_refund);
@@ -36,15 +36,22 @@ export const useStudentMutations = (student_id, dispatch, navigate) => {
      if (notes) formData.append('notes', notes);
      if (is_receiptless !== undefined) formData.append('is_receiptless', is_receiptless);
      if (pay_full_month !== undefined) formData.append('pay_full_month', pay_full_month);
+     if (is_partial_payment !== undefined) formData.append('is_partial_payment', is_partial_payment);
      return await api.post(`/finance/student-payments/${id}/confirm/`, formData, {
        headers: { 'Content-Type': 'multipart/form-data' }
      });
   },
- onSuccess: () => {
+ onSuccess: (res) => {
  queryClient.invalidateQueries(['payments-all']);
+<<<<<<< HEAD
  queryClient.invalidateQueries(['student-history', student_id]);
  dispatch({ type:'TOGGLE_MODAL', payload: false });
  toast.success("To'lov tasdiqlandi.");
+=======
+ queryClient.invalidateQueries(['student']);
+ dispatch({ type:'TOGGLE_CONFIRM_PAYMENT', payload: false });
+ toast.success(res?.data?.message || "To'lov tasdiqlandi.");
+>>>>>>> 4a418f6c21f126fd1bc8d64fd17949cc0895272f
  }
  });
 

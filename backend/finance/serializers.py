@@ -22,16 +22,21 @@ class PaymentSerializer(serializers.ModelSerializer):
     daily_price = serializers.SerializerMethodField()
     absences_count = serializers.SerializerMethodField()
     refund_amount = serializers.SerializerMethodField()
+    remaining_amount = serializers.SerializerMethodField()
     
     class Meta:
         model = Payment
         fields = [
             'id', 'student', 'student_name', 'group', 'group_name',
-            'branch_name', 'amount', 'month', 'is_paid', 'paid_at',
+            'branch_name', 'amount', 'paid_amount', 'remaining_amount',
+            'is_partial', 'month', 'is_paid', 'paid_at',
             'created_at', 'refund_amount', 'refund_ignored', 'notes',
             'lessons_count', 'daily_price', 'absences_count'
         ]
-        read_only_fields = ['id', 'created_at', 'paid_at']
+        read_only_fields = ['id', 'created_at', 'paid_at', 'paid_amount', 'is_partial', 'remaining_amount']
+
+    def get_remaining_amount(self, obj):
+        return float(obj.remaining_amount)
 
     def get_lessons_count(self, obj) -> int:
         try:
