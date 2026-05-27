@@ -92,11 +92,23 @@ class IsStudentGroupOwnerOrSuperAdmin(permissions.BasePermission):
             return obj.groups.filter(branch_id__in=allowed_branches).exists()
 
         if user.role == 'mentor':
-            # Mentor uchun: O'quvchi uning guruhlaridan birortasida bormi?
-            return obj.groups.filter(
-                models.Q(mentor=user) | 
+            # Mentor uchun:
+            # 1) Yangi M2M (student.groups) orqali biriktirilgan guruhlar
+            in_m2m_groups = obj.groups.filter(
+                models.Q(mentor=user) |
                 models.Q(additional_mentors__mentor=user)
             ).exists()
+            if in_m2m_groups:
+                return True
+
+            # 2) Legacy FK (student.group) bo'yicha ham tekshiramiz
+            legacy_group = getattr(obj, 'group', None)
+            if not legacy_group:
+                return False
+
+            is_primary_mentor = legacy_group.mentor_id == user.id
+            is_additional_mentor = legacy_group.additional_mentors.filter(mentor=user).exists()
+            return is_primary_mentor or is_additional_mentor
 
         # Qo'shimcha ravishda: Admin barcha o'quvchilarni FAQAT ko'ra olishi mumkin (Dossier uchun)
         if request.method in permissions.SAFE_METHODS and user.role == 'admin':

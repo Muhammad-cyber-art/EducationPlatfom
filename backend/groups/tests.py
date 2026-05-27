@@ -2,6 +2,7 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from branches.models import Branch
 from groups.models import Group, Student, MentorGroupAssignment
+from permissions.models import StaffPermission
 from rest_framework.test import APITestCase
 from rest_framework import status
 from django.urls import reverse
@@ -91,3 +92,19 @@ class GroupAPITests(APITestCase):
         # PATCH should succeed since super_admin has full access
         response = self.client.patch(url, {'full_name': 'New Name'})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_mentor_can_delete_own_student_with_legacy_group_fk(self):
+        """
+        Mentor students moduliga ruxsat olgan bo'lsa,
+        student faqat legacy `student.group` orqali biriktirilgan bo'lsa ham o'chira olishi kerak.
+        """
+        StaffPermission.objects.create(
+            user=self.mentor1,
+            permissions={"students": ["view", "create", "edit", "delete"]}
+        )
+        student = Student.objects.create(full_name="Legacy Student", group=self.group1)
+
+        self.client.force_authenticate(user=self.mentor1)
+        url = reverse('student-detail', kwargs={'pk': student.pk})
+        response = self.client.delete(url, {'reason': 'Test delete'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)

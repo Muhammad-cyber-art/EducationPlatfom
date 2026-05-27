@@ -36,6 +36,24 @@ const PaymentStats = ({
  </p>
  </div>
 
+<div className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-amber-500/20 shadow-lg shadow-amber-500/5">
+ <div className="flex items-center justify-between mb-1.5">
+ <p className="text-[10px] font-black text-amber-400 capitalize tracking-widest flex items-center gap-2">
+ <TrendingUp size={12} /> Kutilayotgan KPI
+ </p>
+ </div>
+ <h3 className="text-xl font-black text-[var(--text-primary)] tabular-nums mb-1">
+ {formatCurrency(data.calculated_commission_expected || 0)}
+ </h3>
+ <div className="flex items-center justify-between">
+ <p className="text-[8px] font-bold text-[var(--text-muted)] capitalize tracking-widest">Barcha statuslar</p>
+ <p className="text-[8px] font-bold text-amber-400 capitalize tabular-nums">{formatCurrency(data.groups_income_expected || 0)} tushum</p>
+ </div>
+ <p className="text-[7px] font-medium text-[var(--text-muted)]/80 mt-1.5 leading-snug">
+ Barcha o'quvchilarning shartnoma summasidan hisoblangan taxminiy komissiya
+ </p>
+</div>
+
  
  </>
  ) : isStudentCountType ? (

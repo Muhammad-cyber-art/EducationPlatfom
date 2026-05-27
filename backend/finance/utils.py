@@ -3,6 +3,8 @@ from datetime import date
 from decimal import Decimal
 import math
 
+from django.db.models import Sum, Q
+
 def normalize_month(value: date) -> date:
     """
     Har qanday sanani o'sha oyning 1-kuniga keltiradi
@@ -35,5 +37,40 @@ def floor_amount(value) -> Decimal:
         return Decimal(str(floored))
     except (TypeError, ValueError):
         return Decimal('0')
+
+
+def attendance_refund_queryset(year, month, branch=None, paid_only=False):
+    """
+    Davomat (kelmaganlik) bo'yicha Payment.refund_amount yozuvlari.
+    FinanceTransaction 'refund' kategoriyasidan farqli — pul kassadan chiqmaydi,
+    to'lov summasidan chegirma sifatida qo'llanadi.
+    """
+    from finance.models import Payment
+
+    qs = Payment.objects.filter(
+        month__year=year,
+        month__month=month,
+        refund_ignored=False,
+        refund_amount__gt=0,
+    )
+    if branch is not None:
+        qs = qs.filter(group__branch=branch)
+    if paid_only:
+        qs = qs.filter(Q(is_paid=True) | Q(paid_amount__gt=0))
+    return qs
+
+
+def aggregate_attendance_refunds(year, month, branch=None, paid_only=False):
+    total = attendance_refund_queryset(year, month, branch=branch, paid_only=paid_only).aggregate(
+        total=Sum('refund_amount')
+    )['total']
+    return float(total or 0)
+
+
+def aggregate_attendance_refunds_by_branch(year, month, paid_only=False):
+    """{branch_id: refund_sum}"""
+    qs = attendance_refund_queryset(year, month, branch=None, paid_only=paid_only)
+    rows = qs.values('group__branch_id').annotate(total=Sum('refund_amount'))
+    return {r['group__branch_id']: float(r['total'] or 0) for r in rows if r['group__branch_id']}
 
 

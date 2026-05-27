@@ -266,12 +266,28 @@ const AllPayments = () => {
  </div>
  <span className="text-[8px] font-bold text-[var(--text-muted)] capitalize tracking-tight hidden sm:inline">O'tgan oyga nisbatan</span>
  </div>
+ {(statistics.total_attendance_refunds_paid > 0 || statistics.total_attendance_refunds > 0) && (
+ <p className="text-[8px] font-bold text-rose-400/90 text-right mt-2 capitalize tracking-tight">
+ Davomat refundlari: -{formatNumber(statistics.total_attendance_refunds_paid || statistics.total_attendance_refunds)}
+ {statistics.refund_share_percent > 0 && (
+ <span className="text-[var(--text-muted)] ml-1">({statistics.refund_share_percent}% ulush)</span>
+ )}
+ </p>
+ )}
  </div>
  </div>
  </div>
 
  {/* PERFORMANCE METRICS (Horizontal grid) */}
- <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+ <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+ <StatMetric
+ label="Davomat refundlari"
+ value={formatNumber(statistics.total_attendance_refunds_paid ?? statistics.total_attendance_refunds ?? 0)}
+ icon={<TrendingDown size={20} />}
+ color="text-rose-400"
+ bg="bg-rose-500/10 border-rose-500/20"
+ trend={statistics.refund_share_percent ? `${statistics.refund_share_percent}%` : '0%'}
+ />
  <StatMetric
  label="Chiqimlar"
  value={formatNumber(statistics.total_expense)}

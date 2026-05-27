@@ -21,7 +21,7 @@ const DetailModal = ({ show, payment, onClose, onVerify, isSuperAdmin }) => {
                         <div><p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">O'quvchi</p>{payment.student_name}</div>
                         <div className="text-right"><p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">Guruh</p><span className="text-[var(--gold)]">{payment.group_name}</span></div>
                         <div><p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">To'langan Summa</p>{formatCurrency(payment.amount)}</div>
-                        <div className="text-right"><p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">Metod</p>{payment.payment_method}</div>
+                        <div className="text-right"><p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">Metod</p>{payment.payment_method_display || payment.payment_method || "Naqd"}</div>
                         {payment.refund_amount > 0 && !payment.refund_ignored && (
                             <>
                                 <div className="col-span-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">

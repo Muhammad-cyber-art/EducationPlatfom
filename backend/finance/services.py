@@ -8,7 +8,10 @@ from .models import Payment, EmployeePayment, StaffProfile, FinanceTransaction, 
 from groups.models import Group, Student, Branch
 from homework_attends.models import Attendance
 from django.contrib.auth import get_user_model
-from finance.utils import normalize_month, floor_amount
+from finance.utils import (
+    normalize_month, floor_amount,
+    aggregate_attendance_refunds, aggregate_attendance_refunds_by_branch,
+)
 from decimal import Decimal
 import traceback
 import logging
@@ -39,9 +42,17 @@ def _to_decimal(value):
 def _safe_attendance_stats_for_branch(branch, today):
     """Attendance query xato bersa ham finance statistikasi yiqilmasin."""
     try:
+        # NOTE:
+        # Attendance jadvalida unique_together = (student, group, date).
+        # Shuning uchun oddiy .count() bitta studentni bir kunda bir nechta guruhda bo'lsa ham ko'paytirib yuboradi.
+        # Dashboard uchun esa "Bugungi davomat" student kesimida (unique student) ko'rsatilishi kerak.
+        base_qs = Attendance.objects.filter(group__branch=branch, date=today)
+        present_ids = base_qs.filter(is_present=True).values('student_id').distinct()
+        total_students = base_qs.values('student_id').distinct()
         return {
-            "absent": Attendance.objects.filter(group__branch=branch, date=today, is_present=False).count(),
-            "total": Attendance.objects.filter(group__branch=branch, date=today).count(),
+            # "absent" = bugun hech qayerda "keldi" bo'lmagan studentlar
+            "absent": total_students.exclude(student_id__in=present_ids).count(),
+            "total": total_students.count(),
         }
     except Exception:
         logger.exception("Attendance branch statistikasi xatoligi: branch_id=%s", getattr(branch, "id", None))
@@ -52,9 +63,12 @@ def _safe_attendance_stats_for_user(user, today):
     """Dashboard attendance hisobida fallback."""
     try:
         filters = {'group__branch': user.branch} if user.role == 'admin' else {}
+        base_qs = Attendance.objects.filter(date=today).filter(**filters)
+        present_ids = base_qs.filter(is_present=True).values('student_id').distinct()
+        total_students = base_qs.values('student_id').distinct()
         return {
-            "absent": Attendance.objects.filter(date=today, is_present=False).filter(**filters).count(),
-            "total": Attendance.objects.filter(date=today).filter(**filters).count(),
+            "absent": total_students.exclude(student_id__in=present_ids).count(),
+            "total": total_students.count(),
         }
     except Exception:
         logger.exception("Attendance user statistikasi xatoligi: user_id=%s", getattr(user, "id", None))
@@ -346,7 +360,13 @@ def get_finance_dashboard_stats(user, month, year):
         
         for b_id in branch_map:
             branch_map[b_id]['profit'] = branch_map[b_id]['income'] - branch_map[b_id]['expense']
-        
+            branch_map[b_id]['attendance_refunds'] = 0.0
+
+        refund_by_branch = aggregate_attendance_refunds_by_branch(year, month)
+        for b_id, refund_val in refund_by_branch.items():
+            if b_id in branch_map:
+                branch_map[b_id]['attendance_refunds'] = refund_val
+
         branches_data = list(branch_map.values())
 
     top_groups_qs = Group.objects.filter(is_faol=True)
@@ -385,11 +405,24 @@ def get_finance_dashboard_stats(user, month, year):
     from groups.models import GroupEnrollment
     students_count = GroupEnrollment.objects.filter(**enrollment_filters).values('student').distinct().count()
 
+    branch_for_refunds = user.branch if user.role == 'admin' else None
+    total_attendance_refunds = aggregate_attendance_refunds(year, month, branch=branch_for_refunds)
+    total_attendance_refunds_paid = aggregate_attendance_refunds(
+        year, month, branch=branch_for_refunds, paid_only=True
+    )
+    refund_share_percent = 0.0
+    gross_student_fees = float(total_income) + total_attendance_refunds_paid
+    if gross_student_fees > 0:
+        refund_share_percent = round((total_attendance_refunds_paid / gross_student_fees) * 100, 1)
+
     return {
         "total_income": float(total_income),
         "total_expense": float(total_expense),
         "net_profit": float(total_income - total_expense),
         "total_debt": float(total_debt),
+        "total_attendance_refunds": total_attendance_refunds,
+        "total_attendance_refunds_paid": total_attendance_refunds_paid,
+        "refund_share_percent": refund_share_percent,
         "income_trend": calc_trend(total_income, prev_income),
         "expense_trend": calc_trend(total_expense, prev_expense),
         "profit_trend": calc_trend(total_income - total_expense, prev_income - prev_expense),
@@ -534,6 +567,14 @@ def get_branch_finance_stats(branch_id, month, year):
             transaction_type='expense'
         ).aggregate(total=Sum('amount'))['total'])
 
+        attendance_refunds = aggregate_attendance_refunds(year, month, branch=branch)
+        attendance_refunds_paid = aggregate_attendance_refunds(year, month, branch=branch, paid_only=True)
+        refund_share_percent = 0.0
+        if float(received_income) + attendance_refunds_paid > 0:
+            refund_share_percent = round(
+                (attendance_refunds_paid / (float(received_income) + attendance_refunds_paid)) * 100, 1
+            )
+
         return {
             "branch": {"id": branch.id, "name": branch.name},
             "stats": {
@@ -542,6 +583,11 @@ def get_branch_finance_stats(branch_id, month, year):
             },
             "finance": {
                 "expected_income": float(expected_income), "received_income": float(received_income),
+                "refunds": attendance_refunds,
+                "attendance_refunds": attendance_refunds,
+                "attendance_refunds_paid": attendance_refunds_paid,
+                "refund_share_percent": refund_share_percent,
+                "real_revenue": float(received_income),
                 "expenses": float(expenses), "net_profit": float(received_income) - float(expenses)
             },
             "groups": groups_detail
@@ -567,6 +613,11 @@ def get_branch_finance_stats(branch_id, month, year):
             "finance": {
                 "expected_income": 0.0,
                 "received_income": 0.0,
+                "refunds": 0.0,
+                "attendance_refunds": 0.0,
+                "attendance_refunds_paid": 0.0,
+                "refund_share_percent": 0.0,
+                "real_revenue": 0.0,
                 "expenses": 0.0,
                 "net_profit": 0.0,
             },

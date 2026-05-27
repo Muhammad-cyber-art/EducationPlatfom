@@ -43,15 +43,10 @@ export const useStudentMutations = (student_id, dispatch, navigate) => {
   },
  onSuccess: (res) => {
  queryClient.invalidateQueries(['payments-all']);
-<<<<<<< HEAD
- queryClient.invalidateQueries(['student-history', student_id]);
- dispatch({ type:'TOGGLE_MODAL', payload: false });
- toast.success("To'lov tasdiqlandi.");
-=======
+
  queryClient.invalidateQueries(['student']);
  dispatch({ type:'TOGGLE_CONFIRM_PAYMENT', payload: false });
  toast.success(res?.data?.message || "To'lov tasdiqlandi.");
->>>>>>> 4a418f6c21f126fd1bc8d64fd17949cc0895272f
  }
  });
 

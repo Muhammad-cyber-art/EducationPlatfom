@@ -1,17 +1,27 @@
-import React, { useState } from'react';
+import React, { useEffect, useMemo, useState } from'react';
 import { createPortal } from'react-dom';
 import { X, CheckCircle2, ShieldCheck, Loader2, Banknote } from'lucide-react';
 import AmountInput from'../../Common/AmountInput';
 
-const StaffPaymentModal = ({ isOpen, onClose, onConfirm, info, amount }) => {
+const StaffPaymentModal = ({ isOpen, onClose, onConfirm, info, amount, expectedAmount = 0, incomeType }) => {
  const [loading, setLoading] = useState(false);
  const [bonus, setBonus] = useState(0);
  const [deduction, setDeduction] = useState(0);
+ const [useExpected, setUseExpected] = useState(false);
+
+ useEffect(() => {
+ if (isOpen) setUseExpected(false);
+ }, [isOpen]);
+
+ const baseAmount = useMemo(() => {
+ if (incomeType ==='percentage' && useExpected) return Number(expectedAmount || 0);
+ return Number(amount || 0);
+ }, [incomeType, useExpected, expectedAmount, amount]);
 
  const handleConfirm = async () => {
  setLoading(true);
  try {
- await onConfirm(bonus, deduction);
+ await onConfirm(bonus, deduction, { commission_basis: useExpected ?'expected' :'paid' });
  } catch (error) {
  console.error("Confirmation error:", error);
  } finally {
@@ -19,7 +29,7 @@ const StaffPaymentModal = ({ isOpen, onClose, onConfirm, info, amount }) => {
  }
  };
 
- const finalAmount = Math.max(0, (amount || 0) + Number(bonus) - Number(deduction));
+ const finalAmount = Math.max(0, baseAmount + Number(bonus) - Number(deduction));
 
  if (!isOpen) return null;
 
@@ -65,6 +75,30 @@ const StaffPaymentModal = ({ isOpen, onClose, onConfirm, info, amount }) => {
 
  {/* Maoshni Tahrirlash (Bonus/Ayirma) */}
  <div className="space-y-4 mb-8">
+ {incomeType ==='percentage' && Number(expectedAmount || 0) > 0 && (
+ <div className="p-3 rounded-xl bg-[var(--bg-void)] border border-indigo-500/20">
+ <label className="flex items-center justify-between gap-3 cursor-pointer">
+ <div>
+ <p className="text-[9px] font-black text-indigo-300 tracking-widest uppercase">Foiz bazasi</p>
+ <p className="text-[8px] text-slate-400 mt-1">
+ {useExpected ? "Kutilayotgan tushumdan hisoblanadi" : "Haqiqiy tushumdan hisoblanadi"}
+ </p>
+ </div>
+ <button
+ type="button"
+ onClick={() => setUseExpected(v => !v)}
+ className={`px-2.5 py-1 rounded-lg text-[9px] font-black tracking-widest border ${
+ useExpected
+ ?'bg-indigo-500/20 text-indigo-200 border-indigo-500/40'
+ :'bg-[var(--bg-panel)] text-slate-400 border-[var(--border-glass)]'
+ }`}
+ >
+ {useExpected ?'EXPECTED' :'PAID'}
+ </button>
+ </label>
+ </div>
+ )}
+
  <div className="grid grid-cols-2 gap-3">
  <div className="space-y-1.5">
  <label className="text-[9px] font-black text-emerald-500 capitalize tracking-widest ml-1">Bonus (+)</label>
@@ -89,7 +123,7 @@ const StaffPaymentModal = ({ isOpen, onClose, onConfirm, info, amount }) => {
  <div className="p-4 rounded-2xl bg-[var(--bg-void)] border border-indigo-500/20 shadow-inner">
  <div className="flex justify-between items-center mb-1">
  <span className="text-[10px] font-bold text-slate-500 capitalize tracking-tight">Kutilayotgan maosh:</span>
- <span className="text-[10px] font-black text-slate-300 tabular-nums">{(amount || 0).toLocaleString()} UZS</span>
+ <span className="text-[10px] font-black text-slate-300 tabular-nums">{baseAmount.toLocaleString()} UZS</span>
  </div>
  <div className="flex justify-between items-center pt-2 border-t border-[var(--border-glass)]">
  <span className="text-xs font-black text-indigo-400 capitalize tracking-widest">Yakuniy Summa:</span>

@@ -77,12 +77,17 @@ export const FinancialIntelligence = ({ finance, formatNumber, progressPercentag
  </div>
  <div className="grid grid-cols-2 gap-3">
  <div className="p-2 bg-rose-500/10 rounded-lg border border-rose-500/20">
- <p className="text-[7px] font-bold text-rose-400 capitalize tracking-widest mb-1">Refundlar</p>
- <p className="text-xs font-bold text-rose-400 tabular-nums">-{formatNumber(finance.refunds)}</p>
+ <p className="text-[7px] font-bold text-rose-400 capitalize tracking-widest mb-1">Davomat refundlari</p>
+ <p className="text-xs font-bold text-rose-400 tabular-nums">-{formatNumber(finance.attendance_refunds_paid ?? finance.refunds ?? 0)}</p>
+ {finance.refund_share_percent > 0 && (
+ <p className="text-[7px] font-bold text-rose-400/60 mt-0.5">{finance.refund_share_percent}% ulush</p>
+ )}
  </div>
  <div className="p-2 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
- <p className="text-[7px] font-bold text-emerald-400 capitalize tracking-widest mb-1">Brutto Tushum</p>
- <p className="text-xs font-bold text-emerald-400 tabular-nums">{formatNumber(finance.received_income)}</p>
+ <p className="text-[7px] font-bold text-emerald-400 capitalize tracking-widest mb-1">Brutto (refundsiz)</p>
+ <p className="text-xs font-bold text-emerald-400 tabular-nums">
+ {formatNumber(Number(finance.received_income || 0) + Number(finance.attendance_refunds_paid ?? finance.refunds ?? 0))}
+ </p>
  </div>
  </div>
  <div className="flex items-center gap-3"><div className="flex items-center gap-1.5 px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 text-[9px] font-bold border border-emerald-500/20"><TrendingUp size={10} /> {progressPercentage}% Natija</div></div>

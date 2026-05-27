@@ -223,11 +223,23 @@ class EmployeePaymentViewSet(viewsets.ModelViewSet):
         # Yangi: Modal orqali kelgan bonus va ayirmalarni olish
         bonus = request.data.get('bonus', 0)
         deductions = request.data.get('deductions', 0)
+        commission_basis = str(request.data.get('commission_basis', 'paid')).lower()
+        if commission_basis not in ['paid', 'expected']:
+            commission_basis = 'paid'
         
         with transaction.atomic():
             try:
                 # Oylik maoshni qayta hisoblaymiz (yangi tushumlar asosida)
-                payment.recalculate_salary()
+                if (
+                    hasattr(payment.employee, 'staff_profile')
+                    and payment.employee.staff_profile.salary_type == 'percentage'
+                ):
+                    payment.salary_base = payment.employee.staff_profile.calculate_salary_for_month(
+                        payment.month,
+                        commission_basis=commission_basis,
+                    )
+                else:
+                    payment.recalculate_salary()
             except Exception as e:
                 logger.error(f"Salary recalculation error during confirm: {e}")
 
@@ -305,12 +317,17 @@ class EmployeePaymentViewSet(viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=400)
 
 class StaffProfileViewSet(viewsets.ModelViewSet):
-    """Xodimlar profili va maosh sozlamalari"""
+    """Xodimlar profili va maosh sozlamalari.
+
+    Lookup: pk bo'yicha ham, user_id bo'yicha ham ishlaydi.
+    Frontend `employee_id` (User.pk) yuborsa, by-user/ action'dan foydalansin yoki
+    standart pk orqali ishlaydi — serializer `current_payment_id` qaytaradi.
+    """
     queryset = StaffProfile.objects.select_related('user').all()
     serializer_class = StaffProfileSerializer
     permission_classes = [IsAuthenticated, HasModulePermission]
     module_name = 'finance'
-    
+
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['user__role', 'user__branch']
     search_fields = ['user__first_name', 'user__last_name', 'user__username']
@@ -322,6 +339,34 @@ class StaffProfileViewSet(viewsets.ModelViewSet):
         elif user.role == 'super_admin':
             return self.queryset
         return self.queryset.filter(user=user)
+
+    def get_object(self):
+        """pk bo'yicha topilmasa user_id deb izlaydi (frontend employee_id yuboradi)."""
+        queryset = self.get_queryset()
+        pk = self.kwargs.get(self.lookup_field)
+        # Avval StaffProfile.pk bo'yicha
+        obj = queryset.filter(pk=pk).first()
+        if obj is None:
+            # User.pk bo'yicha fallback
+            obj = get_object_or_404(queryset, user_id=pk)
+        self.check_object_permissions(self.request, obj)
+        return obj
+
+    @action(detail=False, methods=['get', 'patch', 'delete'], url_path='by-user/(?P<user_id>[^/.]+)')
+    def by_user(self, request, user_id=None):
+        """Frontendga qulay: user_id orqali StaffProfile CRUD."""
+        profile = get_object_or_404(self.get_queryset(), user_id=user_id)
+        self.check_object_permissions(request, profile)
+        if request.method == 'GET':
+            return Response(StaffProfileSerializer(profile).data)
+        if request.method == 'PATCH':
+            serializer = StaffProfileSerializer(profile, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data)
+        if request.method == 'DELETE':
+            profile.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
 
 class FinanceTransactionViewSet(viewsets.ModelViewSet):
     """Markaziy moliya daftari (Ledger)"""
@@ -377,6 +422,9 @@ class FinanceDashboardView(APIView):
                 "total_expense": 0.0,
                 "net_profit": 0.0,
                 "total_debt": 0.0,
+                "total_attendance_refunds": 0.0,
+                "total_attendance_refunds_paid": 0.0,
+                "refund_share_percent": 0.0,
                 "income_trend": 0.0,
                 "expense_trend": 0.0,
                 "profit_trend": 0.0,
@@ -421,7 +469,9 @@ class BranchFinanceDetailView(APIView):
                 },
                 "finance": {
                     "expected_income": 0.0, "received_income": 0.0,
-                    "expenses": 0.0, "net_profit": 0.0
+                    "refunds": 0.0, "attendance_refunds": 0.0,
+                    "attendance_refunds_paid": 0.0, "refund_share_percent": 0.0,
+                    "real_revenue": 0.0, "expenses": 0.0, "net_profit": 0.0
                 },
                 "groups": [],
                 "warning": "Filial statistikasi vaqtincha to'liq emas"
@@ -445,11 +495,14 @@ class AbsentTodayStudentsView(APIView):
         today = timezone.localdate()
         search = request.query_params.get('search', '').strip()
         export_mode = request.query_params.get('export', 'json')
-        
-        queryset = Attendance.objects.filter(
-            group__branch_id=branch_id, 
-            date=today, 
-            is_present=False
+
+        # "Absent" ro'yxati student kesimida: agar student bugun hech bo'lmasa bitta guruhda kelgan bo'lsa,
+        # u kelmaganlar ro'yxatiga tushmasligi kerak (student bir nechta guruhda bo'lishi mumkin).
+        base_qs = Attendance.objects.filter(group__branch_id=branch_id, date=today)
+        present_ids = base_qs.filter(is_present=True).values_list('student_id', flat=True).distinct()
+
+        queryset = base_qs.filter(is_present=False).exclude(
+            student_id__in=present_ids
         ).select_related('student', 'group')
 
         if search:

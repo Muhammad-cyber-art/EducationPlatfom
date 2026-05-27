@@ -3,11 +3,15 @@ from django.contrib.auth import get_user_model
 from branches.models import Branch
 from groups.models import Group, Student
 from finance.models import Payment, EmployeePayment, StaffProfile, FinanceTransaction
+from finance.utils import aggregate_attendance_refunds
 from rest_framework.test import APITestCase
 from rest_framework import status
 from django.urls import reverse
 from django.utils import timezone
 from decimal import Decimal
+from homework_attends.models import Attendance
+from groups.models import GroupEnrollment
+from finance.services import _safe_attendance_stats_for_branch
 
 User = get_user_model()
 
@@ -152,6 +156,20 @@ class FinanceAPITests(APITestCase):
         self.assertEqual(transaction.amount, Decimal('5200000'))
         self.assertEqual(transaction.transaction_type, 'expense')
 
+    def test_aggregate_attendance_refunds_from_payment(self):
+        """Davomat refundi Payment.refund_amount da — FinanceTransaction emas."""
+        Payment.objects.filter(pk=self.payment.pk).update(
+            refund_amount=Decimal('25000'),
+            amount=Decimal('75000'),
+            is_paid=True,
+            paid_amount=Decimal('75000'),
+        )
+        y, m = self.month.year, self.month.month
+        total = aggregate_attendance_refunds(y, m, branch=self.branch)
+        self.assertEqual(total, 25000.0)
+        ft_refund = FinanceTransaction.objects.filter(category='refund').count()
+        self.assertEqual(ft_refund, 0)
+
     def test_duplicate_payment_restriction(self):
         # Already have one payment in setUp. Try to create another same one.
         with self.assertRaises(Exception):
@@ -161,3 +179,73 @@ class FinanceAPITests(APITestCase):
                 month=self.month,
                 amount=self.group.monthly_price
             )
+
+
+class FinanceAttendanceStatsTests(TestCase):
+    def setUp(self):
+        self.branch = Branch.objects.create(name="Tashkent")
+        self.mentor = User.objects.create_user(username='mentor_att', password='pw', role='mentor', branch=self.branch)
+        self.g1 = Group.objects.create(name="G1", branch=self.branch, mentor=self.mentor, monthly_price=Decimal('100000'))
+        self.g2 = Group.objects.create(name="G2", branch=self.branch, mentor=self.mentor, monthly_price=Decimal('120000'))
+        self.s1 = Student.objects.create(full_name="S1", group=self.g1)
+        self.s2 = Student.objects.create(full_name="S2", group=self.g1)
+
+        GroupEnrollment.objects.create(student=self.s1, group=self.g1, is_active=True)
+        GroupEnrollment.objects.create(student=self.s1, group=self.g2, is_active=True)
+        GroupEnrollment.objects.create(student=self.s2, group=self.g1, is_active=True)
+
+        self.today = timezone.localdate()
+
+    def test_attendance_today_counts_unique_students_across_groups(self):
+        # S1 is present in two groups today -> should still be counted once
+        Attendance.objects.create(student=self.s1, group=self.g1, date=self.today, is_present=True)
+        Attendance.objects.create(student=self.s1, group=self.g2, date=self.today, is_present=True)
+
+        stats = _safe_attendance_stats_for_branch(self.branch, self.today)
+        self.assertEqual(stats["total"], 1)
+        self.assertEqual(stats["absent"], 0)
+
+    def test_absent_excludes_students_present_in_any_group(self):
+        # S1 absent in one group, present in another -> should NOT be counted as absent
+        Attendance.objects.create(student=self.s1, group=self.g1, date=self.today, is_present=False)
+        Attendance.objects.create(student=self.s1, group=self.g2, date=self.today, is_present=True)
+        # S2 absent only -> should be absent
+        Attendance.objects.create(student=self.s2, group=self.g1, date=self.today, is_present=False)
+
+        stats = _safe_attendance_stats_for_branch(self.branch, self.today)
+        self.assertEqual(stats["total"], 2)
+        self.assertEqual(stats["absent"], 1)
+
+
+class FinanceAbsentStudentsEndpointTests(APITestCase):
+    def setUp(self):
+        self.branch = Branch.objects.create(name="Tashkent")
+        self.admin = User.objects.create_user(username='adm_abs', password='pw', role='admin', branch=self.branch)
+        self.mentor = User.objects.create_user(username='mentor_abs', password='pw', role='mentor', branch=self.branch)
+        self.g1 = Group.objects.create(name="G1", branch=self.branch, mentor=self.mentor, monthly_price=Decimal('100000'))
+        self.g2 = Group.objects.create(name="G2", branch=self.branch, mentor=self.mentor, monthly_price=Decimal('120000'))
+        self.s1 = Student.objects.create(full_name="S1", group=self.g1)
+        self.s2 = Student.objects.create(full_name="S2", group=self.g1)
+
+        GroupEnrollment.objects.create(student=self.s1, group=self.g1, is_active=True)
+        GroupEnrollment.objects.create(student=self.s1, group=self.g2, is_active=True)
+        GroupEnrollment.objects.create(student=self.s2, group=self.g1, is_active=True)
+
+        self.today = timezone.localdate()
+
+        # S1: absent in g1, present in g2 -> should not appear in absent list
+        Attendance.objects.create(student=self.s1, group=self.g1, date=self.today, is_present=False)
+        Attendance.objects.create(student=self.s1, group=self.g2, date=self.today, is_present=True)
+        # S2: absent only -> should appear
+        Attendance.objects.create(student=self.s2, group=self.g1, date=self.today, is_present=False)
+
+    def test_absent_students_endpoint_excludes_present_elsewhere(self):
+        self.client.force_authenticate(user=self.admin)
+        url = reverse('absent-students-list', kwargs={'branch_id': self.branch.id})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        results = response.data.get('results', response.data)
+        returned_ids = {item["id"] for item in results}
+        self.assertIn(self.s2.id, returned_ids)
+        self.assertNotIn(self.s1.id, returned_ids)

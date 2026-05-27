@@ -80,26 +80,42 @@ const StaffPaymentDetails = () => {
  });
  }, [data]);
 
+ // Joriy oyning "live" asosiy maosh qiymati (to'lanmagan holat uchun)
  const liveBaseSalary = useMemo(() => {
  if (!data) return 0;
- 
- 
- 
- return isPercentageType
- ? (data.calculated_commission || 0)
- : isStudentCountType
- ? (data.calculated_per_student || 0)
- : (data.salary_base || 0);
+ if (isPercentageType) return data.calculated_commission || 0;
+ if (isStudentCountType) return data.calculated_per_student || 0;
+ return data.salary_base || 0;
  }, [data, isPercentageType, isStudentCountType]);
+
+ // Yakuniy summa backend floor_amount logikasi bilan mos hisob (1000 so'mga pastga)
+ const floorTo1000 = (val) => Math.floor(Number(val) / 1000) * 1000;
 
  const finalTotalAmount = useMemo(() => {
  if (!data) return 0;
+ if (data.is_paid) return Number(data.total_amount || 0);
  const bonus = Number(data.bonus || 0);
  const deductions = Number(data.deductions || 0);
  const advances = Number(data.total_advances || 0);
- if (data.is_paid) return data.total_amount;
- return liveBaseSalary + bonus - deductions - advances;
+ return floorTo1000(liveBaseSalary + bonus - deductions - advances);
  }, [data, liveBaseSalary]);
+
+ // History item uchun asosiy maosh: backenddan kelgan fieldlarni ishlatamiz
+ const historyItemBaseSalary = useMemo(() => {
+ if (!selectedHistoryItem || typeof selectedHistoryItem !== 'object') return 0;
+ const item = selectedHistoryItem;
+ if (item.is_paid) return Number(item.total_amount || 0);
+ if (item.salary_type === 'percentage') return Number(item.calculated_commission || 0);
+ if (item.salary_type === 'student_count') return Number(item.calculated_per_student || 0);
+ return Number(item.salary_base || 0);
+ }, [selectedHistoryItem]);
+
+ const historyItemExpectedAmount = useMemo(() => {
+ if (!selectedHistoryItem || typeof selectedHistoryItem !== 'object') return 0;
+ const item = selectedHistoryItem;
+ if (item.salary_type !== 'percentage') return 0;
+ return Number(item.calculated_commission_expected || item.calculated_commission || 0);
+ }, [selectedHistoryItem]);
 
  const formatCurrency = (amount) => {
  if (!amount && amount !== 0) return"0 UZS";
@@ -164,18 +180,39 @@ const StaffPaymentDetails = () => {
  <StaffPaymentModal
  isOpen={payModal}
  onClose={() => { dispatch(setPayModal(false)); dispatch(setSelectedHistoryItem(null)); }}
- info={selectedHistoryItem || data}
- amount={selectedHistoryItem ? (selectedHistoryItem.salary_type ==='percentage' && !selectedHistoryItem.is_paid ? (selectedHistoryItem.calculated_commission || 0) : (selectedHistoryItem.total_amount || selectedHistoryItem.salary_base)) : (!data.is_paid ? (liveBaseSalary - (data.total_advances || 0)) : (data.total_amount || data.salary_base))}
- incomeType={data?.salary_type}
- onConfirm={async (bonus, deduction) => {
- const targetId = selectedHistoryItem ? selectedHistoryItem.id : staff_id;
- try {
- await api.post(`/finance/employee-payments/${targetId}/confirm/`, { bonus, deductions: deduction });
- toast.success("To'lov tasdiqlandi!");
- dispatch(setPayModal(false));
- dispatch(setSelectedHistoryItem(null));
- fetchAllData();
- } catch (e) { toast.error("To'lovda xatolik"); }
+ info={selectedHistoryItem && typeof selectedHistoryItem === 'object' ? selectedHistoryItem : data}
+ amount={
+   selectedHistoryItem && typeof selectedHistoryItem === 'object'
+     ? historyItemBaseSalary - Number(selectedHistoryItem.total_advances || 0)
+     : !data.is_paid
+       ? liveBaseSalary - Number(data.total_advances || 0)
+       : Number(data.total_amount || 0)
+ }
+ expectedAmount={
+   selectedHistoryItem && typeof selectedHistoryItem === 'object'
+     ? historyItemExpectedAmount - Number(selectedHistoryItem.total_advances || 0)
+     : Number(data.calculated_commission_expected || 0) - Number(data.total_advances || 0)
+ }
+ incomeType={
+   selectedHistoryItem && typeof selectedHistoryItem === 'object'
+     ? selectedHistoryItem.salary_type
+     : data?.salary_type
+ }
+ onConfirm={async (bonus, deduction, options = {}) => {
+   const targetId = selectedHistoryItem && typeof selectedHistoryItem === 'object'
+     ? selectedHistoryItem.id
+     : staff_id;
+   try {
+     await api.post(`/finance/employee-payments/${targetId}/confirm/`, {
+       bonus,
+       deductions: deduction,
+       ...(options || {}),
+     });
+     toast.success("To'lov tasdiqlandi!");
+     dispatch(setPayModal(false));
+     dispatch(setSelectedHistoryItem(null));
+     fetchAllData();
+   } catch (e) { toast.error("To'lovda xatolik"); }
  }}
  />
 

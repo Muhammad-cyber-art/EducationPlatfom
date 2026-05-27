@@ -102,7 +102,7 @@ const PaymentHistory = ({
  <div className="space-y-3 mb-6">
  <DetailRow label="Hisoblangan oy" value={data.month} />
  <DetailRow label="Tasdiqlangan sana" value={data.paid_at ? new Date(data.paid_at).toLocaleDateString() :"---"} />
- <DetailRow label="Tasdiqlovchi" value={data.marked_by ||"---"} />
+ <DetailRow label="Tasdiqlovchi" value={data.marked_by_name || data.marked_by ||"---"} />
  </div>
 
  {!data.is_paid ? (

@@ -299,14 +299,107 @@ class StaffProfile(models.Model):
             return f"{self.commission_percentage}% (foizdan)"
         else:
             return f"{int(self.per_student_amount):,} so'm (har bir o'quvchi uchun)".replace(',', '.')
+
+    def _collect_group_students(self, group):
+        """Guruhdagi o'quvchilarni (yangi + legacy) dublikatsiz qaytaradi."""
+        students_map = {}
+        for enr in group.enrollments.select_related('student').all():
+            if enr.student:
+                students_map[enr.student.id] = enr.student
+        for st in group.old_students_fk.all():
+            students_map[st.id] = st
+        return list(students_map.values())
     
+    @staticmethod
+    def _get_teacher_lesson_share(payment, month):
+        """
+        Bir studentning oylik to'lovini shu oyda real qatnashgan darslari
+        asosida teacher'lar o'rtasida proporsional taqsimlaydi.
+
+        Qaytaradi: {teacher_user_id: Decimal(share_amount)}
+
+        Qoidalar:
+        - Faqat is_present=True bo'lgan real davomat hisoblanadi.
+        - total_lessons == 0 bo'lsa bo'linish xatosini oldini olish uchun {payment.group.mentor_id: payment.amount} qaytariladi.
+        - Duplicate attendance yozuvlari unique_together (student, group, date) constraint bilan DB darajasida himoyalangan.
+        - Rounding: floor_amount(1000 ga) ishlatiladi, qoldiq eng ko'p dars o'tgan o'qituvchiga qo'shiladi.
+        """
+        from homework_attends.models import Attendance
+        from finance.utils import floor_amount
+        import math
+
+        student = payment.student
+        year = payment.month.year
+        month_num = payment.month.month
+        payment_amount = Decimal(str(payment.amount or 0))
+
+        # Edge case: to'lov nol bo'lsa bo'lish kerak emas
+        if payment_amount <= 0:
+            return {}
+
+        # Studentning shu oydagi barcha guruhlaridagi real davomati
+        att_qs = (
+            Attendance.objects
+            .filter(
+                student=student,
+                date__year=year,
+                date__month=month_num,
+                is_present=True,
+            )
+            .select_related('group__mentor')
+            .values('group__mentor_id', 'group_id')
+            .annotate(lessons=models.Count('id'))
+        )
+
+        # {mentor_id: lesson_count}
+        teacher_lessons: dict[int, int] = {}
+        for row in att_qs:
+            mentor_id = row['group__mentor_id']
+            if mentor_id is None:
+                continue
+            teacher_lessons[mentor_id] = teacher_lessons.get(mentor_id, 0) + row['lessons']
+
+        total_lessons = sum(teacher_lessons.values())
+
+        # Edge case: davomat yo'q — to'lovni payment.group.mentor ga yubor (backward-compatible)
+        if total_lessons == 0:
+            fallback_mentor_id = payment.group.mentor_id if payment.group else None
+            if fallback_mentor_id:
+                return {fallback_mentor_id: payment_amount}
+            return {}
+
+        # Proporsional taqsimlash (floor 1000 ga)
+        shares: dict[int, Decimal] = {}
+        allocated = Decimal('0')
+
+        # Saralash: qoldiqni eng katta hissali o'qituvchiga berish uchun deterministik tartib
+        sorted_teachers = sorted(teacher_lessons.items(), key=lambda x: (-x[1], x[0]))
+
+        for i, (mentor_id, lessons) in enumerate(sorted_teachers):
+            if i == len(sorted_teachers) - 1:
+                # Oxirgi o'qituvchiga qoldiqni bering (rounding xatosi to'planmasin)
+                share = payment_amount - allocated
+            else:
+                raw = payment_amount * Decimal(lessons) / Decimal(total_lessons)
+                share = floor_amount(raw)
+            shares[mentor_id] = share
+            allocated += share
+
+        return shares
+
     def calculate_monthly_income(self, month):
         """
-        Mentorning berilgan oydagi jami daromadini hisoblash
-        (To'langan oylik to'lovlar + qo'shimcha to'lovlar - refundlar)
+        Mentorning berilgan oydagi jami daromadini hisoblash.
+
+        Yangi logika (multi-teacher support):
+        - Foizli mentor uchun: student to'lovi qaysi teacher bilan nechta real
+          dars o'qiganiga qarab proporsional taqsimlanadi.
+        - Fixed / student_count mentor uchun: o'zgarmaydi.
+        - Admin uchun: o'zgarmaydi (filial bo'yicha).
+        - 1 ta teacher bo'lsa: avvalgi natija aynan saqlanadi (backward-compatible).
         """
         from finance.utils import floor_amount
-        
+
         # Admin + foiz: filial bo'yicha tasdiqlangan oylik to'lovlar (mentor logikasi emas)
         if self.user.role == 'admin' and getattr(self.user, 'branch', None):
             from finance.models import Payment
@@ -321,58 +414,190 @@ class StaffProfile(models.Model):
 
         if self.user.role != 'mentor':
             return Decimal('0')
-        
+
         from groups.models import Group
         from finance.models import Payment, FinanceTransaction
-        
+
         # Mentorning barcha guruhlari (faol + nofaol, chunki tarixiy to'lovlar bo'lishi mumkin)
         mentor_groups = Group.objects.filter(mentor=self.user)
-        
+
+        # --- Foizli mentor uchun multi-teacher taqsimlash (real attendance bo'yicha) ---
+        #
+        # Maqsad:
+        #   - Student oy davomida bir nechta teacher guruhi bilan o'qisa -> student to'lovi real davomatga proporsional taqsimlansin.
+        #   - payment.group qaysi mentorniki bo'lishidan qat'iy nazar, attendance counts teacher'larni aniqlaydi.
+        #   - total_lessons==0 bo'lsa (attendance yozuvi yo'q) -> backward compatible fallback: payment.group.mentor ga.
+        #
+        from homework_attends.models import Attendance
+
+        month_year = month.year
+        month_num = month.month
+
+        mentor_group_ids = list(mentor_groups.values_list('id', flat=True))
+
+        # 1) Shu mentorga attendance bo'yicha biriktirilgan studentlar
+        students_from_attendance = Attendance.objects.filter(
+            group__mentor=self.user,
+            date__year=month_year,
+            date__month=month_num,
+            is_present=True,
+        ).values_list('student_id', flat=True).distinct()
+
+        # 2) Shu mentorga tegishli guruhda olingan (paid) to'lovlar bor studentlar
+        #    (agar attendance umuman bo'lmasa, fallback shu yerda ishlaydi)
+        students_from_paid_payments = Payment.objects.filter(
+            group_id__in=mentor_group_ids,
+            month__year=month_year,
+            month__month=month_num,
+            is_paid=True,
+        ).values_list('student_id', flat=True).distinct()
+
+        relevant_student_ids = set(students_from_attendance) | set(students_from_paid_payments)
+
         total_income = Decimal('0')
-        
-        for group in mentor_groups:
-            group_revenue = Decimal('0')
-            
-            for student in group.students.all():
-                # 1. Oylik asosiy to'lov (tasdiqlangan)
-                payment = Payment.objects.filter(
-                    student=student, 
-                    group=group, 
-                    month__year=month.year, 
-                    month__month=month.month,
-                    is_paid=True
-                ).first()
-                
-                if payment:
-                    student_revenue = Decimal(str(payment.amount))
-                    group_revenue += student_revenue
-                
-                # ✅ QO'SHIMCHA: O'qituvchi kelishgan o'quvchilar (agar on qilingan bo'lsa)
-                elif student.status == 'teacher_negotiated' and student.include_in_mentor_salary:
-                    # Ularning o'rniga o'qituvchiga hypothetical summa qo'shiladi
-                    hypothetical_fee = Decimal(str(student.custom_fee or group.monthly_price))
-                    group_revenue += hypothetical_fee
-                
-                # 2. ✅ Qo'shimcha to'lovlarni ham hisobga olamiz (student_extra)
-                extra_txs = FinanceTransaction.objects.filter(
-                    student=student,
-                    group=group,
-                    category='student_extra',
-                    date__year=month.year,
-                    date__month=month.month
+        if relevant_student_ids:
+            # Attendance counts: {student_id: {mentor_id: lessons}}
+            att_qs = Attendance.objects.filter(
+                student_id__in=relevant_student_ids,
+                date__year=month_year,
+                date__month=month_num,
+                is_present=True,
+                group__mentor_id__isnull=False,
+            ).values('student_id', 'group__mentor_id').annotate(
+                lessons=models.Count('id')
+            )
+
+            teacher_lessons_by_student: dict[int, dict[int, int]] = {}
+            total_lessons_by_student: dict[int, int] = {}
+            for row in att_qs:
+                sid = row['student_id']
+                mid = row['group__mentor_id']
+                lessons = int(row['lessons'] or 0)
+                if sid not in teacher_lessons_by_student:
+                    teacher_lessons_by_student[sid] = {}
+                teacher_lessons_by_student[sid][mid] = teacher_lessons_by_student[sid].get(mid, 0) + lessons
+
+                total_lessons_by_student[sid] = total_lessons_by_student.get(sid, 0) + lessons
+
+            # Shu student oyda qancha REAL paid pul to'lagan (payment status: is_paid=True)
+            paid_totals_qs = Payment.objects.filter(
+                student_id__in=relevant_student_ids,
+                month__year=month_year,
+                month__month=month_num,
+                is_paid=True,
+            ).values('student_id').annotate(total=models.Sum('amount'))
+
+            student_total_paid = {
+                row['student_id']: Decimal(str(row['total'] or 0))
+                for row in paid_totals_qs
+            }
+
+            # total_lessons==0 bo'lgan studentlar uchun fallback (payment.group.mentor ga)
+            no_attendance_students = [
+                sid for sid in relevant_student_ids
+                if total_lessons_by_student.get(sid, 0) == 0
+            ]
+            if no_attendance_students:
+                fallback_total = Payment.objects.filter(
+                    student_id__in=no_attendance_students,
+                    group__mentor=self.user,
+                    month__year=month_year,
+                    month__month=month_num,
+                    is_paid=True,
+                ).aggregate(total=models.Sum('amount'))['total'] or 0
+                total_income += Decimal(str(fallback_total))
+
+            # Attendance bor studentlar uchun taqsimlash (studentning oy total paid puliga)
+            for sid, student_paid_amount in student_total_paid.items():
+                if student_paid_amount <= 0:
+                    continue
+
+                teacher_lessons = teacher_lessons_by_student.get(sid)
+                total_lessons = total_lessons_by_student.get(sid, 0)
+                if not teacher_lessons or total_lessons <= 0:
+                    continue  # fallback yuqorida handled
+
+                sorted_teachers = sorted(
+                    teacher_lessons.items(),
+                    key=lambda x: (-x[1], x[0])  # deterministik: eng ko'p dars, keyin id
                 )
-                for tx in extra_txs:
-                    tx_amount = Decimal(str(tx.amount))
-                    if tx.transaction_type == 'income':
-                        group_revenue += tx_amount
+
+                allocated = Decimal('0')
+                share_for_self = Decimal('0')
+                for i, (mentor_id, lessons) in enumerate(sorted_teachers):
+                    if i == len(sorted_teachers) - 1:
+                        share = student_paid_amount - allocated
                     else:
-                        group_revenue -= tx_amount
-            
-            total_income += group_revenue
-            
+                        raw = student_paid_amount * Decimal(lessons) / Decimal(total_lessons)
+                        share = floor_amount(raw)
+
+                    if mentor_id == self.user.id:
+                        share_for_self = share
+                    allocated += share
+
+                total_income += share_for_self
+
+        # Teacher_negotiated + include_in_mentor_salary (faqat shu mentor guruhidagi)
+        for group in mentor_groups:
+            teacher_neg_students = group.students.filter(
+                status='teacher_negotiated',
+                include_in_mentor_salary=True,
+            )
+            for student in teacher_neg_students:
+                hypothetical_fee = Decimal(str(student.custom_fee or group.monthly_price or 0))
+                total_income += hypothetical_fee
+
+        # Qo'shimcha to'lovlar (student_extra) — guruh mentori kimligidan qat'iy nazar,
+        # qo'shimcha to'lovlar to'g'ridan-to'g'ri guruh mentoriga tegishli (o'zgartirilmaydi)
+        from finance.models import FinanceTransaction
+        extra_txs = FinanceTransaction.objects.filter(
+            group__in=mentor_groups,
+            category='student_extra',
+            date__year=month.year,
+            date__month=month.month,
+        )
+        for tx in extra_txs:
+            tx_amount = Decimal(str(tx.amount))
+            if tx.transaction_type == 'income':
+                total_income += tx_amount
+            else:
+                total_income -= tx_amount
+
         return floor_amount(total_income)
+
+    def calculate_expected_monthly_income(self, month):
+        """
+        Foizli mentor uchun kutilayotgan tushum:
+        mentor guruhlaridagi barcha statusdagi o'quvchilarning
+        oy bo'yicha berishi kerak bo'lgan shartnoma summalari yig'indisi.
+        """
+        from finance.utils import floor_amount
+        from groups.models import Group
+
+        if self.user.role == 'admin' and getattr(self.user, 'branch', None):
+            from finance.models import Payment
+            from django.db.models import Sum
+            total = Payment.objects.filter(
+                group__branch=self.user.branch,
+                month__year=month.year,
+                month__month=month.month,
+            ).aggregate(total=Sum('amount'))['total'] or 0
+            return floor_amount(Decimal(str(total)))
+
+        if self.user.role != 'mentor':
+            return Decimal('0')
+
+        mentor_groups = Group.objects.filter(mentor=self.user).prefetch_related(
+            'enrollments__student',
+            'old_students_fk',
+        )
+        total_expected_income = Decimal('0')
+        for group in mentor_groups:
+            for student in self._collect_group_students(group):
+                total_expected_income += _student_contract_monthly(student, group)
+        return floor_amount(total_expected_income)
     
-    def calculate_salary_for_month(self, month):
+    def calculate_salary_for_month(self, month, commission_basis='paid'):
         """Berilgan oy uchun maoshni hisoblash (natija floor qilinadi)"""
         from finance.utils import floor_amount
         
@@ -380,8 +605,13 @@ class StaffProfile(models.Model):
             return floor_amount(self.fixed_salary)
         
         elif self.salary_type == 'percentage':
-            # ✅ Foiz - to'langan to'lovlardan (refundlar ayirilgan)
-            total_income = self.calculate_monthly_income(month)
+            # Foizli mentor uchun komissiya bazasi:
+            # - paid: real tushumdan
+            # - expected: barcha statusdagi o'quvchilarning shartnoma summasidan
+            if commission_basis == 'expected':
+                total_income = self.calculate_expected_monthly_income(month)
+            else:
+                total_income = self.calculate_monthly_income(month)
             commission_pct = Decimal(str(self.commission_percentage)) / Decimal('100')
             commission = total_income * commission_pct
             return floor_amount(commission)

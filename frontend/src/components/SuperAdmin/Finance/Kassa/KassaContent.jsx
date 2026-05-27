@@ -5,6 +5,40 @@ import {
 } from "lucide-react";
 import { formatCurrency } from "./useKassa";
 
+const getMethodMeta = (method, display) => {
+    const normalized = (method || "").toLowerCase();
+    if (normalized === "cash") {
+        return {
+            icon: <Banknote size={14} />,
+            label: display || "Naqd (Cash)",
+            badgeClass: "bg-emerald-500/10 border-emerald-500/20 text-emerald-500",
+            mobileLabel: "Naqd",
+        };
+    }
+    if (normalized === "payme") {
+        return {
+            icon: <Smartphone size={14} />,
+            label: display || "Payme",
+            badgeClass: "bg-purple-500/10 border-purple-500/20 text-purple-400",
+            mobileLabel: "Payme",
+        };
+    }
+    if (normalized === "other") {
+        return {
+            icon: <CreditCard size={14} />,
+            label: display || "Boshqa",
+            badgeClass: "bg-amber-500/10 border-amber-500/20 text-amber-400",
+            mobileLabel: "Boshqa",
+        };
+    }
+    return {
+        icon: <Smartphone size={14} />,
+        label: display || "Click / Card",
+        badgeClass: "bg-blue-500/10 border-blue-500/20 text-blue-500",
+        mobileLabel: "Click/Card",
+    };
+};
+
 const IncomeTable = ({ payments, loading, isSuperAdmin, onVerify, onDetail, onReceipt }) => (
     <table className="w-full text-left border-collapse">
         <thead>
@@ -22,7 +56,9 @@ const IncomeTable = ({ payments, loading, isSuperAdmin, onVerify, onDetail, onRe
                 <tr><td colSpan="6" className="p-32 text-center text-[var(--gold)] animate-pulse uppercase font-black tracking-widest">Ma'lumotlar yuklanmoqda...</td></tr>
             ) : payments.length === 0 ? (
                 <tr><td colSpan="6" className="p-32 text-center text-[var(--text-muted)] font-black uppercase tracking-widest">Hozircha hech qanday tushum topilmadi</td></tr>
-            ) : payments.map((p) => (
+            ) : payments.map((p) => {
+                const methodMeta = getMethodMeta(p.payment_method, p.payment_method_display);
+                return (
                 <tr key={p.id} className="hover:bg-white/[0.04] transition-all duration-300 group/row">
                     <td className="px-8 py-6">
                         <div className="flex items-center gap-4">
@@ -36,9 +72,9 @@ const IncomeTable = ({ payments, loading, isSuperAdmin, onVerify, onDetail, onRe
                         </div>
                     </td>
                     <td className="px-8 py-6">
-                        <div className={`inline-flex items-center gap-3 px-4 py-2 rounded-2xl border text-[10px] font-black uppercase tracking-wider ${p.payment_method === 'cash' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-blue-500/10 border-blue-500/20 text-blue-500'}`}>
-                            {p.payment_method === 'cash' ? <Banknote size={14} /> : <Smartphone size={14} />}
-                            {p.payment_method === 'cash' ? 'Naqd (Cash)' : 'Click / Card'}
+                        <div className={`inline-flex items-center gap-3 px-4 py-2 rounded-2xl border text-[10px] font-black uppercase tracking-wider ${methodMeta.badgeClass}`}>
+                            {methodMeta.icon}
+                            {methodMeta.label}
                         </div>
                     </td>
                     <td className="px-8 py-6">
@@ -55,7 +91,7 @@ const IncomeTable = ({ payments, loading, isSuperAdmin, onVerify, onDetail, onRe
                             <div className={`w-8 h-8 rounded-xl flex items-center justify-center border ${p.is_verified ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-white/5 text-[var(--gold)] border-white/10'}`}>
                                 {p.is_verified ? <CheckCircle2 size={16} /> : <ShieldCheck size={16} />}
                             </div>
-                            <span className="text-[11px] font-black uppercase text-[var(--text-secondary)]">{p.marked_by || "Tizim"}</span>
+                            <span className="text-[11px] font-black uppercase text-[var(--text-secondary)]">{p.marked_by_name || "Tizim"}</span>
                         </div>
                     </td>
                     <td className="px-8 py-6">
@@ -72,7 +108,7 @@ const IncomeTable = ({ payments, loading, isSuperAdmin, onVerify, onDetail, onRe
                         </div>
                     </td>
                 </tr>
-            ))}
+            )})}
         </tbody>
     </table>
 );
@@ -140,6 +176,10 @@ const ExpenseTable = ({ withdrawals, loading }) => (
 
 const MobileIncomeCard = ({ item, isSuperAdmin, onVerify, onDetail }) => (
     <>
+        {(() => {
+            const methodMeta = getMethodMeta(item.payment_method, item.payment_method_display);
+            return (
+                <>
         <div className="flex justify-between items-start mb-4">
             <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-[var(--bg-void)] border border-[var(--border-glass)] flex items-center justify-center text-[var(--text-muted)]">
@@ -150,8 +190,8 @@ const MobileIncomeCard = ({ item, isSuperAdmin, onVerify, onDetail }) => (
                     <p className="text-[9px] text-[var(--gold)] font-black uppercase tracking-widest">{item.group_name}</p>
                 </div>
             </div>
-            <div className={`px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest ${item.payment_method === 'cash' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-blue-500/10 border-blue-500/20 text-blue-500'}`}>
-                {item.payment_method === 'cash' ? 'Naqd' : 'Click/Card'}
+            <div className={`px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest ${methodMeta.badgeClass}`}>
+                {methodMeta.mobileLabel}
             </div>
         </div>
         <div className="flex justify-between items-end">
@@ -174,8 +214,11 @@ const MobileIncomeCard = ({ item, isSuperAdmin, onVerify, onDetail }) => (
         </div>
         <div className="mt-4 pt-4 border-t border-white/5 flex justify-between items-center text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest">
             <span>{new Date(item.paid_at).toLocaleDateString('uz-UZ')}</span>
-            <span className="flex items-center gap-1"><ShieldCheck size={10} /> {item.marked_by || "Tizim"}</span>
+            <span className="flex items-center gap-1"><ShieldCheck size={10} /> {item.marked_by_name || "Tizim"}</span>
         </div>
+                </>
+            );
+        })()}
     </>
 );
 

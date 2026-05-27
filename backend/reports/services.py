@@ -111,6 +111,7 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from django.db.models import Sum, F
 from finance.models import Payment, EmployeePayment, FinanceTransaction
+from finance.utils import attendance_refund_queryset, aggregate_attendance_refunds
 from branches.models import Branch
 
 def get_full_monthly_report(year, month):
@@ -131,7 +132,8 @@ def get_full_monthly_report(year, month):
     ws1.title = "O'quvchilar To'lovlari"
     
     headers1 = [
-        "№", "Filial", "O'quvchi F.I.SH", "Guruh", "To'lov Summasi", 
+        "№", "Filial", "O'quvchi F.I.SH", "Guruh", "Asosiy narx (refundsiz)",
+        "Refund (chegirma)", "To'lov Summasi (sof)",
         "To'lov Oyi", "Tasdiqlagan Admin", "To'langan Vaqt", "Tranzaksiya ID"
     ]
     ws1.append(headers1)
@@ -147,16 +149,63 @@ def get_full_monthly_report(year, month):
     ).select_related('student', 'group', 'group__branch', 'marked_by').order_by('group__branch', 'student__full_name')
 
     for i, sp in enumerate(student_payments, 1):
+        refund_val = float(sp.refund_amount or 0) if not sp.refund_ignored else 0
+        net_val = float(sp.amount or 0)
+        gross_val = net_val + refund_val
         ws1.append([
             i,
-            sp.group.branch.name if sp.group.branch else "-",
+            sp.group.branch.name if sp.group and sp.group.branch else "-",
             sp.student.full_name,
-            sp.group.name,
-            sp.amount,
+            sp.group.name if sp.group else "-",
+            gross_val,
+            refund_val,
+            net_val,
             sp.month.strftime("%Y-%m") if sp.month else "-",
             sp.marked_by.get_full_name() or sp.marked_by.username if sp.marked_by else "Onlayn",
             sp.paid_at.strftime("%Y-%m-%d %H:%M") if sp.paid_at else "-",
             sp.transaction_id or "-"
+        ])
+
+    # ================================================================
+    # 1.5-SAHIFA: DAVOMAT REFUNDLARI (Payment.refund_amount)
+    # ================================================================
+    ws_refunds = wb.create_sheet("Davomat Refundlari")
+    headers_ref = [
+        "№", "Filial", "O'quvchi F.I.SH", "Guruh", "To'lov Oyi",
+        "Asosiy narx", "Refund", "To'lanishi kerak (sof)", "To'langan", "Holat"
+    ]
+    ws_refunds.append(headers_ref)
+    for cell in ws_refunds[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = align_center
+        cell.border = border
+
+    refund_payments = attendance_refund_queryset(year, month).select_related(
+        'student', 'group', 'group__branch'
+    ).order_by('group__branch__name', 'student__full_name')
+
+    for i, rp in enumerate(refund_payments, 1):
+        refund_val = float(rp.refund_amount or 0)
+        net_val = float(rp.amount or 0)
+        gross_val = net_val + refund_val
+        if rp.is_paid:
+            status = "To'liq to'langan"
+        elif rp.is_partial or (rp.paid_amount and float(rp.paid_amount) > 0):
+            status = "Qisman to'langan"
+        else:
+            status = "To'lanmagan"
+        ws_refunds.append([
+            i,
+            rp.group.branch.name if rp.group and rp.group.branch else "-",
+            rp.student.full_name,
+            rp.group.name if rp.group else "-",
+            rp.month.strftime("%Y-%m") if rp.month else "-",
+            gross_val,
+            refund_val,
+            net_val,
+            float(rp.paid_amount or 0),
+            status,
         ])
 
     # ================================================================
@@ -259,9 +308,9 @@ def get_full_monthly_report(year, month):
     # ================================================================
     ws3 = wb.create_sheet("Umumiy Statistika")
     headers3 = [
-        "Filial Nomi", "O'quvchilar To'lovi", "Qo'shimcha Kirim", 
-        "Xodimlar Maoshlari", "Admin Harajatlari", "Refundlar (Chiqim)", "Kommunal To'lovlar",
-        "Boshqa Chiqimlar", "SOF FOYDA", "Qarzdorlik"
+        "Filial Nomi", "O'quvchilar To'lovi (sof)", "Davomat refundlari", "Qo'shimcha Kirim",
+        "Tasdiqlangan Tushum", "Xodimlar Maoshlari", "Admin Harajatlari", "Pul qaytarish (kassa)",
+        "Kommunal To'lovlar", "Boshqa Chiqimlar", "SOF FOYDA", "Qarzdorlik"
     ]
     ws3.append(headers3)
     for cell in ws3[1]:
@@ -273,66 +322,90 @@ def get_full_monthly_report(year, month):
     branches = Branch.objects.all()
     grand_income_fees = 0
     grand_income_extra = 0
+    grand_total_income = 0
     grand_expense_salary = 0
     grand_expense_admin = 0
-    grand_expense_refund = 0
+    grand_attendance_refund = 0
+    grand_cash_refund = 0
     grand_expense_utility = 0
     grand_expense_other = 0
     grand_debt = 0
 
     for branch in branches:
-        # 1. Kirimlar
-        income_fees = Payment.objects.filter(group__branch=branch, month__year=year, month__month=month, is_paid=True).aggregate(total=Sum('amount'))['total'] or 0
-        income_extra = FinanceTransaction.objects.filter(branch=branch, date__year=year, date__month=month, transaction_type='income', category='student_extra').aggregate(total=Sum('amount'))['total'] or 0
+        # 1. Kirimlar (FinanceTransaction orqali, Dashboard bilan bir xil chiqishi uchun)
+        income_fees = FinanceTransaction.objects.filter(
+            branch=branch, date__year=year, date__month=month, transaction_type='income', category='student_fee'
+        ).aggregate(total=Sum('amount'))['total'] or 0
+        income_extra = FinanceTransaction.objects.filter(
+            branch=branch, date__year=year, date__month=month, transaction_type='income', category='student_extra'
+        ).aggregate(total=Sum('amount'))['total'] or 0
         
+        total_income = income_fees + income_extra
+
         # 2. Chiqimlar
         expense_salary = EmployeePayment.objects.filter(employee__branch=branch, month__year=year, month__month=month, is_paid=True).aggregate(total=Sum(F('salary_base') + F('bonus') - F('deductions')))['total'] or 0
-        expense_refund = FinanceTransaction.objects.filter(branch=branch, date__year=year, date__month=month, transaction_type='expense', category='refund').aggregate(total=Sum('amount'))['total'] or 0
+        # Davomat refundi — Payment.refund_amount (to'lovdan chegirma, kassa chiqimi emas)
+        attendance_refund = aggregate_attendance_refunds(year, month, branch=branch)
+        # Haqiqiy kassadan qaytarilgan pul (agar yozilgan bo'lsa)
+        cash_refund = FinanceTransaction.objects.filter(
+            branch=branch, date__year=year, date__month=month,
+            transaction_type='expense', category='refund'
+        ).aggregate(total=Sum('amount'))['total'] or 0
         expense_utility = FinanceTransaction.objects.filter(branch=branch, date__year=year, date__month=month, transaction_type='expense', category='utility').aggregate(total=Sum('amount'))['total'] or 0
         expense_other = FinanceTransaction.objects.filter(branch=branch, date__year=year, date__month=month, transaction_type='expense').exclude(category__in=['salary', 'refund', 'utility']).aggregate(total=Sum('amount'))['total'] or 0
         
         # 3. Admin Harajatlari
         expense_admin = AdminExpense.objects.filter(branch=branch, date__year=year, date__month=month).aggregate(total=Sum('amount'))['total'] or 0
         
-        # 4. Qarzdorlik
+        # 4. Qarzdorlik (Payment modelidan)
         debt = Payment.objects.filter(group__branch=branch, month__year=year, month__month=month, is_paid=False).aggregate(total=Sum('amount'))['total'] or 0
         
-        net_profit = (income_fees + income_extra) - (expense_salary + expense_admin + expense_refund + expense_utility + expense_other)
+        # income_fees allaqachon refunddan keyingi sof summa (kassaga tushgan summa)
+        net_profit = total_income - (expense_salary + expense_admin + cash_refund + expense_utility + expense_other)
         
         ws3.append([
-            branch.name, 
-            income_fees, 
-            income_extra, 
-            expense_salary, 
+            branch.name,
+            income_fees,
+            attendance_refund,
+            income_extra,
+            total_income,
+            expense_salary,
             expense_admin,
-            expense_refund, 
+            cash_refund,
             expense_utility,
-            expense_other, 
-            net_profit, 
+            expense_other,
+            net_profit,
             debt
         ])
         
         grand_income_fees += income_fees
         grand_income_extra += income_extra
+        grand_total_income += total_income
         grand_expense_salary += expense_salary
         grand_expense_admin += expense_admin
-        grand_expense_refund += expense_refund
+        grand_attendance_refund += attendance_refund
+        grand_cash_refund += cash_refund
         grand_expense_utility += expense_utility
         grand_expense_other += expense_other
         grand_debt += debt
 
     # Jami qatori
-    total_net = (grand_income_fees + grand_income_extra) - (grand_expense_salary + grand_expense_admin + grand_expense_refund + grand_expense_utility + grand_expense_other)
+    total_net = (
+        grand_total_income
+        - (grand_expense_salary + grand_expense_admin + grand_cash_refund + grand_expense_utility + grand_expense_other)
+    )
     total_row = [
-        "UMUMIY JAMI", 
-        grand_income_fees, 
-        grand_income_extra, 
-        grand_expense_salary, 
+        "UMUMIY JAMI",
+        grand_income_fees,
+        grand_attendance_refund,
+        grand_income_extra,
+        grand_total_income,
+        grand_expense_salary,
         grand_expense_admin,
-        grand_expense_refund, 
+        grand_cash_refund,
         grand_expense_utility,
-        grand_expense_other, 
-        total_net, 
+        grand_expense_other,
+        total_net,
         grand_debt
     ]
     ws3.append(total_row)
