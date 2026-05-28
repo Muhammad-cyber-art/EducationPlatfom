@@ -8,25 +8,8 @@ import { jwtDecode } from"jwt-decode";
  * - REFRESH_ENDPOINT backenddagi refresh endpointga moslashtiring
  */
 // Dinamik BASE_URL sozlash
-const getBaseUrl = () => {
- const { hostname, origin } = window.location;
- const envApiUrl = (import.meta?.env?.VITE_API_URL || "").trim();
- if (envApiUrl) {
- return envApiUrl.endsWith("/") ? envApiUrl : `${envApiUrl}/`;
- }
-
- // Agarda production domainda bo'lsak (yaxshi-niyat.uz bilan tugasa yoki localhost bo'lmasa)
- if (hostname !=="localhost" && hostname !=="127.0.0.1") {
- // Default: shu domenning /api/ yo'liga so'rov yuboramiz
- return `${origin}/api/`;
- }
-
-  // Development (Localhost)
-  return "http://localhost:8000/api/";
-};
-
-const BASE_URL = getBaseUrl();
-const REFRESH_ENDPOINT ="refresh/"; // Relative URL ishlatiladi
+const BASE_URL = "https://yaxshi-niyat.uz/api/";
+const REFRESH_ENDPOINT = "refresh/";
 
 // Asosiy api client (barcha so'rovlar shu orqali ketadi)
 const api = axios.create({
