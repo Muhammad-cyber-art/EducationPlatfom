@@ -333,12 +333,8 @@ class StaffProfileViewSet(viewsets.ModelViewSet):
     search_fields = ['user__first_name', 'user__last_name', 'user__username']
 
     def get_queryset(self):
-        user = self.request.user
-        if user.role == 'admin':
-            return self.queryset.filter(user__branch=user.branch)
-        elif user.role == 'super_admin':
-            return self.queryset
-        return self.queryset.filter(user=user)
+        # Moliya bo'limiga faqat super_admin kira oladi, shuning uchun barcha filiallarni ko'radi
+        return self.queryset
 
     @action(detail=False, methods=['get', 'patch', 'delete'], url_path='by-user/(?P<user_id>[^/.]+)')
     def by_user(self, request, user_id=None):
@@ -355,6 +351,15 @@ class StaffProfileViewSet(viewsets.ModelViewSet):
         if request.method == 'DELETE':
             profile.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def perform_create(self, serializer):
+        """Profile yaratishda xavfsizlikni tekshirish."""
+        user_to_assign = serializer.validated_data.get('user')
+        if self.request.user.role == 'admin':
+            if user_to_assign.branch != self.request.user.branch:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("Siz faqat o'z filialingiz xodimlari uchun profil yarata olasiz.")
+        serializer.save()
 
 class FinanceTransactionViewSet(viewsets.ModelViewSet):
     """Markaziy moliya daftari (Ledger)"""
@@ -373,6 +378,10 @@ class FinanceTransactionViewSet(viewsets.ModelViewSet):
     }
     search_fields = ['title', 'description', 'payer_name']
 
+    def get_queryset(self):
+        # Moliya bo'limiga faqat super_admin kira oladi, shuning uchun barcha filiallarni ko'radi
+        return self.queryset
+
     def perform_create(self, serializer):
         branch = serializer.validated_data.get('branch') or self.request.user.branch
         serializer.save(marked_by=self.request.user, branch=branch)
@@ -383,6 +392,10 @@ class EmployeeAdvanceViewSet(viewsets.ModelViewSet):
     serializer_class = EmployeeAdvanceSerializer
     permission_classes = [IsAuthenticated, HasModulePermission]
     module_name = 'finance'
+
+    def get_queryset(self):
+        # Moliya bo'limiga faqat super_admin kira oladi, shuning uchun barcha filiallarni ko'radi
+        return self.queryset
 
     def perform_create(self, serializer):
         # Avanslar alohida EmployeeAdvance jadvalida; yakuniy summa total_advances orqali ayiriladi
@@ -436,12 +449,7 @@ class BranchFinanceDetailView(APIView):
 
     def get(self, request, branch_id):
         try:
-            if request.user.role == 'admin':
-                allowed_branches = [request.user.branch_id] if request.user.branch_id else []
-                if hasattr(request.user, 'branch_accesses'):
-                    allowed_branches.extend(request.user.branch_accesses.values_list('branch_id', flat=True))
-                if int(branch_id) not in allowed_branches:
-                    return Response({"error": "Siz faqat o'z filialingiz statistikalarini ko'ra olasiz"}, status=403)
+            # Moliya bo'limiga faqat super_admin kira oladi, shuning uchun barcha filiallarni ko'radi
             month, year = _parse_month_year(request.query_params)
             data = get_branch_finance_stats(branch_id, month, year)
             return Response(data)

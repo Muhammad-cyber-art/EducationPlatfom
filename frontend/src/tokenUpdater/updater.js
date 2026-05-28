@@ -8,8 +8,21 @@ import { jwtDecode } from"jwt-decode";
  * - REFRESH_ENDPOINT backenddagi refresh endpointga moslashtiring
  */
 // Dinamik BASE_URL sozlash
-const BASE_URL = "https://yaxshi-niyat.uz/api/";
-const REFRESH_ENDPOINT = "refresh/";
+// Dinamik BASE_URL sozlash
+ const getBaseUrl = () => {
+   const { hostname } = window.location;
+   
+   // Agarda production domainda bo'lsak
+   if (hostname === "yaxshi-niyat.uz" || hostname === "www.yaxshi-niyat.uz") {
+     return "https://yaxshi-niyat.uz/api/";
+   }
+   
+   // Development (Localhost)
+   return "http://127.0.0.1:8000/api/";
+ };
+
+ const BASE_URL = getBaseUrl();
+ const REFRESH_ENDPOINT = "refresh/";
 
 // Asosiy api client (barcha so'rovlar shu orqali ketadi)
 const api = axios.create({

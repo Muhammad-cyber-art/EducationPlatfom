@@ -60,6 +60,10 @@ class HasModulePermission(permissions.BasePermission):
         # Ruxsatlarni tekshirish logikasi
         user_role = request.user.role
         
+        # 3. Moliya (finance) moduliga FAQAT super_admin kira oladi
+        if module_name == 'finance':
+            return user_role == 'super_admin'
+
         # Modul bo'yicha ruxsat bormi?
         has_module_access = bool(perms.get(module_name))
 
