@@ -14,7 +14,7 @@ const StaffPaymentModal = ({ isOpen, onClose, onConfirm, info, amount, expectedA
  }, [isOpen]);
 
  const baseAmount = useMemo(() => {
- if (incomeType ==='percentage' && useExpected) return Number(expectedAmount || 0);
+ if ((incomeType ==='percentage' || incomeType === 'student_count') && useExpected) return Number(expectedAmount || 0);
  return Number(amount || 0);
  }, [incomeType, useExpected, expectedAmount, amount]);
 
@@ -75,11 +75,11 @@ const StaffPaymentModal = ({ isOpen, onClose, onConfirm, info, amount, expectedA
 
  {/* Maoshni Tahrirlash (Bonus/Ayirma) */}
  <div className="space-y-4 mb-8">
- {incomeType ==='percentage' && Number(expectedAmount || 0) > 0 && (
+ {(incomeType ==='percentage' || incomeType === 'student_count') && Number(expectedAmount || 0) > 0 && (
  <div className="p-3 rounded-xl bg-[var(--bg-void)] border border-indigo-500/20">
  <label className="flex items-center justify-between gap-3 cursor-pointer">
  <div>
- <p className="text-[9px] font-black text-indigo-300 tracking-widest uppercase">Foiz bazasi</p>
+ <p className="text-[9px] font-black text-indigo-300 tracking-widest uppercase">To'lov bazasi</p>
  <p className="text-[8px] text-slate-400 mt-1">
  {useExpected ? "Kutilayotgan tushumdan hisoblanadi" : "Haqiqiy tushumdan hisoblanadi"}
  </p>

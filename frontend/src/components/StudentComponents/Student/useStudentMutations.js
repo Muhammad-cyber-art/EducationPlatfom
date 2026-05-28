@@ -89,7 +89,7 @@ export const useStudentMutations = (student_id, dispatch, navigate) => {
  navigate(-1);
  }
  }
- });
+ }); 
 
  const archiveMutation = useMutation({
  mutationFn: async (reason) => await api.delete(`groups/students/${student_id}/`, { data: { reason } }),

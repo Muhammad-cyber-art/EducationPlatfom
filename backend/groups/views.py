@@ -415,6 +415,23 @@ class StudentViewSet(viewsets.ModelViewSet):
             ).distinct()
             
         if user.role == 'mentor':
+            # Check if mentor has 'students' permission
+            try:
+                perms = user.staff_permissions.permissions or {}
+                has_students_perm = bool(perms.get('students', False))
+            except:
+                has_students_perm = False
+                
+            if has_students_perm:
+                allowed_branches = [user.branch.id] if user.branch else []
+                if hasattr(user, 'branch_accesses'):
+                    allowed_branches.extend(user.branch_accesses.values_list('branch_id', flat=True))
+                
+                return qs.filter(
+                    Q(branch_id__in=allowed_branches) | 
+                    Q(groups__branch_id__in=allowed_branches)
+                ).distinct()
+
             return qs.filter(
                 Q(group__mentor=user) | 
                 Q(groups__mentor=user) | 
@@ -581,14 +598,36 @@ class StudentNestedView(viewsets.ReadOnlyModelViewSet):
             return qs
             
         if user.role == 'mentor':
-            qs = qs.filter(
+            # Check if mentor has 'students' permission
+            try:
+                perms = user.staff_permissions.permissions or {}
+                has_students_perm = bool(perms.get('students', False))
+            except:
+                has_students_perm = False
+                
+            if has_students_perm:
+                allowed_branches = [user.branch_id] if user.branch_id else []
+                if hasattr(user, 'branch_accesses'):
+                    allowed_branches.extend(user.branch_accesses.values_list('branch_id', flat=True))
+                
+                mentor_qs = qs.filter(
+                    Q(branch_id__in=allowed_branches) | 
+                    Q(groups__branch_id__in=allowed_branches)
+                ).distinct()
+                
+                if branch_id:
+                    mentor_qs = mentor_qs.filter(branch_id=branch_id)
+                return mentor_qs
+
+            # Faqat o'ziga tegishli o'quvchilarni qaytaradi
+            mentor_qs = qs.filter(
                 Q(group__mentor=user) | 
                 Q(groups__mentor=user) |
                 Q(groups__additional_mentors__mentor=user)
             ).distinct()
             if branch_id:
-                qs = qs.filter(branch_id=branch_id)
-            return qs
+                mentor_qs = mentor_qs.filter(branch_id=branch_id)
+            return mentor_qs
             
         return Student.objects.none()
 

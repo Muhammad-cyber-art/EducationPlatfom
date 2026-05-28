@@ -30,11 +30,22 @@ class IsGroupOwnerOrSuperAdmin(permissions.BasePermission):
             return user.branch_accesses.filter(branch=obj.branch).exists()
 
         if user.role == 'mentor':
-            if request.method in permissions.SAFE_METHODS:
-                return (
-                    obj.mentor == user or
-                    obj.additional_mentors.filter(mentor=user).exists()
-                )
+            is_owner = (
+                obj.mentor == user or
+                obj.additional_mentors.filter(mentor=user).exists()
+            )
+            
+            if is_owner:
+                # Mentor o'z guruhini ko'ra oladi va undagi amallarni bajara oladi (davomat, enrollment, unenrollment)
+                if request.method in permissions.SAFE_METHODS or request.method == 'POST':
+                    return True
+                
+                # Guruhni o'zi tahrirlash (PUT/PATCH) yoki o'chirish (DELETE) uchun 'groups' ruxsati kerak bo'lishi mumkin
+                try:
+                    perms = user.staff_permissions.permissions or {}
+                    return bool(perms.get('groups', False))
+                except:
+                    return False
         
         return False
 
@@ -63,9 +74,20 @@ class IsStudentGroupOwnerOrSuperAdmin(permissions.BasePermission):
         if request.method in permissions.SAFE_METHODS:
             return True
             
-        # Yozish amallari (POST, PUT, PATCH, DELETE) uchun 'students' ruxsati kerak
+        # Yozish amallari (POST, PUT, PATCH, DELETE) uchun tekshiramiz
         if user.role == 'mentor':
-            return perms.get('students', False)
+            has_students_perm = bool(perms.get('students', False))
+            if request.method == 'POST':
+                # Yangi student yaratish uchun ruxsat kerak
+                return has_students_perm
+            # PUT, PATCH, DELETE uchun has_permission dan o'tkazamiz,
+            # has_object_permission orqali o'zining studentlarini boshqarishi tekshiriladi
+            return True
+            
+        if user.role == 'admin':
+            # Adminlarga o'chirish (DELETE) uchun ruxsat yo'q, agar u super_admin bo'lmasa yoki maxsus ruxsati bo'lmasa
+            # Lekin bizda adminlar o'z filialidagi studentlarni o'chira olishi kerak bo'lsa:
+            return True
             
         return True
 
@@ -83,15 +105,31 @@ class IsStudentGroupOwnerOrSuperAdmin(permissions.BasePermission):
 
         # 1. Studentning o'z filiali ruxsat berilganlar ichidami?
         student_main_branch = obj.branch_id
-        if student_main_branch in allowed_branches:
-            return True
-
-        # 2. Student qatnashayotgan guruhlardan birortasi Admin filialidami?
-        # Bu 'Cross-branch' (filiallararo) o'quvchilar uchun juda muhim
-        if user.role == 'admin':
-            return obj.groups.filter(branch_id__in=allowed_branches).exists()
-
+        
+        # Super admin, admin, yoki 'students' ruxsatiga ega mentor uchun filialni tekshiramiz
+        try:
+            perms = user.staff_permissions.permissions or {}
+        except:
+            perms = {}
+            
+        has_students_perm = False
         if user.role == 'mentor':
+            has_students_perm = bool(perms.get('students', False))
+            
+        if user.role in ['super_admin', 'admin'] or (user.role == 'mentor' and has_students_perm):
+            if student_main_branch in allowed_branches:
+                return True
+                
+            # 2. Student qatnashayotgan guruhlardan birortasi Admin/Ruxsatli Mentor filialidami?
+            if obj.groups.filter(branch_id__in=allowed_branches).exists():
+                return True
+
+        # Mentor o'zining ruxsati bo'lmagan holda, faqat o'z guruhidagi o'quvchilarni tahrirlay oladi
+        if user.role == 'mentor':
+            # Mentor o'z o'quvchisini o'chira olishi uchun (agar unga students ruxsati berilgan bo'lsa)
+            if request.method == 'DELETE' and not has_students_perm:
+                return False
+
             # Mentor uchun:
             # 1) Yangi M2M (student.groups) orqali biriktirilgan guruhlar
             in_m2m_groups = obj.groups.filter(

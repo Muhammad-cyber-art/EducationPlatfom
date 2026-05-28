@@ -113,7 +113,7 @@ const StaffPaymentDetails = () => {
  const historyItemExpectedAmount = useMemo(() => {
  if (!selectedHistoryItem || typeof selectedHistoryItem !== 'object') return 0;
  const item = selectedHistoryItem;
- if (item.salary_type !== 'percentage') return 0;
+ if (item.salary_type !== 'percentage' && item.salary_type !== 'student_count') return 0;
  return Number(item.calculated_commission_expected || item.calculated_commission || 0);
  }, [selectedHistoryItem]);
 

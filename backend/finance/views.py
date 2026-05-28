@@ -317,16 +317,16 @@ class EmployeePaymentViewSet(viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=400)
 
 class StaffProfileViewSet(viewsets.ModelViewSet):
-    """Xodimlar profili va maosh sozlamalari.
+    """Xodimlar profili va maosh sozlamalari. 
 
-    Lookup: pk bo'yicha ham, user_id bo'yicha ham ishlaydi.
-    Frontend `employee_id` (User.pk) yuborsa, by-user/ action'dan foydalansin yoki
-    standart pk orqali ishlaydi — serializer `current_payment_id` qaytaradi.
+    Lookup: user_id bo'yicha ishlaydi (frontend employee_id yuboradi).
+    Serializer `id` maydoni ham user.id ni qaytaradi.
     """
     queryset = StaffProfile.objects.select_related('user').all()
     serializer_class = StaffProfileSerializer
     permission_classes = [IsAuthenticated, HasModulePermission]
     module_name = 'finance'
+    lookup_field = 'user_id'
 
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['user__role', 'user__branch']
@@ -339,18 +339,6 @@ class StaffProfileViewSet(viewsets.ModelViewSet):
         elif user.role == 'super_admin':
             return self.queryset
         return self.queryset.filter(user=user)
-
-    def get_object(self):
-        """pk bo'yicha topilmasa user_id deb izlaydi (frontend employee_id yuboradi)."""
-        queryset = self.get_queryset()
-        pk = self.kwargs.get(self.lookup_field)
-        # Avval StaffProfile.pk bo'yicha
-        obj = queryset.filter(pk=pk).first()
-        if obj is None:
-            # User.pk bo'yicha fallback
-            obj = get_object_or_404(queryset, user_id=pk)
-        self.check_object_permissions(self.request, obj)
-        return obj
 
     @action(detail=False, methods=['get', 'patch', 'delete'], url_path='by-user/(?P<user_id>[^/.]+)')
     def by_user(self, request, user_id=None):

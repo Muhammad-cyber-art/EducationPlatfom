@@ -83,6 +83,7 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
     employee_last_name = serializers.ReadOnlyField(source='employee.last_name')
     employee_role = serializers.ReadOnlyField(source='employee.role')
     employee_id = serializers.ReadOnlyField(source='employee.id')
+    staff_profile_id = serializers.ReadOnlyField(source='employee.staff_profile.id')
     employee_branch = serializers.SerializerMethodField()
     karta = serializers.SerializerMethodField()
     salary_type = serializers.SerializerMethodField()
@@ -105,7 +106,7 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = EmployeePayment
         fields = [
-            'id', 'employee_id', 'employee_first_name', 'employee_last_name',
+            'id', 'employee_id', 'staff_profile_id', 'employee_first_name', 'employee_last_name',
             'employee_role', 'employee_branch', 'month', 'salary_base',
             'bonus', 'deductions', 'total_amount', 'karta',
             'salary_type', 'fixed_salary', 'commission_percentage',
@@ -182,9 +183,9 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             if not obj.month or not hasattr(obj.employee, 'staff_profile'):
                 return None
             profile = obj.employee.staff_profile
-            if profile.salary_type != 'percentage':
+            if profile.salary_type not in ['percentage', 'student_count']:
                 return None
-            sal = profile.calculate_salary_for_month(obj.month)
+            sal = profile.calculate_salary_for_month(obj.month, commission_basis='paid')
             return int(floor_amount(sal))
         except:
             return None
@@ -206,7 +207,7 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             if not obj.month or not hasattr(obj.employee, 'staff_profile'):
                 return None
             profile = obj.employee.staff_profile
-            if profile.salary_type != 'percentage':
+            if profile.salary_type not in ['percentage', 'student_count']:
                 return None
             sal = profile.calculate_salary_for_month(obj.month, commission_basis='expected')
             return int(floor_amount(sal))
@@ -470,6 +471,9 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
         return result
 
 class StaffProfileSerializer(serializers.ModelSerializer):
+    id = serializers.ReadOnlyField(source='user.id')
+    employee_id = serializers.ReadOnlyField(source='user.id')
+    profile_id = serializers.ReadOnlyField(source='id')
     full_name = serializers.CharField(source='user.get_full_name', read_only=True)
     username = serializers.CharField(source='user.username', read_only=True)
     role = serializers.CharField(source='user.role', read_only=True)
@@ -480,9 +484,10 @@ class StaffProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = StaffProfile
         fields = [
-            'id', 'user', 'full_name', 'username', 'role', 'branch_name',
+            'id', 'employee_id', 'profile_id', 'user', 'full_name', 'username', 'role', 'branch_name',
             'salary_type', 'fixed_salary', 'commission_percentage',
-            'per_student_amount', 'salary_display', 'karta', 'current_payment_id'
+            'per_student_amount', 'salary_display', 'karta', 
+            'current_payment_id'
         ]
 
     def get_current_payment_id(self, obj) -> int:

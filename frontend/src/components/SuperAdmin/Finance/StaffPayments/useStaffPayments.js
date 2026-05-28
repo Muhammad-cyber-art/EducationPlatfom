@@ -78,31 +78,32 @@ export const useStaffPayments = (staff_id) => {
  };
 
  const handleUpdate = async (editForm) => {
- if (!financeState.data?.employee_id) return;
- try {
- dispatch(setEditLoading(true));
- await api.patch(`/finance/staff-profiles/${financeState.data.employee_id}/`, editForm);
- dispatch(setEditModal(false));
- toast.success("Profil yangilandi");
- await fetchAllData();
- } catch (error) {
- toast.error("Tahrirlashda xatolik");
- } finally {
- dispatch(setEditLoading(false));
- }
- };
+    if (!financeState.data?.employee_id) return;
+    try {
+      dispatch(setEditLoading(true));
+      await api.patch(`/finance/staff-profiles/by-user/${financeState.data.employee_id}/`, editForm);
+      
+      dispatch(setEditModal(false));
+      toast.success("Profil yangilandi");
+      await fetchAllData();
+    } catch (error) {
+      toast.error("Tahrirlashda xatolik");
+    } finally {
+      dispatch(setEditLoading(false));
+    }
+  };
 
- const handleDelete = async () => {
- if (!financeState.data?.employee_id) return;
- if (!window.confirm("DIQQAT! Ushbu xodimning barcha moliyaviy ma'lumotlarini o'chirib tashlamoqchimisiz?")) return;
- try {
- await api.delete(`/finance/staff-profiles/${financeState.data.employee_id}/`);
- toast.success(`Xodim profili o'chirildi!`);
- navigate(-1);
- } catch (err) {
- toast.error("Profilni o'chirishda xatolik yuz berdi");
- }
- };
+  const handleDelete = async () => {
+    if (!financeState.data?.employee_id) return;
+    if (!window.confirm("DIQQAT! Ushbu xodimning barcha moliyaviy ma'lumotlarini o'chirib tashlamoqchimisiz?")) return;
+    try {
+      await api.delete(`/finance/staff-profiles/by-user/${financeState.data.employee_id}/`);
+      toast.success(`Xodim profili o'chirildi!`);
+      navigate(-1);
+    } catch (err) {
+      toast.error("Profilni o'chirishda xatolik yuz berdi");
+    }
+  };
 
  const handleDeleteHistory = async (historyId) => {
  if (!window.confirm("Maosh tarixini o'chirmoqchimisiz?")) return;
