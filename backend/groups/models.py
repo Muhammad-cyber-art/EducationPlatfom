@@ -65,7 +65,7 @@ class Group(models.Model):
         max_length=10, 
         choices=DAYS_TYPES, 
         default='odd',
-        verbose_name="Dars kunlari turi",blank=True,null=True)
+        verbose_name="Dars kunlari turi")
 
     dars_vaqti = models.CharField(max_length=20, blank=True, null=True)
     description = models.TextField(blank=True)
@@ -86,11 +86,22 @@ class Group(models.Model):
         ).values_list('date', flat=True))
         
         dates.extend(special_dates)
+        
+        # Bekor qilingan kunlarni olib tashlash
+        canceled_dates = list(self.canceled_lesson_days.filter(
+            date__year=year,
+            date__month=month
+        ).values_list('date', flat=True))
+        dates = [d for d in dates if d not in canceled_dates]
+        
         # Unikal va tartiblangan holatda qaytaramiz (set() orqali dublikatlarni olib tashlaymiz)
         return sorted(list(set(dates)))
 
     def is_lesson_day(self, date_obj):
         from .utils import is_lesson_day as is_scheduled_lesson_day
+        # Agar bekor qilingan bo'lsa
+        if self.canceled_lesson_days.filter(date=date_obj).exists():
+            return False
         # Agar maxsus dars kuni sifatida qo'shilgan bo'lsa
         if self.special_lesson_days.filter(date=date_obj).exists():
             return True
@@ -289,7 +300,7 @@ class Student(models.Model):
 
         # O'quvchining haqiqiy oylik narxi (custom_fee yoki guruh narxi)
         base_price = target_group.monthly_price
-        if self.status in ['low_income', 'negotiated']:
+        if self.status in ['low_income', 'negotiated', 'discount']:
             if self.custom_fee is not None:
                 base_price = self.custom_fee
 
@@ -339,6 +350,9 @@ class Student(models.Model):
 
         lesson_dates = target_group.get_lesson_dates(year, month)
         base_price = target_group.monthly_price
+        if self.status in ['low_income', 'negotiated', 'discount']:
+            if self.custom_fee is not None:
+                base_price = self.custom_fee
         lessons_count = len(lesson_dates)
         if lessons_count <= 0:
             return 0
@@ -470,4 +484,22 @@ class SpecialLessonDay(models.Model):
 
     def __str__(self):
         return f"{self.group.name} | {self.date}"
+
+
+class CanceledLessonDay(models.Model):
+    """Guruh uchun bekor qilingan dars kuni (regular yoki special)"""
+    group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name='canceled_lesson_days')
+    date = models.DateField()
+    reason = models.TextField(blank=True, verbose_name="Bekor qilish sababi")
+    canceled_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('group', 'date')
+        ordering = ['-date']
+        verbose_name = "Bekor qilingan dars kuni"
+        verbose_name_plural = "Bekor qilingan dars kunlari"
+
+    def __str__(self):
+        return f"{self.group.name} | {self.date} (bekor qilindi)"
 

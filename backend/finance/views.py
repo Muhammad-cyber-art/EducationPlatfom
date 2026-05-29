@@ -211,6 +211,17 @@ class EmployeePaymentViewSet(viewsets.ModelViewSet):
             return qs.filter(employee=user)
         return qs
 
+    @action(detail=False, methods=['get'], url_path='current')
+    def current(self, request):
+        """Get the current month's employee payment for the logged-in user."""
+        today = timezone.localdate()
+        current_month = today.replace(day=1)
+        qs = self.get_queryset().filter(month=current_month)
+        payment = qs.first()
+        if payment:
+            return Response(EmployeePaymentSerializer(payment).data)
+        return Response({"detail": "Current month payment not found."}, status=status.HTTP_404_NOT_FOUND)
+
     @action(detail=True, methods=['post'], url_path='confirm')
     def confirm(self, request, pk=None):
         payment = self.get_object()

@@ -83,6 +83,10 @@ export const FinancialIntelligence = ({ finance, formatNumber, progressPercentag
  <p className="text-[7px] font-bold text-rose-400/60 mt-0.5">{finance.refund_share_percent}% ulush</p>
  )}
  </div>
+ <div className="p-2 bg-amber-500/10 rounded-lg border border-amber-500/20">
+ <p className="text-[7px] font-bold text-amber-400 capitalize tracking-widest mb-1">Umumiy Refundlar</p>
+ <p className="text-xs font-bold text-amber-400 tabular-nums">-{formatNumber(finance.total_payment_refunds ?? 0)}</p>
+ </div>
  <div className="p-2 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
  <p className="text-[7px] font-bold text-emerald-400 capitalize tracking-widest mb-1">Brutto (refundsiz)</p>
  <p className="text-xs font-bold text-emerald-400 tabular-nums">
@@ -129,12 +133,15 @@ export const UnitBreakdown = ({ groups, formatNumber }) => (
  <div className="flex items-center gap-2 mt-0.5"><UserCircle size={10} className="text-[var(--text-muted)] opacity-50" /><p className="text-[8px] font-bold text-[var(--text-muted)] capitalize truncate">Mentor: {group.mentor}</p></div>
  </div>
  </div>
- <div className="grid grid-cols-2 md:grid-cols-5 gap-4 flex-1 w-full">
+ <div className="grid grid-cols-2 md:grid-cols-6 gap-4 flex-1 w-full">
  <UnitMetric label="A'zolar" value={group.student_count} icon={<Users size={10} />} />
  <UnitMetric label="Narx" value={formatNumber(group.monthly_price)} icon={<DollarSign size={10} />} />
  <UnitMetric label="Kunlik" value={`${formatNumber(group.daily_price)}`} icon={<Activity size={10} />} color="text-blue-400" />
  <UnitMetric label="Reja" value={formatNumber(group.expected_income)} icon={<Target size={10} />} gold />
  <UnitMetric label="Tushum" value={formatNumber(group.received_income)} icon={<CheckCircle size={10} />} emerald />
+ {(group.refund_amount > 0 && (
+ <UnitMetric label="Refund" value={`-${formatNumber(group.refund_amount)}`} icon={<DollarSign size={10} />} color="text-rose-400" />
+ ))}
  <div className="flex flex-col justify-center">
  <div className={`px-2 py-1 rounded-md text-center text-[9px] font-bold tabular-nums border ${groupProgress >= 80 ?'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : groupProgress >= 50 ?'bg-amber-500/10 text-amber-400 border-amber-500/20' :'bg-rose-500/10 text-rose-400 border-rose-500/20'}`}>{groupProgress}% Ef.</div>
  </div>

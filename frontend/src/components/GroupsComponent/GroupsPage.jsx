@@ -88,13 +88,15 @@ export default function GroupsListPage() {
     return groupsArr.filter((group) => {
       // 1. Kunlar bo'yicha qat'iy filter
       if (activeTab !== "all") {
-        if (group.days !== activeTab) return false;
+        // If group has no days, treat as "odd" (default)
+        const groupDays = group.days || "odd";
+        if (groupDays !== activeTab) return false;
       }
 
       // 2. Qidiruv bo'yicha qo'shimcha (kuchaytirilgan) filter
       if (search) {
         const name = (group.name || "").toLowerCase();
-        const subject = (group.subject_name || group.subject || "").toLowerCase();
+        const subject = (group.subject || "").toLowerCase();
         const mentor = (group.mentor?.full_name || group.mentor?.username || "").toLowerCase();
         
         // Agar qidiruv so'zi birorta ham muhim maydonda topilmasa - o'chirib tashlaymiz

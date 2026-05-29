@@ -217,9 +217,10 @@ export default function StudentProfilePage() {
                         />
 
                         <StudentHistorySection
-                            {...{ payments, extraTransactions, transfers, userRole, handlePaymentConfirm, handleDeleteHistory, dispatch }}
-                            canConfirmPayment={permissions.canConfirmPayment}
-                        />
+                {...{ payments, extraTransactions, transfers, userRole, handlePaymentConfirm, handleDeleteHistory, dispatch }}
+                canConfirmPayment={permissions.canConfirmPayment}
+                studentStatus={studentData?.status}
+            />
                     </div>
                 </div>
             )}

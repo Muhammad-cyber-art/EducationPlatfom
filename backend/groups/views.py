@@ -30,7 +30,8 @@ from .permissions import (
 from .services import (
     enroll_student_to_group, unenroll_student_from_group,
     transfer_student_to_group, merge_student_profiles,
-    assign_waiting_student_to_group
+    assign_waiting_student_to_group,
+    cancel_lesson_day, reactivate_lesson_day
 )
 
 logger = logging.getLogger(__name__)
@@ -53,6 +54,7 @@ class GroupViewSet(viewsets.ModelViewSet):
     module_name = 'groups'
 
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['days', 'group_type', 'is_faol', 'branch']
     search_fields = [
         'name', 
         'subject', 
@@ -296,6 +298,53 @@ class GroupViewSet(viewsets.ModelViewSet):
         
         # Eng yangi sanalar birinchi chiqishi uchun teskari tartibda qaytaramiz
         return Response([d.strftime('%Y-%m-%d') for d in sorted(final_dates, reverse=True)])
+
+    @action(detail=True, methods=['post'], url_path='cancel-lesson')
+    def cancel_lesson(self, request, pk=None):
+        """Guruh uchun dars kuni bekor qilish"""
+        import logging
+        logger = logging.getLogger(__name__)
+        group = self.get_object()
+        date_str = request.data.get('date')
+        reason = request.data.get('reason', "")
+        
+        try:
+            from datetime import datetime
+            date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            
+            canceled, created = cancel_lesson_day(group, date, request.user, reason)
+            
+            if created:
+                return Response({"status": "Dars kuni bekor qilindi"}, status=201)
+            else:
+                return Response({"status": "Dars kuni allaqachon bekor qilingan, sabab yangilandi"}, status=200)
+                
+        except Exception as e:
+            logger.exception("Cancel lesson error")
+            return Response({"error": str(e)}, status=400)
+
+    @action(detail=True, methods=['post'], url_path='reactivate-lesson')
+    def reactivate_lesson(self, request, pk=None):
+        """Guruh uchun bekor qilingan dars kunini qayta faollashtirish"""
+        import logging
+        logger = logging.getLogger(__name__)
+        group = self.get_object()
+        date_str = request.data.get('date')
+        
+        try:
+            from datetime import datetime
+            date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            
+            success = reactivate_lesson_day(group, date, request.user)
+            
+            if success:
+                return Response({"status": "Dars kuni qayta faollashtirildi"}, status=200)
+            else:
+                return Response({"detail": "Ushbu sana uchun bekor qilingan dars yo'q"}, status=404)
+                
+        except Exception as e:
+            logger.exception("Reactivate lesson error")
+            return Response({"error": str(e)}, status=400)
 
 
 

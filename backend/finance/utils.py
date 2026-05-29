@@ -4,6 +4,7 @@ from decimal import Decimal
 import math
 
 from django.db.models import Sum, Q
+from django.utils import timezone
 
 def normalize_month(value: date) -> date:
     """
@@ -37,6 +38,40 @@ def floor_amount(value) -> Decimal:
         return Decimal(str(floored))
     except (TypeError, ValueError):
         return Decimal('0')
+
+def calculate_discount_student_payment(student, group, month_date):
+    """
+    Imtiyozli (discount status) student uchun to'lov summasini hisoblash:
+    (Oylik narx / 10) * (Kelgan darslar soni)
+    """
+    from homework_attends.models import Attendance
+
+    # Asosiy narxni aniqlash
+    base_price = group.monthly_price
+    if student.status in ['low_income', 'negotiated', 'discount']:
+        if student.custom_fee is not None:
+            base_price = student.custom_fee
+
+    # 10 darslik baza
+    base_lessons_count = Decimal('10')
+    daily_price = Decimal(str(base_price)) / base_lessons_count
+
+    # Bekor qilingan kunlarni olish
+    canceled_dates = list(group.canceled_lesson_days.values_list('date', flat=True))
+    
+    # Kelgan darslar sonini hisoblash (bugungi kungacha, bekor qilingan kunlarni hisoblamaymiz)
+    today = timezone.localdate()
+    present_count = Attendance.objects.filter(
+        student=student,
+        group=group,
+        date__year=month_date.year,
+        date__month=month_date.month,
+        date__lte=today,
+        is_present=True
+    ).exclude(date__in=canceled_dates).count()
+
+    total_amount = daily_price * Decimal(str(present_count))
+    return floor_amount(total_amount)
 
 
 def attendance_refund_queryset(year, month, branch=None, paid_only=False):

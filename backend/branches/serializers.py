@@ -30,11 +30,12 @@ class BranchSerializer(serializers.ModelSerializer):
         return User.objects.filter(branch=obj, role='admin', is_active=True).count()
     
     def get_students_count(self, obj) -> int:
-        from groups.models import Student
-        return Student.objects.filter(
+        from groups.models import GroupEnrollment
+        return GroupEnrollment.objects.filter(
+            is_active=True,
             group__branch=obj,
             group__is_faol=True
-        ).distinct().count()
+        ).values('student_id').distinct().count()
     
     def get_groups_count(self, obj) -> int:
         from groups.models import Group

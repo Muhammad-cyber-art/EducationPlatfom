@@ -10,19 +10,22 @@ import { jwtDecode } from"jwt-decode";
 // Dinamik BASE_URL sozlash
 // Dinamik BASE_URL sozlash
  const getBaseUrl = () => {
-   const { hostname } = window.location;
-   
-   // Agarda production domainda bo'lsak
-   if (hostname === "yaxshi-niyat.uz" || hostname === "www.yaxshi-niyat.uz") {
-     return "https://yaxshi-niyat.uz/api/";
-   }
-   
-   // Development (Localhost)
-   return "http://127.0.0.1:8000/api/";
- };
+  const hostname = window.location.hostname;
+  
+  // Production
+  if (hostname === "yaxshi-niyat.uz" || hostname === "www.yaxshi-niyat.uz") {
+    return "https://yaxshi-niyat.uz/api/";
+  }
+  
+  // Development - ALWAYS use HTTP, no SSL
+  return "http://127.0.0.1:8000/api/";
+};
 
  const BASE_URL = getBaseUrl();
- const REFRESH_ENDPOINT = "refresh/";
+const REFRESH_ENDPOINT = "refresh/";
+
+// Debug: log the base URL to make sure it's correct
+console.log("API Base URL:", BASE_URL);
 
 // Asosiy api client (barcha so'rovlar shu orqali ketadi)
 const api = axios.create({

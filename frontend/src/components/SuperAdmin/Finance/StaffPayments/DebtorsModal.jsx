@@ -25,6 +25,7 @@ const StudentRow = memo(({ student, isPaid, formatCurrency }) => {
     const remaining = (student.expected || 0) - (student.actual || 0);
     const hasRefund = student.refund_amount > 0;
     const refundIgnored = student.refund_ignored;
+    const isAttendanceBased = student.is_attendance_based;
     
     return (
         <div className="flex flex-col gap-2 p-3 bg-[var(--bg-void)]/40 hover:bg-[var(--bg-void)]/60 border border-[var(--border-glass)] rounded-xl transition-all duration-200 group">
@@ -36,8 +37,13 @@ const StudentRow = memo(({ student, isPaid, formatCurrency }) => {
                     </div>
                     <div className="min-w-0 flex-1">
                         <p className="text-[11px] font-black text-[var(--text-primary)] truncate uppercase tracking-tight">{student.name}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                             <FinancialStatusBadge status={student.financial_status} label={student.financial_status_label} />
+                            {isAttendanceBased && (
+                                <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-purple-500/10 text-purple-500">
+                                    <Clock size={8} /> Davomat asosida (avtomatik)
+                                </span>
+                            )}
                             {student.phone && (
                                 <span className="flex items-center gap-1 text-[9px] text-[var(--text-muted)] font-bold">
                                     <Phone size={8} /> {student.phone}
@@ -55,23 +61,42 @@ const StudentRow = memo(({ student, isPaid, formatCurrency }) => {
                 {/* Financial Details - Compact */}
                 <div className="hidden md:flex items-center gap-6 flex-shrink-0">
                     <div className="text-right">
-                        <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-0.5">Guruh Narxi</p>
-                        <p className="text-[10px] font-black text-[var(--text-secondary)] tabular-nums">{formatCurrency(student.expected + (refundIgnored ? 0 : (student.refund_amount || 0)))}</p>
+                        <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-0.5">
+                            {isAttendanceBased ? 'To\'langan (Davomat)' : 'Guruh Narxi'}
+                        </p>
+                        <p className="text-[10px] font-black text-[var(--text-secondary)] tabular-nums">
+                            {formatCurrency(isAttendanceBased ? student.expected : (student.expected + (refundIgnored ? 0 : (student.refund_amount || 0))))}
+                        </p>
                     </div>
-                    <div className="text-right">
-                        <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-0.5">To'langan</p>
-                        <p className="text-[10px] font-black text-emerald-500 tabular-nums">{formatCurrency(student.actual || 0)}</p>
-                    </div>
+                    {!isAttendanceBased && (
+                        <div className="text-right">
+                            <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-0.5">To'langan</p>
+                            <p className="text-[10px] font-black text-emerald-500 tabular-nums">{formatCurrency(student.actual || 0)}</p>
+                        </div>
+                    )}
                 </div>
 
                 {/* Final Amount & Action */}
                 <div className="flex-shrink-0 text-right min-w-[80px]">
-                    <p className={`text-[12px] font-black tabular-nums tracking-tighter ${remaining > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
-                        {remaining > 0 ? formatCurrency(remaining) : (isPaid ? 'OK' : formatCurrency(remaining))}
-                    </p>
-                    <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest opacity-60">
-                        {remaining > 0 ? 'Qolgan' : 'To\'langan'}
-                    </p>
+                    {isAttendanceBased ? (
+                        <>
+                            <p className="text-[12px] font-black tabular-nums tracking-tighter text-emerald-500">
+                                {formatCurrency(student.expected || 0)}
+                            </p>
+                            <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest opacity-60">
+                                Avtomatik to'langan
+                            </p>
+                        </>
+                    ) : (
+                        <>
+                            <p className={`text-[12px] font-black tabular-nums tracking-tighter ${remaining > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
+                                {remaining > 0 ? formatCurrency(remaining) : (isPaid ? 'OK' : formatCurrency(remaining))}
+                            </p>
+                            <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest opacity-60">
+                                {remaining > 0 ? 'Qolgan' : 'To\'langan'}
+                            </p>
+                        </>
+                    )}
                 </div>
             </div>
             

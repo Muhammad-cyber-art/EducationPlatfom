@@ -5,5 +5,5 @@ class FinanceConfig(AppConfig):
     name = 'finance'
 
     def ready(self):
-        # Celery tasks are automatically discovered, no need to start scheduler here
-        pass
+        # Signallarni ro'yxatdan o'tkazish
+        import finance.signals

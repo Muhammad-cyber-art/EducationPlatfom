@@ -60,9 +60,18 @@ class HasModulePermission(permissions.BasePermission):
         # Ruxsatlarni tekshirish logikasi
         user_role = request.user.role
         
-        # 3. Moliya (finance) moduliga FAQAT super_admin kira oladi
+        # 3. Moliya (finance) moduli uchun:
         if module_name == 'finance':
-            return user_role == 'super_admin'
+            if user_role == 'super_admin':
+                return True
+            
+            # Allow EmployeePaymentViewSet and StudentPaymentViewSet for admin/mentor
+            view_class_name = view.__class__.__name__
+            if view_class_name in ['EmployeePaymentViewSet', 'StudentPaymentViewSet']:
+                return True
+            
+            # Boshqa finance view'lari (dashboard, transactions, profiles) faqat super_admin uchun
+            return False
 
         # Modul bo'yicha ruxsat bormi?
         has_module_access = bool(perms.get(module_name))

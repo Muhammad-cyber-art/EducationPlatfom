@@ -5,12 +5,13 @@ from django.db import transaction
 from django.db.models import Sum, Q, F, Count
 from django.shortcuts import get_object_or_404
 from .models import Payment, EmployeePayment, StaffProfile, FinanceTransaction, EmployeeAdvance
-from groups.models import Group, Student, Branch
+from groups.models import Group, Student, Branch, GroupEnrollment
 from homework_attends.models import Attendance
 from django.contrib.auth import get_user_model
 from finance.utils import (
     normalize_month, floor_amount,
     aggregate_attendance_refunds, aggregate_attendance_refunds_by_branch,
+    calculate_discount_student_payment,
 )
 from decimal import Decimal
 import traceback
@@ -42,17 +43,58 @@ def _to_decimal(value):
 def _safe_attendance_stats_for_branch(branch, today):
     """Attendance query xato bersa ham finance statistikasi yiqilmasin."""
     try:
-        # NOTE:
-        # Attendance jadvalida unique_together = (student, group, date).
-        # Shuning uchun oddiy .count() bitta studentni bir kunda bir nechta guruhda bo'lsa ham ko'paytirib yuboradi.
-        # Dashboard uchun esa "Bugungi davomat" student kesimida (unique student) ko'rsatilishi kerak.
-        base_qs = Attendance.objects.filter(group__branch=branch, date=today)
-        present_ids = base_qs.filter(is_present=True).values('student_id').distinct()
-        total_students = base_qs.values('student_id').distinct()
+        from groups.utils import is_lesson_day
+
+        weekday = today.weekday()
+        if weekday == 6: # Yakshanba, hech kim darsga kelmaydi
+            return {"absent": 0, "total": 0}
+
+        # Guruhlarni bugun darslari borlarini qidiramiz, lekin bekor qilinganlarni chiqarib tashlaymiz
+        # Birinchi, special dars kunlari bor guruhlar, lekin bekor qilinmaganlar
+        groups_with_special_lesson = Group.objects.filter(
+            branch=branch,
+            special_lesson_days__date=today
+        ).exclude(canceled_lesson_days__date=today).values_list('id', flat=True)
+
+        # Keyin, kunlar turiga qarab darslari bor guruhlar (odd, even, everyday)
+        # va special dars kuni yo'qlar va bekor qilinmaganlar
+        groups_with_regular_lesson = []
+        if weekday in [0, 2, 4]: # Du-Chor-Ju (odd)
+            groups_with_regular_lesson = Group.objects.filter(
+                branch=branch,
+                days__in=['odd', 'everyday']
+            ).exclude(id__in=groups_with_special_lesson).exclude(canceled_lesson_days__date=today).values_list('id', flat=True)
+        elif weekday in [1, 3, 5]: # Se-Pay-Shan (even)
+            groups_with_regular_lesson = Group.objects.filter(
+                branch=branch,
+                days__in=['even', 'everyday']
+            ).exclude(id__in=groups_with_special_lesson).exclude(canceled_lesson_days__date=today).values_list('id', flat=True)
+
+        # Barcha bugun darslari bor guruhlar
+        lesson_group_ids = list(groups_with_special_lesson) + list(groups_with_regular_lesson)
+
+        # Endi faqat shu guruhlarda aktiv bo'lgan talabalarni olamiz
+        total_active_students_qs = Student.objects.filter(
+            enrollments__is_active=True,
+            enrollments__group__id__in=lesson_group_ids
+        ).distinct()
+
+        total_students_ids = set(total_active_students_qs.values_list('id', flat=True))
+
+        # Davomat qaydlarini olamiz
+        base_attendance_qs = Attendance.objects.filter(group__branch=branch, date=today)
+        present_ids = set(
+            base_attendance_qs.filter(is_present=True)
+            .values_list('student_id', flat=True)
+            .distinct()
+        )
+
+        present_count = len(total_students_ids & present_ids)
+        absent_count = len(total_students_ids) - present_count
+
         return {
-            # "absent" = bugun hech qayerda "keldi" bo'lmagan studentlar
-            "absent": total_students.exclude(student_id__in=present_ids).count(),
-            "total": total_students.count(),
+            "absent": absent_count,
+            "total": len(total_students_ids),
         }
     except Exception:
         logger.exception("Attendance branch statistikasi xatoligi: branch_id=%s", getattr(branch, "id", None))
@@ -62,13 +104,63 @@ def _safe_attendance_stats_for_branch(branch, today):
 def _safe_attendance_stats_for_user(user, today):
     """Dashboard attendance hisobida fallback."""
     try:
-        filters = {'group__branch': user.branch} if user.role == 'admin' else {}
-        base_qs = Attendance.objects.filter(date=today).filter(**filters)
-        present_ids = base_qs.filter(is_present=True).values('student_id').distinct()
-        total_students = base_qs.values('student_id').distinct()
+        from groups.utils import is_lesson_day
+
+        weekday = today.weekday()
+        if weekday == 6: # Yakshanba
+            return {"absent": 0, "total": 0}
+
+        # Foydalanuvchi roliga qarab guruhlarni olamiz
+        if user.role == 'admin':
+            branch_filter = {'branch': user.branch}
+        else:
+            branch_filter = {}
+
+        # Guruhlarni bugun darslari borlarini qidiramiz, bekor qilinganlarni chiqarib tashlaymiz
+        groups_with_special_lesson = Group.objects.filter(
+            **branch_filter,
+            special_lesson_days__date=today
+        ).exclude(canceled_lesson_days__date=today).values_list('id', flat=True)
+
+        groups_with_regular_lesson = []
+        if weekday in [0, 2, 4]: # Du-Chor-Ju (odd)
+            groups_with_regular_lesson = Group.objects.filter(
+                **branch_filter,
+                days__in=['odd', 'everyday']
+            ).exclude(id__in=groups_with_special_lesson).exclude(canceled_lesson_days__date=today).values_list('id', flat=True)
+        elif weekday in [1, 3, 5]: # Se-Pay-Shan (even)
+            groups_with_regular_lesson = Group.objects.filter(
+                **branch_filter,
+                days__in=['even', 'everyday']
+            ).exclude(id__in=groups_with_special_lesson).exclude(canceled_lesson_days__date=today).values_list('id', flat=True)
+
+        lesson_group_ids = list(groups_with_special_lesson) + list(groups_with_regular_lesson)
+
+        # Faqat shu guruhlarda aktiv talabalar
+        total_active_students_qs = Student.objects.filter(
+            enrollments__is_active=True,
+            enrollments__group__id__in=lesson_group_ids
+        ).distinct()
+
+        total_students_ids = set(total_active_students_qs.values_list('id', flat=True))
+
+        # Davomat qaydlarini olamiz
+        base_attendance_qs = Attendance.objects.filter(date=today)
+        if user.role == 'admin':
+            base_attendance_qs = base_attendance_qs.filter(group__branch=user.branch)
+
+        present_ids = set(
+            base_attendance_qs.filter(is_present=True)
+            .values_list('student_id', flat=True)
+            .distinct()
+        )
+
+        present_count = len(total_students_ids & present_ids)
+        absent_count = len(total_students_ids) - present_count
+
         return {
-            "absent": total_students.exclude(student_id__in=present_ids).count(),
-            "total": total_students.count(),
+            "absent": absent_count,
+            "total": len(total_students_ids),
         }
     except Exception:
         logger.exception("Attendance user statistikasi xatoligi: user_id=%s", getattr(user, "id", None))
@@ -90,11 +182,14 @@ def generate_monthly_payments(month_date=None):
         for student in group.students.all():
             # REFUND LOGIC: Boshlang'ich summa qilib to'liq narx belgilanadi.
             base_price = group.monthly_price
-            if student.status in ['low_income', 'negotiated']:
+            if student.status in ['low_income', 'negotiated', 'discount']:
                 if student.custom_fee is not None: base_price = student.custom_fee
             
             if student.status == 'teacher_negotiated':
                 payment_amount = Decimal('0')
+            elif student.status == 'discount':
+                # Imtiyozli student uchun davomatga asoslangan hisoblash
+                payment_amount = calculate_discount_student_payment(student, group, month_date)
             else:
                 payment_amount = Decimal(str(floor_amount(base_price)))
             
@@ -214,7 +309,7 @@ def confirm_student_payment(request_user, payment, data):
     pay_full_month = str(data.get('pay_full_month', False)).lower() in ['true', '1', 'yes']
     ignore_refund = str(data.get('ignore_refund', False)).lower() in ['true', '1', 'yes']
 
-    if payment.student.status in ['low_income', 'negotiated']:
+    if payment.student.status in ['low_income', 'negotiated', 'discount']:
         base_amount = payment.student.custom_fee if payment.student.custom_fee is not None else payment.group.monthly_price
     else:
         base_amount = payment.group.monthly_price
@@ -369,12 +464,47 @@ def get_finance_dashboard_stats(user, month, year):
 
         branches_data = list(branch_map.values())
 
+    # 1. Barcha to'lgan paymentlarni guruh bo'yicha sum
+    group_payment_income = {}
+    payment_qs = Payment.objects.filter(
+        month__month=month, month__year=year, is_paid=True
+    )
+    if user.role == 'admin':
+        payment_qs = payment_qs.filter(group__branch=user.branch)
+    payment_qs = payment_qs.values('group_id').annotate(total=Sum('amount'))
+    for p in payment_qs:
+        group_payment_income[p['group_id']] = _to_decimal(p['total'])
+        
+    # 2. Barcha student_extra income tranzaksiyalarini guruh bo'yicha sum
+    group_extra_income = {}
+    extra_qs = FinanceTransaction.objects.filter(
+        category='student_extra', transaction_type='income',
+        date__year=year, date__month=month
+    )
+    if user.role == 'admin':
+        extra_qs = extra_qs.filter(branch=user.branch)
+    extra_qs = extra_qs.values('group_id').annotate(total=Sum('amount'))
+    for x in extra_qs:
+        group_extra_income[x['group_id']] = _to_decimal(x['total'])
+        
+    # 3. Guruhlarni olish va income ni hisoblash
     top_groups_qs = Group.objects.filter(is_faol=True)
     if user.role == 'admin': top_groups_qs = top_groups_qs.filter(branch=user.branch)
-    top_groups_data = top_groups_qs.annotate(
-        group_income=Sum('payments__amount', filter=Q(payments__month__month=month, payments__month__year=year, payments__is_paid=True)),
-        st_count=Count('students', distinct=True)
-    ).order_by('-group_income')[:5]
+    top_groups_qs = top_groups_qs.annotate(st_count=Count('students', distinct=True))
+    
+    # Har guruh uchun total income ni hisoblash va sort qilish
+    groups_with_income = []
+    for g in top_groups_qs:
+        p_inc = group_payment_income.get(g.id, Decimal('0'))
+        e_inc = group_extra_income.get(g.id, Decimal('0'))
+        total_inc = p_inc + e_inc
+        groups_with_income.append({'group': g, 'income': total_inc})
+        
+    # Eng yuqori income li 5 ta guruhni olish
+    groups_with_income.sort(key=lambda x: x['income'], reverse=True)
+    top_groups_data = []
+    for item in groups_with_income[:5]:
+        top_groups_data.append(item['group'])
 
     prev_month = month - 1 if month > 1 else 12
     prev_year = year if month > 1 else year - 1
@@ -427,7 +557,7 @@ def get_finance_dashboard_stats(user, month, year):
         "expense_trend": calc_trend(total_expense, prev_expense),
         "profit_trend": calc_trend(total_income - total_expense, prev_income - prev_expense),
         "branches": branches_data,
-        "top_groups": [{"name": g.name, "profit": float(g.group_income or 0), "student_count": g.st_count} for g in top_groups_data],
+        "top_groups": [{"name": item['group'].name, "profit": float(item['income']), "student_count": item['group'].st_count} for item in groups_with_income[:5]],
         "stats": {
             "students": students_count,
             "mentors": User.objects.filter(role='mentor', is_active=True, **stats_filters).count(),
@@ -440,6 +570,8 @@ def get_finance_dashboard_stats(user, month, year):
 def get_branch_finance_stats(branch_id, month, year):
     """Filial uchun moliya statistikasini yig'ish (Optimallashgan)"""
     try:
+        from finance.utils import floor_amount
+        from decimal import Decimal
         branch = get_object_or_404(Branch, id=branch_id)
         today = timezone.localdate()
 
@@ -449,103 +581,109 @@ def get_branch_finance_stats(branch_id, month, year):
         groups_count = Group.objects.filter(branch=branch, is_faol=True).count()
         students_count = Student.objects.filter(branch=branch, enrollments__is_active=True).distinct().count()
 
-        expected_income = Decimal('0')
-        groups_detail = []
-        
         # 1. Barcha to'lovlarni bitta so'rovda guruhlab olamiz
-        payment_stats_qs = Payment.objects.filter(
+        payment_qs = Payment.objects.filter(
             group__branch=branch,
             month__month=month,
             month__year=year
-        ).values('group_id').annotate(
-            received=Sum('amount', filter=Q(is_paid=True)),
-            debt=Sum('amount', filter=Q(is_paid=False))
         )
-        payment_map = {p['group_id']: p for p in payment_stats_qs}
-
-        # 2. Guruhlar va ulardagi studentlar sonini/holatini olamiz
+        payment_map = {}  # key: (student_id, group_id)
+        group_payment_refunds = {}  # key: group_id, value: total refund_amount
+        for p in payment_qs:
+            key = (p.student_id, p.group_id)
+            payment_map[key] = p
+            # Guruh uchun umumiy refundni hisoblash
+            group_payment_refunds[p.group_id] = group_payment_refunds.get(p.group_id, Decimal('0')) + _to_decimal(p.refund_amount)
+        
+        # 2. Barcha student_extra tranzaksiyalarini olamiz
+        extra_qs = FinanceTransaction.objects.filter(
+            branch=branch,
+            category='student_extra',
+            date__year=year,
+            date__month=month
+        )
+        extra_map = {}
+        for tx in extra_qs:
+            key = (tx.student_id, tx.group_id)
+            if key not in extra_map:
+                extra_map[key] = Decimal('0')
+            if tx.transaction_type == 'income':
+                extra_map[key] += _to_decimal(tx.amount)
+            else:
+                extra_map[key] -= _to_decimal(tx.amount)
+                
+        # 3. Guruhlar va ulardagi studentlarni olamiz
         active_groups = Group.objects.filter(branch=branch, is_faol=True).select_related('mentor').prefetch_related(
-            'enrollments__student'
+            'enrollments__student', 'old_students_fk'
         )
         
-        # 3. Barcha davomatlarni bitta so'rovda olamiz (O(1) so'rov O(N) loop o'rniga)
-        att_stats = Attendance.objects.filter(
-            group__branch=branch,
-            date__year=year,
-            date__month=month,
-            is_present=True
-        ).values('student_id', 'group_id').annotate(count=Count('id'))
-        att_map = {(a['student_id'], a['group_id']): a['count'] for a in att_stats}
-
         expected_income = Decimal('0')
+        total_received = Decimal('0')
+        total_payment_refunds = sum(group_payment_refunds.values(), Decimal('0'))  # Umumiy refund miqdori
         groups_detail = []
 
         for group in active_groups:
             try:
                 g_expected = Decimal('0')
-                group_enrollments = [e for e in group.enrollments.all() if e.is_active]
-                student_count = len(group_enrollments)
-
-                # Dars kunlarini bitta guruh uchun bir marta hisoblaymiz
-                lesson_dates = group.get_lesson_dates(year, month)
-                days_count = len(lesson_dates)
+                g_received = Decimal('0')
+                # Barcha studentlarni olamiz
+                all_students_map = {}
+                for enrollment in group.enrollments.all():
+                    if enrollment.student:
+                        all_students_map[enrollment.student.id] = enrollment.student
+                for s in group.old_students_fk.all():
+                    all_students_map[s.id] = s
+                students = list(all_students_map.values())
+                student_count = len(students)
+                processed_pairs = set()
                 
-                g_accrued = 0
-                for enrollment in group_enrollments:
-                    student = enrollment.student
+                for student in students:
+                    key = (student.id, group.id)
+                    if key in processed_pairs:
+                        continue
+                    processed_pairs.add(key)
                     
-                    # O'quvchi narxi mantiqi
-                    base_price = group.monthly_price
-                    if student.status in ['low_income', 'negotiated']:
-                        if student.custom_fee is not None: base_price = student.custom_fee
-
-                    # REFUND LOGIC: Kutilayotgan daromad = Asosiy narx - Jarima
+                    student_extra = extra_map.get(key, Decimal('0'))
+                    
                     if student.status == 'teacher_negotiated':
-                        expected_student_income = 0
-                    elif student.status == 'negotiated':
-                        expected_student_income = floor_amount(base_price)
-                    else:
-                        passed_lessons = [d for d in lesson_dates if d <= today]
-                        join_date = enrollment.joined_at.date()
-                        passed_lessons = [d for d in passed_lessons if d >= join_date]
-                        
-                        passed_count = len(passed_lessons)
-                        present_count = att_map.get((student.id, group.id), 0)
-                        absences = max(0, passed_count - present_count)
-                        
-                        daily_price = floor_amount(base_price / days_count) if days_count > 0 else 0
-                        refund = floor_amount(daily_price * absences)
-                        
-                        base_floor = floor_amount(base_price)
-                        if refund > base_floor:
-                            refund = base_floor
-                            
-                        expected_student_income = max(0, base_floor - refund)
+                        base_expected = Decimal(str(student.custom_fee or group.monthly_price or 0))
+                    elif student.status == 'discount':
+                        base_expected = calculate_discount_student_payment(student, group, date(year, month, 1))
+                    elif student.status in ['negotiated', 'low_income']:
+                        base_expected = Decimal(str(student.custom_fee or group.monthly_price or 0))
+                    else: # regular
+                        base_expected = Decimal(str(group.monthly_price or 0))
+                    base_expected = floor_amount(base_expected)
                     
-                    g_accrued += float(expected_student_income)
-
-                expected_income += Decimal(str(g_accrued))
+                    # Actual summa: to'lgan summa + student_extra
+                    p = payment_map.get(key)
+                    actual_base = Decimal('0')
+                    if p and p.is_paid:
+                        actual_base = Decimal(str(p.amount or 0))
+                    actual_total = actual_base + student_extra
+                    expected_total = base_expected + student_extra
+                    
+                    g_expected += expected_total
+                    g_received += actual_total
                 
-                # Payment mapdan ma'lumotlarni olamiz
-                p_stat = payment_map.get(group.id, {})
-                g_received = _to_decimal(p_stat.get('received'))
-
+                expected_income += g_expected
+                total_received += g_received
+                
                 mentor_name = group.mentor.get_full_name() if group.mentor else "Yo'q"
-                
                 g_monthly_price = float(group.monthly_price)
-                g_daily_price = g_monthly_price / days_count if days_count > 0 else 0
-
+                g_refund_amount = float(group_payment_refunds.get(group.id, Decimal('0')))
+                
                 groups_detail.append({
                     "id": group.id,
                     "name": group.name,
                     "student_count": student_count,
                     "monthly_price": g_monthly_price,
-                    "daily_price": round(g_daily_price, 2),
-                    "expected_income": float(g_accrued), # Endi kutilayotgan tushum - davomatga asoslangan
+                    "daily_price": round(g_monthly_price / max(len(group.get_lesson_dates(year, month)), 1), 2),
+                    "expected_income": float(g_expected),
                     "received_income": float(g_received),
-                    "refund_amount": 0, # Refund endi yo'q
+                    "refund_amount": g_refund_amount,
                     "real_income": float(g_received),
-                    "debt": max(0, float(g_accrued) - float(g_received)),
+                    "debt": max(0, float(g_expected) - float(g_received)),
                     "mentor": mentor_name
                 })
             except Exception:
@@ -584,6 +722,7 @@ def get_branch_finance_stats(branch_id, month, year):
             "finance": {
                 "expected_income": float(expected_income), "received_income": float(received_income),
                 "refunds": attendance_refunds,
+                "total_payment_refunds": float(total_payment_refunds),  # Umumiy refund miqdori (Payment.refund_amount)
                 "attendance_refunds": attendance_refunds,
                 "attendance_refunds_paid": attendance_refunds_paid,
                 "refund_share_percent": refund_share_percent,

@@ -190,9 +190,10 @@ class FinanceAttendanceStatsTests(TestCase):
         self.s1 = Student.objects.create(full_name="S1", group=self.g1)
         self.s2 = Student.objects.create(full_name="S2", group=self.g1)
 
-        GroupEnrollment.objects.create(student=self.s1, group=self.g1, is_active=True)
+        # Use get_or_create because Student.save() already creates g1 enrollment
+        GroupEnrollment.objects.get_or_create(student=self.s1, group=self.g1, defaults={'is_active': True})
         GroupEnrollment.objects.create(student=self.s1, group=self.g2, is_active=True)
-        GroupEnrollment.objects.create(student=self.s2, group=self.g1, is_active=True)
+        GroupEnrollment.objects.get_or_create(student=self.s2, group=self.g1, defaults={'is_active': True})
 
         self.today = timezone.localdate()
 
@@ -200,9 +201,11 @@ class FinanceAttendanceStatsTests(TestCase):
         # S1 is present in two groups today -> should still be counted once
         Attendance.objects.create(student=self.s1, group=self.g1, date=self.today, is_present=True)
         Attendance.objects.create(student=self.s1, group=self.g2, date=self.today, is_present=True)
+        # Also mark s2 as present so absent count is 0
+        Attendance.objects.create(student=self.s2, group=self.g1, date=self.today, is_present=True)
 
         stats = _safe_attendance_stats_for_branch(self.branch, self.today)
-        self.assertEqual(stats["total"], 1)
+        self.assertEqual(stats["total"], 2)
         self.assertEqual(stats["absent"], 0)
 
     def test_absent_excludes_students_present_in_any_group(self):
@@ -227,9 +230,10 @@ class FinanceAbsentStudentsEndpointTests(APITestCase):
         self.s1 = Student.objects.create(full_name="S1", group=self.g1)
         self.s2 = Student.objects.create(full_name="S2", group=self.g1)
 
-        GroupEnrollment.objects.create(student=self.s1, group=self.g1, is_active=True)
+        # Use get_or_create because Student.save() already creates g1 enrollment
+        GroupEnrollment.objects.get_or_create(student=self.s1, group=self.g1, defaults={'is_active': True})
         GroupEnrollment.objects.create(student=self.s1, group=self.g2, is_active=True)
-        GroupEnrollment.objects.create(student=self.s2, group=self.g1, is_active=True)
+        GroupEnrollment.objects.get_or_create(student=self.s2, group=self.g1, defaults={'is_active': True})
 
         self.today = timezone.localdate()
 

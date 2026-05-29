@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Users, Check, RotateCw, Search, Lock, Plus, Info, CheckCircle2, Trash2, X, UserMinus } from "lucide-react";
+import { Users, Check, RotateCw, Search, Lock, Plus, Info, CheckCircle2, Trash2, X, UserMinus, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import api from "../../../tokenUpdater/updater";
 import toast from "react-hot-toast";
@@ -32,19 +32,49 @@ const AttendanceSection = ({
   canTakeAttendance
 }) => {
   const [isSpecialLessonModalOpen, setIsSpecialLessonModalOpen] = useState(false);
+  const [loadingAction, setLoadingAction] = useState(false);
 
-  const { data: specialDates = [] } = useQuery({
-    queryKey: ['special-lessons', group_id],
-    queryFn: async () => {
-      const res = await api.get(`/groups/groups/${group_id}/special-lessons/`);
-      return res.data;
-    }
-  });
+  // Use groupinfo's built-in special and canceled dates
+  const specialDates = groupinfo.special_lesson_dates || [];
+  const canceledDates = groupinfo.canceled_lesson_dates || [];
 
   const isSpecialDay = specialDates.includes(selectedDate);
+  const isCanceledDay = canceledDates.includes(selectedDate);
   const isLessonDay = lessonDates.includes(selectedDate);
 
   const markedCount = Object.keys(markedStudents || {}).length;
+
+  const handleCancelLesson = async () => {
+    if (!confirm(`${selectedDate} sanasini dars kuni sifatida bekor qilmoqchimisiz?`)) return;
+    setLoadingAction(true);
+    try {
+      await api.post(`/groups/groups/${group_id}/cancel-lesson/`, { date: selectedDate });
+      toast.success("Dars kuni bekor qilindi");
+      queryClient.invalidateQueries(['group-detail', group_id]);
+      queryClient.invalidateQueries(['group-lesson-dates', group_id]);
+      refetchAttends();
+    } catch (error) {
+      toast.error(error.response?.data?.error || "Xatolik yuz berdi");
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  const handleReactivateLesson = async () => {
+    if (!confirm(`${selectedDate} sanasini dars kuni sifatida qayta faollashtirmoqchimisiz?`)) return;
+    setLoadingAction(true);
+    try {
+      await api.post(`/groups/groups/${group_id}/reactivate-lesson/`, { date: selectedDate });
+      toast.success("Dars kuni qayta faollashtirildi");
+      queryClient.invalidateQueries(['group-detail', group_id]);
+      queryClient.invalidateQueries(['group-lesson-dates', group_id]);
+      refetchAttends();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Xatolik yuz berdi");
+    } finally {
+      setLoadingAction(false);
+    }
+  };
 
   const handleBulkAction = async (actionType) => {
     if (!markedCount) return;
@@ -126,7 +156,7 @@ const AttendanceSection = ({
       )}
 
       {/* Special Day Banner */}
-      {isSpecialDay && (
+      {isSpecialDay && !isCanceledDay && (
         <div className="bg-emerald-500/10 border-b border-emerald-500/20 px-8 py-3 flex items-center justify-between animate-in slide-in-from-top duration-300">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-500">
@@ -144,6 +174,29 @@ const AttendanceSection = ({
           <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/30">
             <CheckCircle2 size={12} className="text-emerald-500" />
             <span className="text-[8px] font-black text-emerald-500 uppercase tracking-widest">Faol</span>
+          </div>
+        </div>
+      )}
+
+      {/* Canceled Day Banner */}
+      {isCanceledDay && (
+        <div className="bg-rose-500/10 border-b border-rose-500/20 px-8 py-3 flex items-center justify-between animate-in slide-in-from-top duration-300">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-rose-500/20 flex items-center justify-center text-rose-500">
+              <X size={16} />
+            </div>
+            <div>
+              <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest">
+                Bekor qilingan dars kuni
+              </p>
+              <p className="text-xs font-bold text-rose-400/80">
+                {selectedDate} sanasidagi dars bekor qilingan
+              </p>
+            </div>
+          </div>
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-rose-500/20 border border-rose-500/30">
+            <X size={12} className="text-rose-500" />
+            <span className="text-[8px] font-black text-rose-500 uppercase tracking-widest">Bekor</span>
           </div>
         </div>
       )}
@@ -176,6 +229,28 @@ const AttendanceSection = ({
               title="Dars qo'shish"
             >
               <Plus size={18} /> <span className="hidden sm:inline ml-2">Dars qo'shish</span>
+            </button>
+          )}
+
+          {canTakeAttendance && !isCanceledDay && (
+            <button
+              onClick={handleCancelLesson}
+              disabled={loadingAction}
+              className="flex items-center justify-center min-w-[40px] sm:w-auto sm:px-4 h-10 sm:h-11 border border-rose-500/30 text-rose-500 rounded-xl font-black text-[10px] uppercase tracking-wider transition-all hover:bg-rose-500/10 active:scale-95 shadow-lg bg-[var(--bg-panel)] disabled:opacity-50"
+              title="Darsni bekor qilish"
+            >
+              {loadingAction ? <Loader2 size={18} className="animate-spin" /> : <X size={18} />} <span className="hidden sm:inline ml-2">Darsni bekor qilish</span>
+            </button>
+          )}
+
+          {canTakeAttendance && isCanceledDay && (
+            <button
+              onClick={handleReactivateLesson}
+              disabled={loadingAction}
+              className="flex items-center justify-center min-w-[40px] sm:w-auto sm:px-4 h-10 sm:h-11 border border-emerald-500/30 text-emerald-500 rounded-xl font-black text-[10px] uppercase tracking-wider transition-all hover:bg-emerald-500/10 active:scale-95 shadow-lg bg-[var(--bg-panel)] disabled:opacity-50"
+              title="Darsni qayta faollashtirish"
+            >
+              {loadingAction ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />} <span className="hidden sm:inline ml-2">Qayta faollashtirish</span>
             </button>
           )}
           

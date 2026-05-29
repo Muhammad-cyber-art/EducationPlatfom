@@ -10,7 +10,8 @@ const StudentHistorySection = ({
     userRole,
     handlePaymentConfirm,
     handleDeleteHistory,
-    dispatch
+    dispatch,
+    studentStatus
 }) => {
     return (
         <div className="space-y-4 sm:space-y-6">
@@ -85,7 +86,7 @@ const StudentHistorySection = ({
                                                     <p className="text-[8px] font-black text-amber-500/80 uppercase tracking-widest">
                                                         Qolgan: {Math.floor(status.remainingAmount || 0).toLocaleString()} UZS
                                                     </p>
-                                                    {canConfirmPayment && (
+                                                    {canConfirmPayment && studentStatus !== 'discount' && (
                                                         <button
                                                             onClick={() => handlePaymentConfirm(p.id)}
                                                             className="mt-1 flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 text-amber-400 hover:bg-amber-500 hover:text-black rounded-lg border border-amber-500/30 transition-all font-black text-[8px] uppercase tracking-widest"
@@ -94,7 +95,7 @@ const StudentHistorySection = ({
                                                         </button>
                                                     )}
                                                 </div>
-                                            ) : canConfirmPayment ? (
+                                            ) : canConfirmPayment && studentStatus !== 'discount' ? (
                                                 <button
                                                     onClick={() => handlePaymentConfirm(p.id)}
                                                     className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-black rounded-xl border border-emerald-500/20 transition-all font-black text-[9px] uppercase tracking-widest shadow-lg active:scale-95"

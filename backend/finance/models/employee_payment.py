@@ -275,9 +275,7 @@ class StaffProfile(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Yaratilgan")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Yangilangan")
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._old_per_student = self.per_student_amount
+
 
     class Meta:
         verbose_name = "Xodim profili"
@@ -390,27 +388,93 @@ class StaffProfile(models.Model):
     def calculate_monthly_income(self, month):
         """
         Mentorning berilgan oydagi jami daromadini hisoblash.
-
-        Yangi logika (multi-teacher support):
-        - Foizli mentor uchun: student to'lovi qaysi teacher bilan nechta real
-          dars o'qiganiga qarab proporsional taqsimlanadi.
-        - Fixed / student_count mentor uchun: o'zgarmaydi.
-        - Admin uchun: o'zgarmaydi (filial bo'yicha).
-        - 1 ta teacher bo'lsa: avvalgi natija aynan saqlanadi (backward-compatible).
+        
+        UNIFIED LOGIC: Barcha joyda bir xil hisoblash (serializer bilan mos)
+        
+        Qoidalar:
+        1. Discount studentlar uchun: attendance asosida (kelgan kunlariga qarab) → faqat kelgan kunlar uchun
+        2. Oddiy (regular, negotiated, low_income) studentlar uchun: faqat to'langan (is_paid=True) to'lovlar
+        3. Teacher_negotiated: include_in_mentor_salary=True bo'lsa, to'liq summa
+        4. Student_extra: qo'shimcha to'lovlar (har bir student-group uchun qo'shiladi)
         """
-        from finance.utils import floor_amount
+        from finance.utils import floor_amount, calculate_discount_student_payment
 
-        # Admin + foiz: filial bo'yicha tasdiqlangan oylik to'lovlar (mentor logikasi emas)
+        # Admin uchun real tushum: filialdagi barcha guruhlardagi studentlar uchun
         if self.user.role == 'admin' and getattr(self.user, 'branch', None):
-            from finance.models import Payment
-            from django.db.models import Sum
-            total = Payment.objects.filter(
-                group__branch=self.user.branch,
+            from groups.models import Group
+            from finance.models import Payment, FinanceTransaction
+            
+            total = Decimal('0')
+            branch_groups = Group.objects.filter(branch=self.user.branch)
+            branch_group_ids = [g.id for g in branch_groups]
+            processed_pairs = set()
+            
+            # Barcha to'lovlarni bitta queryda olamiz
+            payment_map = {}
+            payment_qs = Payment.objects.filter(
+                group_id__in=branch_group_ids,
                 month__year=month.year,
-                month__month=month.month,
-                is_paid=True,
-            ).aggregate(total=Sum('amount'))['total'] or 0
-            return floor_amount(Decimal(str(total)))
+                month__month=month.month
+            ).select_related('student')
+            for p in payment_qs:
+                key = (p.student_id, p.group_id)
+                payment_map[key] = p
+            
+            # Student extra tranzaksiyalarini yig'ish
+            extra_map = {}
+            extra_qs = FinanceTransaction.objects.filter(
+                category='student_extra',
+                date__year=month.year,
+                date__month=month.month,
+                group_id__in=branch_group_ids,
+            ).values('student_id', 'group_id', 'transaction_type', 'amount')
+            for tx in extra_qs:
+                key = (tx['student_id'], tx['group_id'])
+                amt = Decimal(str(tx['amount'] or 0))
+                if tx['transaction_type'] == 'income':
+                    extra_map[key] = extra_map.get(key, Decimal('0')) + amt
+                else:
+                    extra_map[key] = extra_map.get(key, Decimal('0')) - amt
+            
+            for group in branch_groups:
+                all_students_map = {}
+                for enr in group.enrollments.select_related('student').all():
+                    if enr.student:
+                        all_students_map[enr.student.id] = enr.student
+                for st in group.old_students_fk.all():
+                    all_students_map[st.id] = st
+                
+                for student in all_students_map.values():
+                    key = (student.id, group.id)
+                    if key in processed_pairs:
+                        continue
+                    processed_pairs.add(key)
+                    
+                    if student.status == 'teacher_negotiated':
+                        if student.include_in_mentor_salary:
+                            # Teacher negotiated uchun: shartnoma summasi + student_extra
+                            hypothetical_fee = Decimal(str(student.custom_fee or group.monthly_price or 0))
+                            total += hypothetical_fee
+                            total += extra_map.get(key, Decimal('0'))
+                        continue
+                    
+                    if student.status == 'discount':
+                        # Discount student uchun: davomat asosida + student_extra
+                        discount_amount = calculate_discount_student_payment(student, group, month)
+                        net_amount = discount_amount + extra_map.get(key, Decimal('0'))
+                        total += net_amount
+                        continue
+                    
+                    # Oddiy studentlar uchun: faqat to'langan to'lovlar
+                    p = payment_map.get(key)
+                    base_amount = Decimal('0')
+                    if p and p.is_paid:
+                        base_amount = Decimal(str(p.amount or 0))
+                    net_amount = base_amount + extra_map.get(key, Decimal('0'))
+                    if net_amount != 0 or (p and p.is_paid):
+                        total += net_amount
+            
+            return floor_amount(total)
 
         if self.user.role != 'mentor':
             return Decimal('0')
@@ -420,96 +484,75 @@ class StaffProfile(models.Model):
 
         # Mentorning barcha guruhlari (faol + nofaol, chunki tarixiy to'lovlar bo'lishi mumkin)
         mentor_groups = Group.objects.filter(mentor=self.user)
-
-        # --- Foizli mentor uchun multi-teacher taqsimlash (real attendance bo'yicha) ---
-        #
-        # Maqsad:
-        #   - Student oy davomida bir nechta teacher guruhi bilan o'qisa -> student to'lovi real davomatga proporsional taqsimlansin.
-        #   - payment.group qaysi mentorniki bo'lishidan qat'iy nazar, attendance counts teacher'larni aniqlaydi.
-        #   - total_lessons==0 bo'lsa (attendance yozuvi yo'q) -> backward compatible fallback: payment.group.mentor ga.
-        #
-        from homework_attends.models import Attendance
-
-        month_year = month.year
-        month_num = month.month
-
-        mentor_group_ids = list(mentor_groups.values_list('id', flat=True))
+        mentor_group_ids = [g.id for g in mentor_groups]
 
         total_income = Decimal('0')
-        # 1. Mentor dars o'tgan barcha davomatlarni bitta queryda olish
-        # Bu transfer bo'lgan o'quvchilarni ham avtomatik qamrab oladi
-        all_attendances = Attendance.objects.filter(
-            group__mentor=self.user,
-            date__year=month_year,
-            date__month=month_num
-        ).select_related('student', 'group')
+        processed_student_group_pairs = set() # Duplicatlarni oldini olish uchun
 
-        # O'quvchilar bo'yicha guruhlash
-        attendance_by_student = {}
-        for att in all_attendances:
-            sid = att.student_id
-            if sid not in attendance_by_student:
-                attendance_by_student[sid] = []
-            attendance_by_student[sid].append(att)
+        # Barcha to'lovlarni bitta queryda olamiz (optimizatsiya)
+        _all_payments = Payment.objects.filter(
+            group_id__in=mentor_group_ids,
+            month__year=month.year,
+            month__month=month.month
+        ).select_related('student')
+        payment_map = {(p.student_id, p.group_id): p for p in _all_payments}
 
-        for student_id, student_attendances in attendance_by_student.items():
-            # O'quvchi obyektini birinchi davomatdan olamiz
-            student = student_attendances[0].student
-            
-            # 10 darslik baza (Divisor)
-            BASE_LESSONS = Decimal('10')
-
-            # O'qituvchi kelishgan o'quvchilar uchun mentorga ham, markazga ham 0
-            if student.status == 'teacher_negotiated':
-                continue 
-
-            for att in student_attendances:
-                # Guruh narxini aniqlash
-                current_group_price = Decimal(str(att.group.monthly_price))
-                
-                # Shartnoma narxi (statusga qarab)
-                if student.status in ['negotiated', 'low_income'] and student.custom_fee is not None:
-                    contract_price = Decimal(str(student.custom_fee))
-                else:
-                    contract_price = current_group_price
-
-                # Bir darslik stavka (Price / 10)
-                per_lesson_rate = contract_price / BASE_LESSONS
-
-                # Statusga ko'ra mentor ulushini hisoblash
-                if student.status == 'discount': # Imtiyozli (Pay-as-you-go)
-                    if att.is_present:
-                        total_income += per_lesson_rate
-                else:
-                    # Oddiy (Standard) va Kelishilgan (Negotiated) uchun
-                    # O'quvchi kelgan-kelmaganidan qat'iy nazar mentorga dars puli yoziladi
-                    total_income += per_lesson_rate
-
-        # Teacher_negotiated + include_in_mentor_salary (faqat shu mentor guruhidagi)
-        for group in mentor_groups:
-            teacher_neg_students = group.students.filter(
-                status='teacher_negotiated',
-                include_in_mentor_salary=True,
-            )
-            for student in teacher_neg_students:
-                hypothetical_fee = Decimal(str(student.custom_fee or group.monthly_price or 0))
-                total_income += hypothetical_fee
-
-        # Qo'shimcha to'lovlar (student_extra) — guruh mentori kimligidan qat'iy nazar,
-        # qo'shimcha to'lovlar to'g'ridan-to'g'ri guruh mentoriga tegishli (o'zgartirilmaydi)
-        from finance.models import FinanceTransaction
-        extra_txs = FinanceTransaction.objects.filter(
-            group__in=mentor_groups,
+        # Qo'shimcha to'lovlarni bitta queryda olamiz
+        extra_map = {}
+        extra_qs = FinanceTransaction.objects.filter(
             category='student_extra',
             date__year=month.year,
             date__month=month.month,
-        )
-        for tx in extra_txs:
-            tx_amount = Decimal(str(tx.amount))
-            if tx.transaction_type == 'income':
-                total_income += tx_amount
+            group_id__in=mentor_group_ids,
+        ).values('student_id', 'group_id', 'transaction_type', 'amount')
+        for tx in extra_qs:
+            key = (tx['student_id'], tx['group_id'])
+            amt = Decimal(str(tx['amount'] or 0))
+            if tx['transaction_type'] == 'income':
+                extra_map[key] = extra_map.get(key, Decimal('0')) + amt
             else:
-                total_income -= tx_amount
+                extra_map[key] = extra_map.get(key, Decimal('0')) - amt
+
+        # 1. Barcha guruhlar va o'quvchilarni ko'rib chiqamiz (serializerdagi get_mentor_groups bilan mos)
+        for group in mentor_groups:
+            # Guruhdagi barcha o'quvchilarni olamiz
+            students_map = {}
+            for enr in group.enrollments.select_related('student').all():
+                if enr.student:
+                    students_map[enr.student.id] = enr.student
+            for st in group.old_students_fk.all():
+                students_map[st.id] = st
+            
+            students = list(students_map.values())
+            
+            for student in students:
+                key = (student.id, group.id)
+                if key in processed_student_group_pairs:
+                    continue
+                processed_student_group_pairs.add(key)
+
+                if student.status == 'teacher_negotiated':
+                    if student.include_in_mentor_salary:
+                        hypothetical_fee = Decimal(str(student.custom_fee or group.monthly_price or 0))
+                        total_income += hypothetical_fee
+                        total_income += extra_map.get(key, Decimal('0'))
+                    continue
+
+                # Discount student uchun: attendance asosida
+                if student.status == 'discount':
+                    discount_amount = calculate_discount_student_payment(student, group, month)
+                    net_amount = discount_amount + extra_map.get(key, Decimal('0'))
+                    total_income += net_amount
+                    continue
+
+                # Oddiy studentlar uchun: faqat to'langan to'lovlar
+                p = payment_map.get(key)
+                base_amount = Decimal('0')
+                if p and p.is_paid:
+                    base_amount = Decimal(str(p.amount or 0))
+                net_amount = base_amount + extra_map.get(key, Decimal('0'))
+                if net_amount != 0 or (p and p.is_paid):
+                    total_income += net_amount
 
         return floor_amount(total_income)
 
@@ -519,30 +562,124 @@ class StaffProfile(models.Model):
         mentor guruhlaridagi barcha statusdagi o'quvchilarning
         oy bo'yicha berishi kerak bo'lgan shartnoma summalari yig'indisi.
         """
-        from finance.utils import floor_amount
+        from finance.utils import floor_amount, calculate_discount_student_payment
         from groups.models import Group
+        from finance.models import FinanceTransaction
 
         if self.user.role == 'admin' and getattr(self.user, 'branch', None):
-            from finance.models import Payment
-            from django.db.models import Sum
-            total = Payment.objects.filter(
-                group__branch=self.user.branch,
-                month__year=month.year,
-                month__month=month.month,
-            ).aggregate(total=Sum('amount'))['total'] or 0
-            return floor_amount(Decimal(str(total)))
+            total = Decimal('0')
+            branch_groups = Group.objects.filter(branch=self.user.branch)
+            processed_pairs = set()
+            
+            # Student extra tranzaksiyalarni olamiz
+            extra_map = {}
+            branch_group_ids = [g.id for g in branch_groups]
+            extra_qs = FinanceTransaction.objects.filter(
+                category='student_extra',
+                date__year=month.year,
+                date__month=month.month,
+                group_id__in=branch_group_ids,
+            ).values('student_id', 'group_id', 'transaction_type', 'amount')
+            for tx in extra_qs:
+                key = (tx['student_id'], tx['group_id'])
+                amt = Decimal(str(tx['amount'] or 0))
+                if tx['transaction_type'] == 'income':
+                    extra_map[key] = extra_map.get(key, Decimal('0')) + amt
+                else:
+                    extra_map[key] = extra_map.get(key, Decimal('0')) - amt
+            
+            for group in branch_groups:
+                all_students_map = {}
+                for enr in group.enrollments.select_related('student').all():
+                    if enr.student:
+                        all_students_map[enr.student.id] = enr.student
+                for st in group.old_students_fk.all():
+                    all_students_map[st.id] = st
+                
+                for student in all_students_map.values():
+                    key = (student.id, group.id)
+                    if key in processed_pairs:
+                        continue
+                    processed_pairs.add(key)
+                    
+                    if student.status == 'teacher_negotiated':
+                        if student.include_in_mentor_salary:
+                            # Teacher negotiated student uchun: shartnoma summasi + student_extra
+                            if student.custom_fee:
+                                total += Decimal(str(student.custom_fee))
+                            else:
+                                total += Decimal(str(group.monthly_price or 0))
+                            total += extra_map.get(key, Decimal('0'))
+                        continue
+                    
+                    if student.status == 'discount':
+                        # Discount student uchun: davomat asosida + student_extra
+                        total += calculate_discount_student_payment(student, group, month)
+                        total += extra_map.get(key, Decimal('0'))
+                        continue
+                    
+                    # Oddiy studentlar uchun: shartnoma summasi + student_extra
+                    if student.status in ['low_income', 'negotiated'] and student.custom_fee:
+                        total += Decimal(str(student.custom_fee))
+                    else:
+                        total += Decimal(str(group.monthly_price or 0))
+                    total += extra_map.get(key, Decimal('0'))
+            
+            return floor_amount(total)
 
         if self.user.role != 'mentor':
             return Decimal('0')
 
-        mentor_groups = Group.objects.filter(mentor=self.user).prefetch_related(
-            'enrollments__student',
-            'old_students_fk',
-        )
+        mentor_groups = Group.objects.filter(mentor=self.user)
+        mentor_group_ids = [g.id for g in mentor_groups]
+        processed_student_group_pairs = set()
+        
+        # Qo'shimcha tranzaksiyalarni olamiz
+        extra_map = {}
+        extra_qs = FinanceTransaction.objects.filter(
+            category='student_extra',
+            date__year=month.year,
+            date__month=month.month,
+            group_id__in=mentor_group_ids,
+        ).values('student_id', 'group_id', 'transaction_type', 'amount')
+        for tx in extra_qs:
+            key = (tx['student_id'], tx['group_id'])
+            amt = Decimal(str(tx['amount'] or 0))
+            if tx['transaction_type'] == 'income':
+                extra_map[key] = extra_map.get(key, Decimal('0')) + amt
+            else:
+                extra_map[key] = extra_map.get(key, Decimal('0')) - amt
+
         total_expected_income = Decimal('0')
         for group in mentor_groups:
             for student in self._collect_group_students(group):
-                total_expected_income += _student_contract_monthly(student, group)
+                key = (student.id, group.id)
+                if key in processed_student_group_pairs:
+                    continue
+                processed_student_group_pairs.add(key)
+
+                if student.status == 'teacher_negotiated':
+                    if student.include_in_mentor_salary:
+                        # Teacher negotiated student uchun expected income: shartnoma summasi
+                        base = _student_contract_monthly(student, group)
+                        total_expected_income += base
+                        # Student extra ni ham qo'shamiz
+                        total_expected_income += extra_map.get(key, Decimal('0'))
+                    continue
+
+                # Discount student uchun expected income: davomat asosida (calculate_discount_student_payment)
+                if student.status == 'discount':
+                    base = calculate_discount_student_payment(student, group, month)
+                    total_expected_income += base
+                    # Student extra ni ham qo'shamiz
+                    total_expected_income += extra_map.get(key, Decimal('0'))
+                    continue
+                
+                # Oddiy studentlar uchun expected income
+                base = _student_contract_monthly(student, group)
+                total_expected_income += base
+                total_expected_income += extra_map.get(key, Decimal('0'))
+
         return floor_amount(total_expected_income)
     
     def calculate_salary_for_month(self, month, commission_basis='paid'):
@@ -565,39 +702,74 @@ class StaffProfile(models.Model):
             return floor_amount(commission)
         
         elif self.salary_type == 'student_count':
-            # ✅ O'quvchilar soni bo'yicha hisoblash
+            # ✅ O'quvchilar soni bo'yicha hisoblash (discount studentlarni ham qo'shamiz)
             from finance.models import Payment
             from groups.models import Group
             
             mentor_groups = Group.objects.filter(mentor=self.user)
             per_student = Decimal(str(self.per_student_amount))
             salary = Decimal('0')
+            processed_student_group_pairs = set()
             
-            # Basis ga qarab to'lovlarni filtrlaymiz
-            payment_filters = {
-                'group__in': mentor_groups,
-                'month': month.replace(day=1),
-            }
-            if commission_basis == 'paid':
-                payment_filters['is_paid'] = True
-            
-            payments = Payment.objects.filter(**payment_filters)
-            
-            for p in payments:
-                # O'quvchining oylik narxi (amount) va mentorning bitta o'quvchi uchun ulushi (per_student)
-                # Agar amount < per_student bo'lsa (masalan, yarim oylik), mentor ham kamroq oladi
-                p_amount = Decimal(str(p.amount or 0))
-                mentor_slice = min(p_amount, per_student)
-                salary += mentor_slice
-            
-            # ✅ QO'SHIMCHA: O'qituvchi kelishgan o'quvchilarni ham sanaymiz (har doim to'liq)
+            # 1. Discount studentlar uchun (attendance asosida, lekin student_count uchun ular "to'langan" deb hisoblanadi)
+            #    va oddiy to'lovlar
             for group in mentor_groups:
-                teacher_neg_students = group.students.filter(
-                    status='teacher_negotiated', 
-                    include_in_mentor_salary=True
-                )
-                for _ in teacher_neg_students:
-                    salary += per_student
+                # Guruhdagi barcha o'quvchilarni olamiz
+                students_map = {}
+                for enr in group.enrollments.select_related('student').all():
+                    if enr.student:
+                        students_map[enr.student.id] = enr.student
+                for st in group.old_students_fk.all():
+                    students_map[st.id] = st
+                
+                students = list(students_map.values())
+                
+                for student in students:
+                    key = (student.id, group.id)
+                    if key in processed_student_group_pairs:
+                        continue
+                    processed_student_group_pairs.add(key)
+                    
+                    if student.status == 'teacher_negotiated':
+                        if student.include_in_mentor_salary:
+                            if commission_basis == 'expected':
+                                salary += per_student
+                            else:
+                                # Teacher negotiated uchun: shartnoma summasi (lekin per_student dan kichik bo'lsa shuni olamiz)
+                                teacher_fee = Decimal(str(student.custom_fee or group.monthly_price or 0))
+                                salary += min(teacher_fee, per_student)
+                        continue
+                    
+                    if student.status == 'discount':
+                        # Discount student uchun: attendance asosidagi summa (lekin per_student dan kichik bo'lsa, shuni olamiz)
+                        from finance.utils import calculate_discount_student_payment
+                        discount_amount = calculate_discount_student_payment(student, group, month)
+                        salary += min(discount_amount, per_student)
+                        continue
+                    
+                    # Oddiy studentlar uchun:
+                    # - paid: faqat to'langan paymentlar
+                    # - expected: payment mavjud bo'lmasa ham har bir student uchun per_student miqdori qo'shiladi
+                    try:
+                        payment = Payment.objects.get(
+                            student=student,
+                            group=group,
+                            month=month.replace(day=1)
+                        )
+                        if (commission_basis == 'paid' and payment.is_paid) or (commission_basis == 'expected'):
+                            if commission_basis == 'expected':
+                                # Expected rejimida: to'liq per_student miqdori
+                                salary += per_student
+                            else:
+                                # Paid rejimida: to'langan summa bilan per_student dan kichigini
+                                p_amount = Decimal(str(payment.amount or 0))
+                                mentor_slice = min(p_amount, per_student)
+                                salary += mentor_slice
+                    except Payment.DoesNotExist:
+                        if commission_basis == 'expected':
+                            # Expected rejimida: payment mavjud bo'lmasa ham qo'shish
+                            salary += per_student
+                        continue
             
             return floor_amount(salary)
         
@@ -614,12 +786,14 @@ class StaffProfile(models.Model):
         # Eski qiymatlarni olish (agar mavjud bo'lsa)
         old_fixed = None
         old_percentage = None
+        old_per_student = None
         
         if self.pk:
             try:
                 old = StaffProfile.objects.get(pk=self.pk)
                 old_fixed = old.fixed_salary
                 old_percentage = old.commission_percentage
+                old_per_student = old.per_student_amount
             except StaffProfile.DoesNotExist:
                 pass
         
@@ -630,8 +804,7 @@ class StaffProfile(models.Model):
         salary_fields_changed = any([
             old_fixed is not None and old_fixed != self.fixed_salary,
             old_percentage is not None and old_percentage != self.commission_percentage,
-            # Yangi fieldni ham tekshiramiz (agar pk bo'lsa)
-            hasattr(self, '_old_per_student') and self._old_per_student != self.per_student_amount
+            old_per_student is not None and old_per_student != self.per_student_amount
         ])
         
         if salary_fields_changed:

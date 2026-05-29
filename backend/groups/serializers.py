@@ -432,6 +432,8 @@ class GroupSerializer(serializers.ModelSerializer):
     )
     today_attendance_confirmed = serializers.SerializerMethodField()
     computed_status = serializers.CharField(read_only=True)
+    special_lesson_dates = serializers.SerializerMethodField()
+    canceled_lesson_dates = serializers.SerializerMethodField()
 
     class Meta:
         model = Group
@@ -441,13 +443,22 @@ class GroupSerializer(serializers.ModelSerializer):
             'mentor', 'mentor_id', 'color',
             'admin', 'start_date', 'computed_status',
             'description', 'created_at',
-            'students_count', 'students', 'additional_mentors', 'today_attendance_confirmed'
+            'students_count', 'students', 'additional_mentors', 
+            'today_attendance_confirmed', 'special_lesson_dates', 'canceled_lesson_dates'
         )
         read_only_fields = ('created_at', 'students_count')
 
     def get_students_count(self, obj) -> int:
         # Faqat is_active=True bo'lgan o'quvchilarni sanaymiz
         return obj.enrollments.filter(is_active=True).count()
+        
+    @extend_schema_field(serializers.ListField(child=serializers.DateField()))
+    def get_special_lesson_dates(self, obj):
+        return list(obj.special_lesson_days.values_list('date', flat=True))
+        
+    @extend_schema_field(serializers.ListField(child=serializers.DateField()))
+    def get_canceled_lesson_dates(self, obj):
+        return list(obj.canceled_lesson_days.values_list('date', flat=True))
 
     @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_students(self, obj) -> list:

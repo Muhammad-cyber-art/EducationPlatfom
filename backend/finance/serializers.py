@@ -169,17 +169,115 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             return None
     
     def get_groups_income(self, obj) -> int:
+        import logging
+        logger = logging.getLogger(__name__)
         try:
-            if not obj.month or not hasattr(obj.employee, 'staff_profile'):
+            # All necessary imports at top of function
+            from groups.models import Group
+            from finance.models import Payment, FinanceTransaction
+            from finance.utils import floor_amount, calculate_discount_student_payment
+            from decimal import Decimal
+            
+            if not obj.month:
+                logger.warning(f"groups_income: month missing for obj {obj.id}")
+                return 0
+            if obj.employee.role == 'admin':
+                # Admin uchun real tushum: to'liq student-by-student hisoblash (calculate_monthly_income logic)
+                if not obj.employee.branch:
+                    logger.warning(f"groups_income: admin has no branch for obj {obj.id}")
+                    return 0
+                
+                total = Decimal('0')
+                branch_groups = Group.objects.filter(branch=obj.employee.branch)
+                processed_pairs = set()
+                
+                # Barcha paymentlarni olish
+                payment_map = {}
+                payment_qs = Payment.objects.filter(
+                    group__in=branch_groups,
+                    month__year=obj.month.year,
+                    month__month=obj.month.month
+                ).select_related('student')
+                for p in payment_qs:
+                    key = (p.student_id, p.group_id)
+                    payment_map[key] = p
+                
+                # Student extra tranzaksiyalarni olamiz
+                extra_map = {}
+                branch_group_ids = [g.id for g in branch_groups]
+                extra_qs = FinanceTransaction.objects.filter(
+                    category='student_extra',
+                    date__year=obj.month.year,
+                    date__month=obj.month.month,
+                    group_id__in=branch_group_ids,
+                ).values('student_id', 'group_id', 'transaction_type', 'amount')
+                for tx in extra_qs:
+                    key = (tx['student_id'], tx['group_id'])
+                    amt = Decimal(str(tx['amount'] or 0))
+                    if tx['transaction_type'] == 'income':
+                        extra_map[key] = extra_map.get(key, Decimal('0')) + amt
+                    else:
+                        extra_map[key] = extra_map.get(key, Decimal('0')) - amt
+                
+                for group in branch_groups:
+                    all_students_map = {}
+                    for enr in group.enrollments.select_related('student').all():
+                        if enr.student:
+                            all_students_map[enr.student.id] = enr.student
+                    for st in group.old_students_fk.all():
+                        all_students_map[st.id] = st
+                    
+                    for student in all_students_map.values():
+                        key = (student.id, group.id)
+                        if key in processed_pairs:
+                            continue
+                        processed_pairs.add(key)
+                        
+                        if student.status == 'teacher_negotiated':
+                            if student.include_in_mentor_salary:
+                                # Teacher negotiated student uchun actual income: shartnoma summasi + student_extra
+                                if student.custom_fee:
+                                    total += Decimal(str(student.custom_fee))
+                                else:
+                                    total += Decimal(str(group.monthly_price or 0))
+                                total += extra_map.get(key, Decimal('0'))
+                            continue
+                        
+                        if student.status == 'discount':
+                            # Discount student uchun actual income: davomat asosida + student_extra
+                            total += calculate_discount_student_payment(student, group, obj.month)
+                            total += extra_map.get(key, Decimal('0'))
+                            continue
+                        
+                        # Oddiy studentlar uchun actual income: faqat to'langan paymentlar
+                        p = payment_map.get(key)
+                        base_amount = Decimal('0')
+                        if p and p.is_paid:
+                            base_amount = Decimal(str(p.amount or 0))
+                        net_amount = base_amount + extra_map.get(key, Decimal('0'))
+                        if net_amount != 0 or (p and p.is_paid):
+                            total += net_amount
+                
+                result = int(floor_amount(total))
+                logger.info(f"groups_income (admin): calculated {result} for obj {obj.id}")
+                return result
+            
+            # Mentor uchun
+            if not hasattr(obj.employee, 'staff_profile'):
+                logger.warning(f"groups_income: staff_profile missing for mentor obj {obj.id}")
                 return 0
             profile = obj.employee.staff_profile
             inc = profile.calculate_monthly_income(obj.month)
-            return int(floor_amount(inc))
-        except:
+            result = int(floor_amount(inc))
+            logger.info(f"groups_income (mentor): calculated {result} for obj {obj.id}")
+            return result
+        except Exception as e:
+            logger.error(f"groups_income error: {e}", exc_info=True)
             return 0
     
     def get_calculated_commission(self, obj) -> float:
         try:
+            from finance.utils import floor_amount
             if not obj.month or not hasattr(obj.employee, 'staff_profile'):
                 return None
             profile = obj.employee.staff_profile
@@ -191,27 +289,119 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             return None
 
     def get_groups_income_expected(self, obj) -> int:
+        import logging
+        logger = logging.getLogger(__name__)
         try:
-            if not obj.month or not hasattr(obj.employee, 'staff_profile'):
+            # All necessary imports at top
+            from groups.models import Group
+            from finance.models import FinanceTransaction
+            from finance.utils import calculate_discount_student_payment, floor_amount
+            from decimal import Decimal
+            
+            if not obj.month:
+                logger.warning(f"groups_income_expected: month missing for obj {obj.id}")
+                return 0
+            if obj.employee.role == 'admin':
+                # Admin uchun: staff_profile bo'lmasa ham calculate_expected_monthly_income ishlaydi
+                # Admin uchun staff_profile yo'q bo'lishi mumkin, lekin calculate_expected_monthly_income role admin uchun ishlaydi
+                # Shuning uchun oddiy User modelidan foydalanamiz, fake StaffProfile yaratmaymiz
+                # To'g'ridan-to'g'ri calculate_expected_monthly_income ni chaqira olmaymiz, chunki u StaffProfile metodi
+                # Shuning uchun admin uchun taxminiy tushumni to'g'ridan-to'g'ri hisoblaymiz
+                
+                if not obj.employee.branch:
+                    logger.warning(f"groups_income_expected: admin has no branch for obj {obj.id}")
+                    return 0
+                
+                total = Decimal('0')
+                branch_groups = Group.objects.filter(branch=obj.employee.branch)
+                processed_pairs = set()
+                
+                # Student extra tranzaksiyalarini yig'ish
+                extra_map = {}
+                branch_group_ids = [g.id for g in branch_groups]
+                extra_qs = FinanceTransaction.objects.filter(
+                    category='student_extra',
+                    date__year=obj.month.year,
+                    date__month=obj.month.month,
+                    group_id__in=branch_group_ids,
+                ).values('student_id', 'group_id', 'transaction_type', 'amount')
+                for tx in extra_qs:
+                    key = (tx['student_id'], tx['group_id'])
+                    amt = Decimal(str(tx['amount'] or 0))
+                    if tx['transaction_type'] == 'income':
+                        extra_map[key] = extra_map.get(key, Decimal('0')) + amt
+                    else:
+                        extra_map[key] = extra_map.get(key, Decimal('0')) - amt
+                
+                for group in branch_groups:
+                    all_students_map = {}
+                    for enr in group.enrollments.select_related('student').all():
+                        if enr.student:
+                            all_students_map[enr.student.id] = enr.student
+                    for st in group.old_students_fk.all():
+                        all_students_map[st.id] = st
+                    
+                    for student in all_students_map.values():
+                        key = (student.id, group.id)
+                        if key in processed_pairs:
+                            continue
+                        processed_pairs.add(key)
+                        
+                        if student.status == 'teacher_negotiated':
+                            if student.include_in_mentor_salary:
+                                if student.custom_fee:
+                                    total += Decimal(str(student.custom_fee))
+                                else:
+                                    total += Decimal(str(group.monthly_price or 0))
+                                total += extra_map.get(key, Decimal('0'))
+                            continue
+                        
+                        if student.status == 'discount':
+                            total += calculate_discount_student_payment(student, group, obj.month)
+                            total += extra_map.get(key, Decimal('0'))
+                            continue
+                        
+                        if student.status in ['low_income', 'negotiated'] and student.custom_fee:
+                            total += Decimal(str(student.custom_fee))
+                        else:
+                            total += Decimal(str(group.monthly_price or 0))
+                        total += extra_map.get(key, Decimal('0'))
+                
+                result = int(floor_amount(total))
+                logger.info(f"groups_income_expected (admin): calculated {result} for obj {obj.id}")
+                return result
+            
+            # Mentor uchun (percentage, student_count, fixed)
+            if not hasattr(obj.employee, 'staff_profile'):
+                logger.warning(f"groups_income_expected: staff_profile missing for mentor obj {obj.id}")
                 return 0
             profile = obj.employee.staff_profile
-            if profile.salary_type != 'percentage':
-                return 0
             inc = profile.calculate_expected_monthly_income(obj.month)
-            return int(floor_amount(inc))
-        except:
+            result = int(floor_amount(inc))
+            logger.info(f"groups_income_expected (mentor): calculated {result} for obj {obj.id}")
+            return result
+        except Exception as e:
+            logger.error(f"groups_income_expected error: {e}", exc_info=True)
             return 0
 
     def get_calculated_commission_expected(self, obj) -> float:
+        import logging
+        logger = logging.getLogger(__name__)
         try:
+            from finance.utils import floor_amount
             if not obj.month or not hasattr(obj.employee, 'staff_profile'):
+                logger.warning(f"calculated_commission_expected: month or staff_profile missing for obj {obj.id}")
                 return None
             profile = obj.employee.staff_profile
             if profile.salary_type not in ['percentage', 'student_count']:
+                logger.warning(f"calculated_commission_expected: salary_type is {profile.salary_type} for obj {obj.id}")
                 return None
             sal = profile.calculate_salary_for_month(obj.month, commission_basis='expected')
-            return int(floor_amount(sal))
-        except:
+            result = int(floor_amount(sal))
+            logger.info(f"calculated_commission_expected: calculated {result} for obj {obj.id}")
+            return result
+        except Exception as e:
+            logger.error(f"calculated_commission_expected error: {e}", exc_info=True)
             return None
 
     @extend_schema_field(serializers.DictField())
@@ -240,6 +430,7 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
     @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_mentor_groups(self, obj) -> list:
         try:
+            from finance.utils import calculate_discount_student_payment
             if not obj.month or not hasattr(obj.employee, 'staff_profile'):
                 return []
             
@@ -314,19 +505,42 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                     all_students_map[st.id] = st
                 
                 all_students = list(all_students_map.values())
+                processed_pairs = set()
 
                 for student in all_students:
-                    p = payment_map.get((student.id, group.id))
-                    extra_amount = extra_map.get((student.id, group.id), Decimal('0'))
+                    key = (student.id, group.id)
+                    if key in processed_pairs:
+                        continue
+                    processed_pairs.add(key)
                     
-                    # Talaba uchun bazaviy narxni aniqlash
-                    if student.status in ['low_income', 'negotiated']:
-                        base_price = float(student.custom_fee if student.custom_fee is not None else group.monthly_price)
+                    p = payment_map.get(key)
+                    extra_amount = extra_map.get(key, Decimal('0'))
+                    
+                    is_discount = student.status == 'discount'
+                    is_teacher_negotiated = student.status == 'teacher_negotiated'
+                    
+                    # Expected income uchun bazaviy narxni aniqlash
+                    if is_discount:
+                        # Discount student uchun expected: davomat asosida
+                        base_price_expected = calculate_discount_student_payment(student, group, obj.month)
+                        base_price_floored_expected = float(base_price_expected)
+                    elif student.status in ['low_income', 'negotiated']:
+                        base_price_expected = float(student.custom_fee if student.custom_fee is not None else group.monthly_price)
+                        base_price_floored_expected = float(floor_amount(base_price_expected))
                     else:
-                        base_price = float(group.monthly_price)
+                        base_price_expected = float(group.monthly_price)
+                        base_price_floored_expected = float(floor_amount(base_price_expected))
                     
-                    
-                    base_price_floored = float(floor_amount(base_price))
+                    # Actual income uchun bazaviy narxni aniqlash
+                    if is_discount:
+                        actual_base_amount = calculate_discount_student_payment(student, group, obj.month)
+                        actual_base_floored = float(actual_base_amount)
+                    elif student.status in ['low_income', 'negotiated']:
+                        actual_base_amount = float(student.custom_fee if student.custom_fee is not None else group.monthly_price)
+                        actual_base_floored = float(floor_amount(actual_base_amount))
+                    else:
+                        actual_base_amount = float(group.monthly_price)
+                        actual_base_floored = float(floor_amount(actual_base_amount))
                     
                     # Talaba ma'lumotlari modal uchun
                     student_info = {
@@ -336,14 +550,75 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                         'financial_status': student.status,
                         'financial_status_label': student.get_status_display(),
                         'negotiated_price': float(student.custom_fee) if student.custom_fee else None,
-                        'expected': base_price_floored,
+                        'expected': base_price_floored_expected,
                         'actual': 0,
                         'refund_amount': 0,
                         'refund_ignored': False,
                         'paid_at': None,
-                        'payment_method': None
+                        'payment_method': None,
+                        'is_attendance_based': is_discount
                     }
 
+                    # Teacher negotiated student uchun maxsus logika
+                    if is_teacher_negotiated:
+                        if student.include_in_mentor_salary:
+                            # Teacher negotiated student uchun actual = expected (to'liq to'lagan deb hisoblaymiz)
+                            student_info['actual'] = base_price_floored_expected
+                            
+                            # Mentor real daromadi va ulushi uchun
+                            net_actual_amount = Decimal(str(base_price_floored_expected)) + extra_amount
+                            group_real_income += net_actual_amount
+                            
+                            if is_percentage:
+                                mentor_share_paid += net_actual_amount * Decimal(str(commission_pct))
+                            elif is_student_count:
+                                # Teacher negotiated uchun: min(shartnoma summasi, per_student_rate)
+                                mentor_fee = Decimal(str(base_price_floored_expected))
+                                mentor_share_paid += min(mentor_fee, Decimal(str(per_student_rate)))
+                            
+                            paid_students.append(student_info)
+                            
+                            # Expected income ga ham qo'shamiz
+                            net_expected_amount = Decimal(str(base_price_floored_expected)) + extra_amount
+                            group_expected_income += net_expected_amount
+                            if is_percentage:
+                                mentor_share_expected += net_expected_amount * Decimal(str(commission_pct))
+                            elif is_student_count:
+                                mentor_share_expected += Decimal(str(per_student_rate))
+                        else:
+                            # include_in_mentor_salary=False bo'lsa, actual=0, expected=0
+                            student_info['expected'] = 0
+                            unpaid_students.append(student_info)
+                        continue
+                    
+                    # Discount student uchun
+                    if is_discount:
+                        # Imtiyozli student uchun: actual = attendance asosida
+                        student_info['actual'] = actual_base_floored
+                        
+                        # Mentor real daromadi va ulushi uchun
+                        net_actual_amount = Decimal(str(actual_base_floored)) + extra_amount
+                        group_real_income += net_actual_amount
+                        
+                        if is_percentage:
+                            mentor_share_paid += net_actual_amount * Decimal(str(commission_pct))
+                        elif is_student_count:
+                            # Imtiyozli student uchun: min(attendance asosida, per_student_rate)
+                            mentor_fee = Decimal(str(actual_base_floored))
+                            mentor_share_paid += min(mentor_fee, Decimal(str(per_student_rate)))
+                        
+                        paid_students.append(student_info)
+                        
+                        # Expected income: to'liq shartnoma summasi + extra
+                        net_expected_amount = Decimal(str(base_price_floored_expected)) + extra_amount
+                        group_expected_income += net_expected_amount
+                        if is_percentage:
+                            mentor_share_expected += net_expected_amount * Decimal(str(commission_pct))
+                        elif is_student_count:
+                            mentor_share_expected += Decimal(str(per_student_rate))
+                        continue
+                    
+                    # Oddiy studentlar uchun
                     if p:
                         base_paid_amount = Decimal(str(p.amount or 0)) if p.is_paid else Decimal('0')
                         net_actual_amount = base_paid_amount + extra_amount
@@ -366,9 +641,10 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                                 if p.is_paid:
                                     mentor_share_paid += Decimal(str(min(float(base_paid_amount), per_student_rate)))
                         else:
+                            # Oddiy student uchun
                             unpaid_students.append(student_info)
                     else:
-                        # To'lov yaratilmagan holat, lekin student_extra bo'lishi mumkin.
+                        # To'lov yaratilmagan holat (oddiy studentlar uchun)
                         if extra_amount != 0:
                             student_info['actual'] = float(extra_amount)
                             group_real_income += extra_amount
@@ -380,10 +656,11 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                         else:
                             unpaid_students.append(student_info)
                     
-                    # Kutilayotgan tushum (refundlarni hisobga olmaganda)
-                    group_expected_income += Decimal(str(base_price_floored))
+                    # Expected income (oddiy studentlar uchun): to'liq shartnoma summasi + extra
+                    net_expected_amount = Decimal(str(base_price_floored_expected)) + extra_amount
+                    group_expected_income += net_expected_amount
                     if is_percentage:
-                        mentor_share_expected += Decimal(str(base_price_floored)) * Decimal(str(commission_pct))
+                        mentor_share_expected += net_expected_amount * Decimal(str(commission_pct))
                     elif is_student_count:
                         mentor_share_expected += Decimal(str(per_student_rate))
 

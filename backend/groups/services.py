@@ -317,3 +317,104 @@ def assign_waiting_student_to_group(waiting_student, group_id, request_user):
         waiting_student.delete()
         
     return student
+
+
+def cancel_lesson_day(group, date, request_user, reason=""):
+    """Guruh uchun dars kuni bekor qilish"""
+    import logging
+    logger = logging.getLogger(__name__)
+    from .models import CanceledLessonDay
+    from finance.models import EmployeePayment
+    with transaction.atomic():
+        canceled, created = CanceledLessonDay.objects.get_or_create(
+            group=group,
+            date=date,
+            defaults={
+                'canceled_by': request_user,
+                'reason': reason
+            }
+        )
+        if not created:
+            canceled.reason = reason
+            canceled.canceled_by = request_user
+            canceled.save()
+        
+        # Mentor oyligini qayta hisoblash
+        if group.mentor and hasattr(group.mentor, 'staff_profile'):
+            try:
+                payment_month = date.replace(day=1)
+                emp_payment = EmployeePayment.objects.filter(
+                    employee=group.mentor,
+                    month=payment_month,
+                    is_paid=False
+                ).first()
+                
+                if emp_payment:
+                    emp_payment.recalculate_salary()
+                    emp_payment.save()
+                else:
+                    # To'lov mavjud emas, yangi yaratish
+                    emp_payment, _ = EmployeePayment.objects.get_or_create(
+                        employee=group.mentor,
+                        month=payment_month,
+                        defaults={
+                            'salary_base': 0,
+                            'bonus': 0,
+                            'deductions': 0,
+                            'is_paid': False,
+                            'attendance_deductions': {}
+                        }
+                    )
+                    emp_payment.recalculate_salary()
+                    emp_payment.save()
+            except Exception as e:
+                logger.exception("Mentor oyligini yangilashda xatolik")
+        
+        return canceled, created
+
+
+def reactivate_lesson_day(group, date, request_user):
+    """Guruh uchun bekor qilingan dars kunini qayta faollashtirish"""
+    import logging
+    logger = logging.getLogger(__name__)
+    from .models import CanceledLessonDay
+    from finance.models import EmployeePayment
+    with transaction.atomic():
+        canceled = CanceledLessonDay.objects.filter(group=group, date=date).first()
+        if canceled:
+            canceled.delete()
+            
+            # Mentor oyligini qayta hisoblash
+            if group.mentor and hasattr(group.mentor, 'staff_profile'):
+                try:
+                    payment_month = date.replace(day=1)
+                    emp_payment = EmployeePayment.objects.filter(
+                        employee=group.mentor,
+                        month=payment_month,
+                        is_paid=False
+                    ).first()
+                    
+                    if emp_payment:
+                        emp_payment.recalculate_salary()
+                        emp_payment.save()
+                    else:
+                        # To'lov mavjud emas, yangi yaratish
+                        emp_payment, _ = EmployeePayment.objects.get_or_create(
+                            employee=group.mentor,
+                            month=payment_month,
+                            defaults={
+                                'salary_base': 0,
+                                'bonus': 0,
+                                'deductions': 0,
+                                'is_paid': False,
+                                'attendance_deductions': {}
+                            }
+                        )
+                        emp_payment.recalculate_salary()
+                        emp_payment.save()
+                except Exception as e:
+                    logger.exception("Mentor oyligini yangilashda xatolik")
+            
+            return True
+        else:
+            return False
