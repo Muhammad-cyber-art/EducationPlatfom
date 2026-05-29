@@ -65,12 +65,16 @@ class HasModulePermission(permissions.BasePermission):
             if user_role == 'super_admin':
                 return True
             
-            # Allow EmployeePaymentViewSet and StudentPaymentViewSet for admin/mentor
+            # Adminlarga barcha finance view'lari uchun ruxsat beramiz
+            if user_role == 'admin':
+                return True
+            
+            # Mentorlar uchun: faqat EmployeePaymentViewSet va StudentPaymentViewSet
             view_class_name = view.__class__.__name__
             if view_class_name in ['EmployeePaymentViewSet', 'StudentPaymentViewSet']:
                 return True
             
-            # Boshqa finance view'lari (dashboard, transactions, profiles) faqat super_admin uchun
+            # Boshqa finance view'lari mentorlar uchun emas
             return False
 
         # Modul bo'yicha ruxsat bormi?
