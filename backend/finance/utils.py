@@ -42,7 +42,8 @@ def floor_amount(value) -> Decimal:
 def calculate_discount_student_payment(student, group, month_date):
     """
     Imtiyozli (discount status) student uchun to'lov summasini hisoblash:
-    (Oylik narx / 10) * (Kelgan darslar soni)
+    (Oylik narx / oydagi darslar soni) * (Kelgan darslar soni)
+    Maksimal summasi guruh oylik narxidan oshmasligi kerak!
     """
     from homework_attends.models import Attendance
 
@@ -52,25 +53,31 @@ def calculate_discount_student_payment(student, group, month_date):
         if student.custom_fee is not None:
             base_price = student.custom_fee
 
-    # 10 darslik baza
-    base_lessons_count = Decimal('10')
-    daily_price = Decimal(str(base_price)) / base_lessons_count
+    # Guruh dars kunlari shu oyda (get_lesson_dates allaqachon bekor qilingan kunlarni olib tashlaydi)
+    lesson_dates = group.get_lesson_dates(month_date.year, month_date.month)
+    total_lessons_count = len(lesson_dates)
+    if total_lessons_count <= 0:
+        return Decimal('0')
 
-    # Bekor qilingan kunlarni olish
-    canceled_dates = list(group.canceled_lesson_days.values_list('date', flat=True))
-    
-    # Kelgan darslar sonini hisoblash (bugungi kungacha, bekor qilingan kunlarni hisoblamaymiz)
-    today = timezone.localdate()
+    # Bir kunlik dars narxi (Student.calculate_accrued_amount kabi)
+    daily_price = floor_amount(Decimal(str(base_price)) / total_lessons_count)
+
+    # Kelgan darslar sonini hisoblash:
+    # - Faqat oydagi dars kunlari
+    # - is_present=True
     present_count = Attendance.objects.filter(
         student=student,
         group=group,
-        date__year=month_date.year,
-        date__month=month_date.month,
-        date__lte=today,
+        date__in=lesson_dates,
         is_present=True
-    ).exclude(date__in=canceled_dates).count()
+    ).count()
 
     total_amount = daily_price * Decimal(str(present_count))
+    
+    # Maksimal summasi guruh oylik narxidan oshmasin
+    if total_amount > Decimal(str(base_price)):
+        total_amount = Decimal(str(base_price))
+        
     return floor_amount(total_amount)
 
 
