@@ -15,7 +15,7 @@ from rest_framework.pagination import PageNumberPagination
 
 from .models import (
     Payment, FinanceTransaction, EmployeePayment, 
-    StaffProfile, EmployeeAdvance, AdminExpense
+    StaffProfile, EmployeeAdvance, AdminExpense, MentorGroupSalaryConfig
 )
 from .serializers import (
     PaymentSerializer, FinanceTransactionSerializer, 
@@ -23,7 +23,7 @@ from .serializers import (
     EmployeeAdvanceSerializer, FinanceDashboardSerializer,
     BranchFinanceDetailSerializer, SuccessSerializer, 
     AbsentStudentSerializer, PaymentStatisticsSerializer,
-    AdminExpenseSerializer
+    AdminExpenseSerializer, MentorGroupSalaryConfigSerializer
 )
 from permissions.permissions import HasModulePermission
 from .services import (
@@ -241,16 +241,8 @@ class EmployeePaymentViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             try:
                 # Oylik maoshni qayta hisoblaymiz (yangi tushumlar asosida)
-                if (
-                    hasattr(payment.employee, 'staff_profile')
-                    and payment.employee.staff_profile.salary_type == 'percentage'
-                ):
-                    payment.salary_base = payment.employee.staff_profile.calculate_salary_for_month(
-                        payment.month,
-                        commission_basis=commission_basis,
-                    )
-                else:
-                    payment.recalculate_salary()
+                if hasattr(payment.employee, 'staff_profile'):
+                    payment.recalculate_salary(commission_basis=commission_basis)
             except Exception as e:
                 logger.error(f"Salary recalculation error during confirm: {e}")
 
@@ -286,8 +278,13 @@ class EmployeePaymentViewSet(viewsets.ModelViewSet):
         if payment.is_paid:
             return Response({"error": "To'langan maoshni qayta hisoblab bo'lmaydi"}, status=400)
         
+        # Optional: commission_basis parameter for recalculation
+        commission_basis = str(request.data.get('commission_basis', 'paid')).lower()
+        if commission_basis not in ['paid', 'expected']:
+            commission_basis = 'paid'
+        
         try:
-            payment.recalculate_salary()
+            payment.recalculate_salary(commission_basis=commission_basis)
             payment.save()
             return Response({
                 "status": "success",
@@ -609,6 +606,85 @@ class AdminExpenseViewSet(viewsets.ModelViewSet):
             branch = user.branch
             
         serializer.save(marked_by=user, branch=branch)
+
+class MentorGroupSalaryConfigViewSet(viewsets.ModelViewSet):
+    """
+    Mentorlar uchun guruhga xos maosh konfiguratsiyalari.
+    Super admin va adminlar (faqat o'z filialidagi mentorlar uchun) ishlata oladi.
+    """
+    queryset = MentorGroupSalaryConfig.objects.select_related('mentor', 'group', 'mentor__branch', 'group__branch').all()
+    serializer_class = MentorGroupSalaryConfigSerializer
+    permission_classes = [IsAuthenticated, HasModulePermission]
+    module_name = 'finance'
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['mentor__first_name', 'mentor__last_name', 'mentor__username', 'group__name']
+    ordering_fields = ['created_at', 'updated_at']
+    ordering = ['-created_at']
+    pagination_class = StandardResultsSetPagination
+    
+    def get_queryset(self):
+        try:
+            user = self.request.user
+            qs = super().get_queryset()
+            
+            # Mentor filterini qo'llash (safe usulda)
+            mentor_id = self.request.query_params.get('mentor')
+            if mentor_id:
+                try:
+                    from django.contrib.auth import get_user_model
+                    User = get_user_model()
+                    # Foydalanuvchi mavjud va mentor ekanligini tekshiramiz
+                    if User.objects.filter(id=mentor_id, role='mentor').exists():
+                        qs = qs.filter(mentor_id=mentor_id)
+                    else:
+                        # Agar mentor bo'lmasa, bo'sh queryset qaytaramiz
+                        return qs.none()
+                except (ValueError, TypeError):
+                    # Noto'g'ri ID bo'lsa, bo'sh qaytaramiz
+                    return qs.none()
+            
+            # Guruh filterini qo'llash
+            group_id = self.request.query_params.get('group')
+            if group_id:
+                qs = qs.filter(group_id=group_id)
+            
+            # Salary type filterini qo'llash
+            salary_type = self.request.query_params.get('salary_type')
+            if salary_type:
+                qs = qs.filter(salary_type=salary_type)
+            
+            # Ruxsatlarni tekshiramiz
+            if user.role == 'super_admin':
+                return qs
+                
+            if user.role == 'admin':
+                # Admin faqat o'z filialidagi mentorlar uchun konfiguratsiyalarni ko'radi
+                allowed_branches = [user.branch.id] if user.branch else []
+                if hasattr(user, 'branch_accesses'):
+                    allowed_branches.extend(user.branch_accesses.values_list('branch_id', flat=True))
+                return qs.filter(mentor__branch_id__in=allowed_branches)
+                
+            return qs.none()
+        except Exception as e:
+            logger.exception(f"MentorGroupSalaryConfigViewSet get_queryset error: {e}")
+            return MentorGroupSalaryConfig.objects.none()
+
+    def perform_create(self, serializer):
+        try:
+            # Xavfsizlikni tekshirish: admin faqat o'z filialidagi mentorlar uchun konfiguratsiya yaratishi mumkin
+            user = self.request.user
+            mentor = serializer.validated_data.get('mentor')
+            group = serializer.validated_data.get('group')
+            
+            if user.role == 'admin':
+                if (mentor and mentor.branch != user.branch) or (group and group.branch != user.branch):
+                    from rest_framework.exceptions import PermissionDenied
+                    raise PermissionDenied("Siz faqat o'z filialingizdagi mentorlar va guruhlar uchun konfiguratsiya yaratishingiz mumkin.")
+            
+            serializer.save()
+        except Exception as e:
+            logger.exception(f"MentorGroupSalaryConfigViewSet perform_create error: {e}")
+            raise
 
 
 @extend_schema(responses={200: PaymentStatisticsSerializer})

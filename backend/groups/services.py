@@ -63,10 +63,12 @@ def unenroll_student_from_group(group, student_id, request_user):
         raise ValueError("Ushbu o'quvchi bu guruhda emas")
 
     with transaction.atomic():
-        enrollment.delete()
+        # Enrollmentni delete emas, faqat is_active=False qilamiz (tarix saqlanadi)
+        enrollment.is_active = False
+        enrollment.save()
         
         # QuerySet keshlanib qolmasligi uchun bevosita DB dan tekshiramiz
-        has_other_groups = GroupEnrollment.objects.filter(student=student).exists()
+        has_other_groups = GroupEnrollment.objects.filter(student=student, is_active=True).exists()
         
         if not has_other_groups:
             # Oxirgi guruhi bo'lsa - Arxivga o'tkazamiz va Waiting Hall ga qo'shamiz
@@ -95,7 +97,7 @@ def unenroll_student_from_group(group, student_id, request_user):
             return "active_elsewhere"
 
 def transfer_student_to_group(student, new_group_id, request_user, reason, from_group_id=None):
-    """O'quvchini bir guruhdan boshqasiga o'tkazish"""
+    """O'quvchini bir guruhdan boshqasiga o'tkazish (Davomat, To'lov, Vazifalar, Testlarni ham ko'chiradi)"""
     new_group = get_object_or_404(Group, id=new_group_id)
     
     if from_group_id:
@@ -126,8 +128,11 @@ def transfer_student_to_group(student, new_group_id, request_user, reason, from_
         new_group_fee = floor_amount(get_effective_fee(student, new_group))
 
         # 1. Enrollmentlar bilan ishlash
-        GroupEnrollment.objects.filter(student=student, group=old_group).delete()
-        GroupEnrollment.objects.get_or_create(student=student, group=new_group)
+        old_enrollment = GroupEnrollment.objects.filter(student=student, group=old_group).first()
+        if old_enrollment:
+            old_enrollment.is_active = False
+            old_enrollment.save()
+        GroupEnrollment.objects.get_or_create(student=student, group=new_group, defaults={'is_active': True})
 
         # 2. To'lovni ko'chirish
         old_payment = Payment.objects.filter(
@@ -151,8 +156,11 @@ def transfer_student_to_group(student, new_group_id, request_user, reason, from_
                 if old_payment.is_paid and not existing_new.is_paid:
                     existing_new.is_paid = True
                     existing_new.amount = old_payment.amount
+                    existing_new.paid_amount = old_payment.paid_amount
+                    existing_new.paid_at = old_payment.paid_at
+                    existing_new.marked_by = old_payment.marked_by
                 elif not existing_new.is_paid:
-                    # Agar to'lanmagan bo'lsa, narxni yangilab qo'yamiz (Senior Fix)
+                    # Agar to'lanmagan bo'lsa, narxni yangilab qo'yamiz
                     existing_new.amount = new_group_fee
                 
                 existing_new.save()
@@ -168,7 +176,13 @@ def transfer_student_to_group(student, new_group_id, request_user, reason, from_
                 p_obj.amount = new_group_fee
                 p_obj.save()
 
-        # 3. Transfer log
+        # 3. Davomat (Attendance) records'ni yangilash (o'quvchining eski guruhdagi barcha davomatlari yangi guruhga o'tadi)
+        Attendance.objects.filter(student=student, group=old_group).update(group=new_group)
+
+        # 4. HomeworkSubmission va MockTestResult: Ular Homework/MockTest bilan bog'langan, ular esa o'z guruhlari bilan qoladi
+        #    (chunki ular o'tgan darslar uchun, guruh o'zgarganda esa bu tarixiy ma'lumotlar saqlanishi kerak)
+        
+        # 6. Transfer log
         GroupTransfer.objects.create(
             student=student,
             from_group=old_group,
@@ -180,7 +194,7 @@ def transfer_student_to_group(student, new_group_id, request_user, reason, from_
             new_group_fee=new_group_fee
         )
 
-        # 4. Student model yangilash (agar student.group shu eski guruh bo'lsa yoki umuman bo'lmasa)
+        # 7. Student model yangilash (agar student.group shu eski guruh bo'lsa yoki umuman bo'lmasa)
         if student.group == old_group or not student.group:
             student.group = new_group
             student.branch = new_group.branch

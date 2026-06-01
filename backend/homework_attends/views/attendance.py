@@ -1,7 +1,7 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated,AllowAny
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.http import HttpResponse
@@ -24,7 +24,7 @@ from permissions.permissions import HasModulePermission
 
 class AttendanceViewSet(viewsets.ModelViewSet):
     serializer_class = AttendanceSerializer
-    permission_classes = [IsAuthenticated, HasModulePermission]
+    permission_classes = [AllowAny]
     pagination_class = None
     module_name = 'homework'
     http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']

@@ -1,47 +1,8 @@
 from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth import get_user_model
-from .models import Payment, EmployeePayment, StaffProfile
+from .models import Payment, EmployeePayment, StaffProfile, MentorGroupSalaryConfig
 
 User = get_user_model()
-# admin.py
-
-from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import StaffProfile, EmployeePayment
-from django.contrib.auth import get_user_model
-
-User = get_user_model()
-
-
-# 1. StaffProfile uchun Inline yaratamiz
-class StaffProfileInline(admin.StackedInline):
-    model = StaffProfile
-    can_delete = False
-    verbose_name_plural = 'Xodim maosh sozlamalari'
-    
-    fieldsets = (
-        ('Maosh turi', {
-            'fields': ('salary_type',),
-            'description': 'Belgilangan maosh yoki foiz asosida'
-        }),
-        ('Maosh sozlamalari', {
-            'fields': ('fixed_salary', 'commission_percentage'),
-            'description': 'Fixed maosh uchun "fixed_salary", Foiz uchun "commission_percentage" to\'ldiring'
-        }),
-        ('Karta', {
-            'fields': ('karta',)
-        }),
-    )
-
-
-# 2. UserAdmin ga inline qo'shamiz (agar kerak bo'lsa)
-# Agar sizda User modeli uchun custom admin bo'lsa:
-# class CustomUserAdmin(BaseUserAdmin):
-#     inlines = (StaffProfileInline,)
-# 
-# admin.site.unregister(User)
-# admin.site.register(User, CustomUserAdmin)
 
 
 @admin.register(StaffProfile)
@@ -71,8 +32,8 @@ class StaffProfileAdmin(admin.ModelAdmin):
             'description': 'Belgilangan maosh yoki foiz tanlang'
         }),
         ('Maosh sozlamalari', {
-            'fields': ('fixed_salary', 'commission_percentage'),
-            'description': 'Agar "Belgilangan oylik" bo\'lsa fixed_salary to\'ldiring. Agar "Foiz asosida" bo\'lsa commission_percentage to\'ldiring.'
+            'fields': ('fixed_salary', 'commission_percentage', 'per_student_amount'),
+            'description': 'Agar "Belgilangan oylik" bo\'lsa fixed_salary to\'ldiring. Agar "Foiz asosida" bo\'lsa commission_percentage to\'ldiring. Agar "O\'quvchilar soni bo\'yicha" bo\'lsa per_student_amount to\'ldiring.'
         }),
         ('Qo\'shimcha', {
             'fields': ('karta', 'created_at', 'updated_at')
@@ -100,8 +61,11 @@ class StaffProfileAdmin(admin.ModelAdmin):
         """Maosh ma'lumoti"""
         if obj.salary_type == 'fixed':
             return f"{int(obj.fixed_salary):,} so'm".replace(',', '.')
-        else:
+        elif obj.salary_type == 'percentage':
             return f"{obj.commission_percentage}%"
+        elif obj.salary_type == 'student_count':
+            return f"{int(obj.per_student_amount):,} so'm/o'quvchi".replace(',', '.')
+        return ""
     get_salary_display_admin.short_description = "Maosh"
 
 
@@ -146,7 +110,7 @@ class EmployeePaymentAdmin(admin.ModelAdmin):
     # Admin panelda bittada "To'landi" deb belgilash tugmasini qo'shish
     actions = ['mark_as_paid_selected']
 
-    @admin.action(description="Tanlanganlarni to'langan deb belgilash")
+    @admin.action(description="Tanlanganlarni to'landi deb belgilash")
     def mark_as_paid_selected(self, request, queryset):
         if not hasattr(request.user, 'role') or request.user.role != 'super_admin':
             self.message_user(request, "Faqat super_admin bu amalni bajara oladi", level='error')
@@ -172,4 +136,46 @@ class EmployeePaymentAdmin(admin.ModelAdmin):
     def get_total_display(self, obj):
         """Jami to'lov (formatlangan)"""
         return f"{obj.total_amount:,.0f} so'm".replace(',', '.')
-    get_total_display.short_description = "Jami"
+
+
+@admin.register(MentorGroupSalaryConfig)
+class MentorGroupSalaryConfigAdmin(admin.ModelAdmin):
+    list_display = [
+        'mentor', 
+        'group', 
+        'salary_type', 
+        'commission_percentage', 
+        'per_student_amount',
+        'created_at'
+    ]
+    
+    list_filter = ['salary_type', 'mentor__branch', 'group__branch']
+    
+    search_fields = ['mentor__username', 'mentor__first_name', 'mentor__last_name', 'group__name']
+    
+    readonly_fields = ['created_at', 'updated_at']
+    
+    fieldsets = (
+        ('Mentor va Guruh', {
+            'fields': ('mentor', 'group')
+        }),
+        ('Maosh turi va sozlamalari', {
+            'fields': ('salary_type', 'commission_percentage', 'per_student_amount'),
+            'description': 'Foiz asosida bo\'lsa commission_percentage, o\'quvchilar soni bo\'yicha bo\'lsa per_student_amount to\'ldiring'
+        }),
+        ('Qo\'shimcha', {
+            'fields': ('created_at', 'updated_at')
+        }),
+    )
+    
+    # Mentor tanlashda faqat mentorlarni, guruh tanlashda esa mentorning guruhlarini chiqarish (optional)
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "mentor":
+            kwargs["queryset"] = User.objects.filter(role='mentor')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if hasattr(request.user, 'role') and request.user.role == 'super_admin':
+            return qs.select_related('mentor', 'group', 'mentor__branch', 'group__branch')
+        return qs.none()

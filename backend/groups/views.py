@@ -131,10 +131,15 @@ class GroupViewSet(viewsets.ModelViewSet):
         
         exclude_students = request.query_params.get('exclude_students', 'false').lower() == 'true'
         if not exclude_students:
+            # Faqat guruhda active, arxivlanmagan va faol o'quvchilarni prefetch qilamiz
+            # Avval active enrollment'lardagi student ID larini olamiz (N+1 oldini olish uchun
+            # Shuni to'g'ri qilish uchun guruhni avval oldinda prefetchingni enrollmentsdan, lekin serializerda allaqachon studentsni o'zimiz
+            # Shu bilan birga, serializerda get_students allaqachon o'zini oladi, shuning uchun shunchaki kerak emas, lekin yaxshilaymiz
+            # Avval guruhni olamiz, keyin studentsni serializerda get_students orqali olamiz
             queryset = queryset.prefetch_related(
                 Prefetch(
-                    'students',
-                    queryset=Student.objects.select_related('group', 'branch').order_by('full_name')
+                    'enrollments',
+                    queryset=GroupEnrollment.objects.filter(is_active=True).select_related('student__group', 'student__branch')
                 )
             )
         else:
@@ -244,7 +249,9 @@ class GroupViewSet(viewsets.ModelViewSet):
     def students(self, request, pk=None):
         """Guruhdagi o'quvchilar ro'yxati (Optimallashtirilgan)"""
         group = self.get_object()
-        students = group.students.all()
+        # Faqat guruhda active bo'lgan, arxivlanmagan va faol o'quvchilarni olish
+        active_student_ids = list(group.enrollments.filter(is_active=True).values_list('student_id', flat=True))
+        students = Student.objects.filter(id__in=active_student_ids, is_archived=False, is_active=True)
         
         # To'lov ma'lumotlarini bitta so'rovda olish (N+1 muammosini oldini olish)
         from finance.models import Payment
@@ -419,6 +426,56 @@ class GroupViewSet(viewsets.ModelViewSet):
         
         MentorGroupAssignment.objects.filter(group=group, mentor_id=serializer.validated_data['mentor_id']).delete()
         return Response({"status": "Muvaffaqiyatli olib tashlandi"}, status=200)
+
+    @action(detail=True, methods=['post'], url_path='transfer-branch', permission_classes=[IsAdminOrSuperAdmin])
+    def transfer_branch(self, request, pk=None):
+        """Guruhni boshqa filialga o'tkazish (mentor, o'quvchilar, davomat, to'lovlar bilan)"""
+        from branches.models import Branch
+        from django.contrib.auth import get_user_model
+        
+        group = self.get_object()
+        new_branch_id = request.data.get('new_branch_id')
+        reason = request.data.get('reason', "Guruh filialga o'tkazildi")
+        
+        if not new_branch_id:
+            return Response({"error": "Yangi filial ID'si majburiy"}, status=400)
+        
+        new_branch = get_object_or_404(Branch, id=new_branch_id)
+        
+        # Check if we're trying to transfer to the same branch
+        if group.branch_id == new_branch_id:
+            return Response({"error": "Guruh allaqachon shu filialda"}, status=400)
+        
+        with transaction.atomic():
+            # 1. Guruh branchini yangilash
+            old_branch = group.branch
+            group.branch = new_branch
+            group.save()
+            
+            # 2. O'quvchilar branchini yangilash (faqat ushbu guruhda faol bo'lganlarni)
+            from groups.models import GroupEnrollment
+            active_students = Student.objects.filter(
+                enrollments__group=group,
+                enrollments__is_active=True
+            ).distinct()
+            for student in active_students:
+                # Agar o'quvchi faqat ushbu guruhda bo'lsa, branchini yangilaymiz
+                active_groups_count = GroupEnrollment.objects.filter(
+                    student=student, 
+                    is_active=True
+                ).count()
+                if active_groups_count == 1:
+                    student.branch = new_branch
+                    student.save()
+            
+            # 3. Davomat, to'lovlar, vazifalar, mock testlar: ular guruhga bog'langanligi uchun o'zgarishsiz qoladi
+            # chunki biz guruhning branchini yangiladik, ular esa guruh orqali branchga bog'langan
+            
+            # 4. Transfer tarixi uchun (agar kerak bo'lsa, yangi model yaratish mumkin)
+            old_branch_name = old_branch.name if old_branch else "Filial yo'q"
+            logger.info(f"Guruh {group.name} ({group.id}) {old_branch_name} dan {new_branch.name} filialiga o'tkazildi. Sabab: {reason}")
+            
+        return Response({"status": "success", "message": "Guruh muvaffaqiyatli filialga o'tkazildi"}, status=200)
 
     def destroy(self, request, *args, **kwargs):
         group = self.get_object()

@@ -43,19 +43,20 @@ export const PaymentConfirmModal = ({ isOpen, onClose, onConfirm, data, loading 
 
     if (!isOpen) return null;
 
-    const buildPayload = (isPartial, payAmount) => ({
+    const buildPayload = (isPartial, payAmount, isCustom) => ({
         payment_method: method,
         receipt_image: method === 'click' ? receiptImage : null,
         is_receiptless: method === 'click' ? noReceipt : false,
         notes: notes,
         ignore_refund: !calculateRefund,
-        pay_full_month: !isPartial,
+        pay_full_month: !isPartial && !isCustom,
         is_partial_payment: isPartial,
+        is_custom_amount: isCustom,
         amount: String(Math.floor(payAmount)),
     });
 
-    const submitPayment = (isPartial, payAmount) => {
-        onConfirm(buildPayload(isPartial, payAmount));
+    const submitPayment = (isPartial, payAmount, isCustom = false) => {
+        onConfirm(buildPayload(isPartial, payAmount, isCustom));
     };
 
     const handleFileChange = (e) => {
@@ -99,6 +100,10 @@ export const PaymentConfirmModal = ({ isOpen, onClose, onConfirm, data, loading 
             onChoosePartial={() => {
                 setShowTypeChoice(false);
                 submitPayment(true, amount);
+            }}
+            onChooseCustom={() => {
+                setShowTypeChoice(false);
+                submitPayment(false, amount, true);
             }}
         />
         <div className="fixed inset-0 z-[3000] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md overflow-y-auto">

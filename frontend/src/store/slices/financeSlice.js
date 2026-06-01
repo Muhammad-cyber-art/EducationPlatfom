@@ -16,6 +16,16 @@ const initialState = {
  salary_type:"fixed",
  karta:""
  },
+ // Mentor Group Salary Config states
+ groupConfigModal: false,
+ groupConfigs: [],
+ groupConfigsLoading: false,
+ groupConfigForm: {
+    group: "",
+    salary_type: "percentage",
+    commission_percentage: "",
+    per_student_amount: ""
+ },
  // StaffProfileForm states
  profileFormLoading: false,
  profileUsers: [],
@@ -78,6 +88,25 @@ const financeSlice = createSlice({
  updateEditForm: (state, action) => {
  state.editForm = { ...state.editForm, ...action.payload };
  },
+ // Mentor Group Salary Config actions
+ setGroupConfigModal: (state, action) => {
+ state.groupConfigModal = action.payload;
+ },
+ setGroupConfigs: (state, action) => {
+ state.groupConfigs = action.payload;
+ },
+ setGroupConfigsLoading: (state, action) => {
+ state.groupConfigsLoading = action.payload;
+ },
+ setGroupConfigForm: (state, action) => {
+ state.groupConfigForm = action.payload;
+ },
+ updateGroupConfigForm: (state, action) => {
+ state.groupConfigForm = { ...state.groupConfigForm, ...action.payload };
+ },
+ resetGroupConfigForm: (state) => {
+ state.groupConfigForm = initialState.groupConfigForm;
+ },
  // Profile Form Actions
  setProfileFormLoading: (state, action) => { state.profileFormLoading = action.payload; },
  setProfileUsers: (state, action) => { state.profileUsers = action.payload; },
@@ -137,6 +166,13 @@ export const {
  setEditLoading,
  setEditForm,
  updateEditForm,
+ // Mentor Group Salary Config actions
+ setGroupConfigModal,
+ setGroupConfigs,
+ setGroupConfigsLoading,
+ setGroupConfigForm,
+ updateGroupConfigForm,
+ resetGroupConfigForm,
  setProfileFormLoading,
  setProfileUsers,
  setProfileExisting,

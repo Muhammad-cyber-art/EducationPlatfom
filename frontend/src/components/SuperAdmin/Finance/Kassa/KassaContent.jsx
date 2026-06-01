@@ -78,7 +78,7 @@ const IncomeTable = ({ payments, loading, isSuperAdmin, onVerify, onDetail, onRe
                         </div>
                     </td>
                     <td className="px-8 py-6">
-                        <div className="text-base font-black text-white tabular-nums tracking-tight">{formatCurrency(p.amount)}</div>
+                        <div className="text-base font-black text-white tabular-nums tracking-tight">{formatCurrency(p.paid_amount)}</div>
                         {p.refund_amount > 0 && !p.refund_ignored && (
                             <div className="mt-1 text-[9px] font-bold text-emerald-400">Refund: -{formatCurrency(p.refund_amount)}</div>
                         )}
@@ -197,7 +197,7 @@ const MobileIncomeCard = ({ item, isSuperAdmin, onVerify, onDetail }) => (
         <div className="flex justify-between items-end">
             <div className="space-y-1">
                 <p className="text-[8px] text-[var(--text-muted)] font-black uppercase tracking-widest">To'lov summasi</p>
-                <p className="text-lg font-black text-white tabular-nums">{formatCurrency(item.amount)}</p>
+                <p className="text-lg font-black text-white tabular-nums">{formatCurrency(item.paid_amount)}</p>
                 {item.refund_amount > 0 && !item.refund_ignored && (
                     <p className="text-[9px] font-bold text-emerald-400">Refund: -{formatCurrency(item.refund_amount)}</p>
                 )}

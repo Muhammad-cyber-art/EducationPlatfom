@@ -6,8 +6,14 @@ import uuid
 
 class Payment(models.Model):
     # O'quvchi va Guruh bilan bog'liqlik
-    student = models.ForeignKey('groups.Student', on_delete=models.CASCADE, related_name='payments')
+    student = models.ForeignKey('groups.Student', on_delete=models.SET_NULL, null=True, blank=True, related_name='payments')
+    # O'quvchi ma'lumotlarini saqlash (student o'chirilganda ham saqlanadi)
+    student_full_name = models.CharField(max_length=200, blank=True, null=True)
+    student_phone = models.CharField(max_length=20, blank=True, null=True)
+    
     group = models.ForeignKey('groups.Group', on_delete=models.SET_NULL, null=True, blank=True, related_name='payments')
+    # Guruh ma'lumotlarini saqlash (group o'chirilganda ham saqlanadi)
+    group_name = models.CharField(max_length=200, blank=True, null=True)
     
     # Qaysi oy uchun to'lov (Masalan: 2025-12-01)
     month = models.DateField(null=True, blank=True)    
@@ -15,7 +21,7 @@ class Payment(models.Model):
     # To'lov holati
     is_paid = models.BooleanField(default=False)
     
-    # Refund (Qaytarib berish)ni bekor qilish opsiyasi
+    # Refund (Qaytarib berish) ni bekor qilish opsiyasi
     refund_ignored = models.BooleanField(default=False, verbose_name="Refund bekor qilingan")
 
     # Guruhning o'sha paytdagi narxi (audit uchun muhim!)
@@ -72,13 +78,26 @@ class Payment(models.Model):
     verified_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        unique_together = ('student', 'group', 'month')
         ordering = ['-month']
         verbose_name = "O'quvchi to'lovi"
         verbose_name_plural = "O'quvchilar to'lovlari"
 
     def __str__(self):
-        return f"{self.student.full_name} - {self.group.name} - {self.month.strftime('%B %Y') if self.month else 'No month'}"
+        student_name = self.student_full_name or (self.student.full_name if self.student else "Unknown Student")
+        group_name = self.group_name or (self.group.name if self.group else "Unknown Group")
+        return f"{student_name} - {group_name} - {self.month.strftime('%B %Y') if self.month else 'No month'}"
+    
+    def save(self, *args, **kwargs):
+        # O'quvchi va guruh ma'lumotlarini avtomatik tarzda saqlash
+        if self.student:
+            self.student_full_name = self.student.full_name
+            self.student_phone = self.student.phone
+        if self.group:
+            self.group_name = self.group.name
+        if self.month:
+            from finance.utils import normalize_month
+            self.month = normalize_month(self.month)
+        super().save(*args, **kwargs)
 
     @property
     def remaining_amount(self):
@@ -96,9 +115,12 @@ class Payment(models.Model):
         notes=None,
         is_receiptless=False,
         is_full_amount=False,
+        is_custom_amount=False,
     ):
         """
-        To'lovni qabul qilish (to'liq yoki bo'lib-bo'lib).
+        To'lovni qabul qilish:
+        1. Oddiy (to'liq/bo'lib)
+        2. Custom (berilgan summani to'liq qabul qiladi va oylikni yopadi)
         Har bir qism uchun alohida FinanceTransaction yaratiladi.
         """
         from django.db import transaction as db_transaction
@@ -111,32 +133,47 @@ class Payment(models.Model):
         with db_transaction.atomic():
             expected = Decimal(str(self.amount or 0))
             current_paid = Decimal(str(self.paid_amount or 0))
-            remaining = max(Decimal('0'), expected - current_paid)
 
-            if remaining > 0 and installment > remaining:
-                installment = remaining
-
-            self.paid_amount = current_paid + installment
-            if not self.paid_at:
-                self.paid_at = timezone.now()
-            self.marked_by = admin_user
-            self.payment_method = method
-            self.is_receiptless = is_receiptless
-            self.is_full_amount = is_full_amount
-            if receipt:
-                self.receipt_image = receipt
-            if notes:
-                self.notes = notes
-
-            if expected > 0 and self.paid_amount >= expected:
+            if is_custom_amount:
+                # Custom summa rejimi: berilgan summani to'liq qabul qiladi va oylikni yopadi
+                self.paid_amount = current_paid + installment
+                if not self.paid_at:
+                    self.paid_at = timezone.now()
+                self.marked_by = admin_user
+                self.payment_method = method
+                self.is_receiptless = is_receiptless
+                self.is_full_amount = is_full_amount
+                if receipt:
+                    self.receipt_image = receipt
+                if notes:
+                    self.notes = notes
                 self.is_paid = True
                 self.is_partial = False
-            elif self.paid_amount > 0:
-                self.is_paid = False
-                self.is_partial = True
             else:
-                self.is_paid = False
-                self.is_partial = False
+                # Oddiy rejim: expected dan oshmasin
+                remaining = max(Decimal('0'), expected - current_paid)
+                if remaining > 0 and installment > remaining:
+                    installment = remaining
+                self.paid_amount = current_paid + installment
+                if not self.paid_at:
+                    self.paid_at = timezone.now()
+                self.marked_by = admin_user
+                self.payment_method = method
+                self.is_receiptless = is_receiptless
+                self.is_full_amount = is_full_amount
+                if receipt:
+                    self.receipt_image = receipt
+                if notes:
+                    self.notes = notes
+                if expected > 0 and self.paid_amount >= expected:
+                    self.is_paid = True
+                    self.is_partial = False
+                elif self.paid_amount > 0:
+                    self.is_paid = False
+                    self.is_partial = True
+                else:
+                    self.is_paid = False
+                    self.is_partial = False
 
             self.save()
 
@@ -159,7 +196,6 @@ class Payment(models.Model):
             )
 
         return self
-
     def mark_as_paid(self, admin_user, method='cash', receipt=None, notes=None, is_receiptless=False, is_full_amount=False):
         """Orqaga moslik: to'liq qolgan summani bir martada qabul qiladi."""
         if self.is_paid:
@@ -178,8 +214,3 @@ class Payment(models.Model):
             is_receiptless=is_receiptless,
             is_full_amount=is_full_amount,
         )
-    def save(self, *args, **kwargs):
-        if self.month:
-            from finance.utils import normalize_month
-            self.month = normalize_month(self.month)
-        super().save(*args, **kwargs)

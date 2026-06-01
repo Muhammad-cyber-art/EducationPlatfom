@@ -6,8 +6,19 @@ const KpiTable = ({
   isPercentageType,
   isStudentCountType,
   formatCurrency,
-  setSelectedGroupForDebtors
+  setSelectedGroupForDebtors,
+  groupConfigs = []
 }) => {
+  // Find group config for a group
+  const getGroupConfig = (groupId) => {
+    return groupConfigs.find(config => {
+      const configGroupId = typeof config.group === 'object' && config.group !== null
+        ? config.group.id
+        : Number(config.group);
+      return configGroupId === groupId;
+    });
+  };
+
   // Agar guruhlar bo'lsa, jadvalni ko'rsatamiz (salary_type dan qat'i nazar)
   if (data.mentor_groups && data.mentor_groups.length > 0) {
     const isSCT = isStudentCountType;
@@ -39,46 +50,61 @@ const KpiTable = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border-glass)]">
-              {data.mentor_groups?.map((group) => (
-                <tr key={group.id} className={`hover:${isSCT ? 'bg-blue-500/[0.02]' : 'bg-emerald-500/[0.02]'} transition-colors group`}>
-                  <td className="px-4 py-3.5">
-                    <p className="text-[10px] font-black text-[var(--text-primary)] leading-tight capitalize">{group.name}</p>
-                    <p className={`text-[8px] font-black capitalize tracking-widest ${isSCT ? 'text-blue-400' : 'text-emerald-400'}`}>{formatCurrency(group.monthly_price)}</p>
-                  </td>
-                  <td className="px-4 py-3.5 text-center font-black text-[10px] text-[var(--text-primary)] tabular-nums">
-                    {group.paid_students_count || 0} / {group.students_count || 0}
-                  </td>
-                  <td className="px-4 py-3.5 text-right font-black text-[10px] tabular-nums whitespace-nowrap">
-                    <span className="text-emerald-500">{formatCurrency(group.real_income || group.monthly_income)}</span>
-                    <span className="text-[var(--text-muted)] mx-1">/</span>
-                    <span className="text-[var(--text-muted)]">{formatCurrency(group.expected_income)}</span>
-                  </td>
-                  {(isPercentageType || isStudentCountType) && (
-                    <td className={`px-4 py-3.5 text-right font-black text-[10px] tabular-nums ${isSCT ? 'text-blue-400' : 'text-emerald-400'}`}>
-                      {formatCurrency(group.mentor_share_paid || 0)}
+              {data.mentor_groups?.map((group) => {
+                const config = getGroupConfig(group.id);
+                
+                return (
+                  <tr key={group.id} className={`hover:${isSCT ? 'bg-blue-500/[0.02]' : 'bg-emerald-500/[0.02]'} transition-colors group`}>
+                    <td className="px-4 py-3.5">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-[10px] font-black text-[var(--text-primary)] leading-tight capitalize">{group.name}</p>
+                        {config && (
+                          <span className={`px-2 py-0.5 rounded text-[7px] font-black tracking-wider ${
+                            config.salary_type === 'percentage' ? 'bg-purple-500/15 text-purple-400 border border-purple-500/20' : 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/20'
+                          }`}>
+                            {config.salary_type === 'percentage' 
+                              ? `${config.commission_percentage}%` 
+                              : `${Number(config.per_student_amount).toLocaleString('uz-UZ')}`}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`text-[8px] font-black capitalize tracking-widest ${isSCT ? 'text-blue-400' : 'text-emerald-400'}`}>{formatCurrency(group.monthly_price)}</p>
                     </td>
-                  )}
-                  <td className="px-4 py-3.5 text-center">
-                    {group.unpaid_students && group.unpaid_students.length > 0 ? (
-                      <button
-                        onClick={() => setSelectedGroupForDebtors(group)}
-                        className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500 text-amber-500 hover:text-white border border-amber-500/20 rounded-lg text-[8px] font-black capitalize tracking-widest transition-all flex items-center gap-1.5 mx-auto shadow-sm"
-                      >
-                        <Users size={10} />
-                        Qarzdorlar ({group.unpaid_students.length})
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => setSelectedGroupForDebtors(group)}
-                        className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white border border-emerald-500/20 rounded-lg text-[8px] font-black capitalize tracking-widest transition-all flex items-center gap-1.5 mx-auto shadow-sm"
-                      >
-                        <CheckCircle2 size={10} />
-                        Ok ({group.paid_students_count || group.students_count})
-                      </button>
+                    <td className="px-4 py-3.5 text-center font-black text-[10px] text-[var(--text-primary)] tabular-nums">
+                      {group.paid_students_count || 0} / {group.students_count || 0}
+                    </td>
+                    <td className="px-4 py-3.5 text-right font-black text-[10px] tabular-nums whitespace-nowrap">
+                      <span className="text-emerald-500">{formatCurrency(group.real_income || group.monthly_income)}</span>
+                      <span className="text-[var(--text-muted)] mx-1">/</span>
+                      <span className="text-[var(--text-muted)]">{formatCurrency(group.expected_income)}</span>
+                    </td>
+                    {(isPercentageType || isStudentCountType) && (
+                      <td className={`px-4 py-3.5 text-right font-black text-[10px] tabular-nums ${isSCT ? 'text-blue-400' : 'text-emerald-400'}`}>
+                        {formatCurrency(group.mentor_share_paid || 0)}
+                      </td>
                     )}
-                  </td>
-                </tr>
-              ))}
+                    <td className="px-4 py-3.5 text-center">
+                      {group.unpaid_students && group.unpaid_students.length > 0 ? (
+                        <button
+                          onClick={() => setSelectedGroupForDebtors(group)}
+                          className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500 text-amber-500 hover:text-white border border-amber-500/20 rounded-lg text-[8px] font-black capitalize tracking-widest transition-all flex items-center gap-1.5 mx-auto shadow-sm"
+                        >
+                          <Users size={10} />
+                          Qarzdorlar ({group.unpaid_students.length})
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => setSelectedGroupForDebtors(group)}
+                          className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white border border-emerald-500/20 rounded-lg text-[8px] font-black capitalize tracking-widest transition-all flex items-center gap-1.5 mx-auto shadow-sm"
+                        >
+                          <CheckCircle2 size={10} />
+                          Ok ({group.paid_students_count || group.students_count})
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

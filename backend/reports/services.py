@@ -150,7 +150,7 @@ def get_full_monthly_report(year, month):
 
     for i, sp in enumerate(student_payments, 1):
         refund_val = float(sp.refund_amount or 0) if not sp.refund_ignored else 0
-        net_val = float(sp.amount or 0)
+        net_val = float(sp.paid_amount or 0)
         gross_val = net_val + refund_val
         ws1.append([
             i,
@@ -187,7 +187,7 @@ def get_full_monthly_report(year, month):
 
     for i, rp in enumerate(refund_payments, 1):
         refund_val = float(rp.refund_amount or 0)
-        net_val = float(rp.amount or 0)
+        net_val = float(rp.paid_amount or 0)
         gross_val = net_val + refund_val
         if rp.is_paid:
             status = "To'liq to'langan"

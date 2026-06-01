@@ -22,6 +22,7 @@ import AddMockTestModal from "../mockTests/AddMockTestModal";
 import AddMentorModal from "./assextramentor";
 import SendMessageModal from "../Common/SendMessageModal";
 import HomeworkStorageModal from "../homework/HomeworkStorageModal";
+import GroupTransferModal from "./GroupDetails/GroupTransferModal";
 
 const initialUIState = {
   error: "",
@@ -34,6 +35,7 @@ const initialUIState = {
   editData: {},
   showMenu: false,
   isViewAllModalOpen: false,
+  isGroupTransferModalOpen: false,
   activeAddMentor: null,
   selectedDate: new Date().toLocaleDateString('sv-SE'),
   markedStudents: JSON.parse(localStorage.getItem('marked_students') || '{}'),
@@ -122,6 +124,12 @@ export default function GroupDetailPage() {
       toast.success("Guruh arxivlandi.");
       navigate(-1);
     } catch (err) { toast.error("Xatolik yuz berdi."); }
+  };
+
+  const handleGroupTransferSuccess = async () => {
+    queryClient.invalidateQueries(['group-detail', group_id]);
+    queryClient.invalidateQueries(['groups']); // Invalidate all group list queries
+    queryClient.invalidateQueries(['nested_groups']);
   };
 
   const handleDownloadMonthlyReport = async () => {
@@ -253,6 +261,14 @@ export default function GroupDetailPage() {
         />
       )}
       {isStorageOpen && <HomeworkStorageModal isOpen={true} onClose={() => uiDispatch({ type: "SET_FIELD", field: "isStorageOpen", value: false })} groupId={group_id} />}
+      {uiState.isGroupTransferModalOpen && (
+        <GroupTransferModal 
+          isOpen={true} 
+          onClose={() => uiDispatch({ type: "SET_FIELD", field: "isGroupTransferModalOpen", value: false })} 
+          groupinfo={groupinfo}
+          onSuccess={handleGroupTransferSuccess}
+        />
+      )}
 
       <ResourcesModal
         isOpen={isViewAllModalOpen}

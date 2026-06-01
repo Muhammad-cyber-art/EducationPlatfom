@@ -96,6 +96,7 @@ def bulk_confirm_attendance(group, requested_date, attendances_payload, user):
     to_create = []
     to_update = []
     updated_ids = []
+    processed_student_ids = set()
 
     with transaction.atomic():
         for item in attendances_payload:
@@ -115,6 +116,7 @@ def bulk_confirm_attendance(group, requested_date, attendances_payload, user):
                     attendance.marked_by = user
                     to_update.append(attendance)
                 updated_ids.append(attendance.id)
+                processed_student_ids.add(student_id)
             else:
                 # Agar rekord bazada yo'q bo'lsa (masalan, kutilmagan student)
                 to_create.append(Attendance(
@@ -124,6 +126,7 @@ def bulk_confirm_attendance(group, requested_date, attendances_payload, user):
                     is_present=is_present,
                     marked_by=user
                 ))
+                processed_student_ids.add(student_id)
 
 
         if to_update:
@@ -131,6 +134,18 @@ def bulk_confirm_attendance(group, requested_date, attendances_payload, user):
         if to_create:
             created_objs = Attendance.objects.bulk_create(to_create)
             updated_ids.extend([obj.id for obj in created_objs])
+
+    # Qo'shimcha: To'lov va maoshni qayta hisoblash (bulk uchun)
+    if processed_student_ids:
+        from finance.services import update_attendance_based_payments
+        students = Student.objects.filter(id__in=processed_student_ids)
+        for student in students:
+            try:
+                update_attendance_based_payments(student, group, requested_date)
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to update payments for student %s in bulk: %s", student.id, e)
 
     # Xabarnomalarni yuborishni fonda bajaramiz (API tez qaytishi uchun)
     import threading

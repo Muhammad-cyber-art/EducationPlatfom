@@ -37,8 +37,8 @@ const PaymentHistory = ({
                             {data.payment_history?.map((item) => {
                                 const isActive = parseInt(staff_id) === item.id;
                                 return (
-                                    <tr 
-                                        key={item.id} 
+                                    <tr
+                                        key={item.id}
                                         onClick={() => !isActive && navigate(`/super_admin/all-payments/staff_payments/staff/${item.id}`)}
                                         className={`hover:bg-[var(--gold-dim)] transition-colors group cursor-pointer ${isActive ? 'bg-[var(--gold)]/5' : ''}`}
                                     >
@@ -48,15 +48,15 @@ const PaymentHistory = ({
                                         </td>
                                         <td className="px-5 py-3 text-[11px] font-black text-[var(--text-primary)] tabular-nums text-right flex items-center justify-end gap-3">
                                             <span>{formatCurrency(item.total_amount || item.amount || item.salary_base)}</span>
-                                            
+
                                             <div className="flex items-center gap-1">
                                                 {!item.is_paid && (
-                                                    <button 
-                                                        onClick={(e) => { 
-                                                            e.stopPropagation(); 
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
                                                             dispatch(setSelectedHistoryItem(item));
                                                             dispatch(setPayModal(true));
-                                                        }} 
+                                                        }}
                                                         className="p-1.5 text-emerald-500 hover:bg-emerald-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
                                                         title="To'lovni amalga oshirish"
                                                     >
@@ -65,11 +65,11 @@ const PaymentHistory = ({
                                                 )}
 
                                                 {isSuperAdmin && (
-                                                    <button 
-                                                        onClick={(e) => { 
-                                                            e.stopPropagation(); 
-                                                            handleDeleteHistory(item.id); 
-                                                        }} 
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleDeleteHistory(item.id);
+                                                        }}
                                                         className="p-1.5 text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
                                                         title="O'chirish"
                                                     >
@@ -86,37 +86,37 @@ const PaymentHistory = ({
                 </div>
             </div>
 
- <div className="bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-2xl overflow-hidden shadow-lg p-5">
- <div className="flex items-center justify-between mb-4">
- <div className="flex items-center gap-2">
- <Bookmark size={14} className="text-[var(--gold)]" />
- <span className="text-[10px] font-black text-[var(--text-primary)] capitalize tracking-widest">Hisob Tafsiloti</span>
- </div>
- {isSuperAdmin && data.id && (
- <button onClick={() => handleDeleteHistory(data.id)} className="p-2 text-rose-500 hover:bg-rose-500/10 rounded-lg translate-x-2" title="Joriy oyni o'chirish">
- <Trash2 size={12} />
- </button>
- )}
- </div>
+            <div className="bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-2xl overflow-hidden shadow-lg p-5">
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                        <Bookmark size={14} className="text-[var(--gold)]" />
+                        <span className="text-[10px] font-black text-[var(--text-primary)] capitalize tracking-widest">Hisob Tafsiloti</span>
+                    </div>
+                    {isSuperAdmin && data.id && (
+                        <button onClick={() => handleDeleteHistory(data.id)} className="p-2 text-rose-500 hover:bg-rose-500/10 rounded-lg translate-x-2" title="Joriy oyni o'chirish">
+                            <Trash2 size={12} />
+                        </button>
+                    )}
+                </div>
 
- <div className="space-y-3 mb-6">
- <DetailRow label="Hisoblangan oy" value={data.month} />
- <DetailRow label="Tasdiqlangan sana" value={data.paid_at ? new Date(data.paid_at).toLocaleDateString() :"---"} />
- <DetailRow label="Tasdiqlovchi" value={data.marked_by_name || data.marked_by ||"---"} />
- </div>
+                <div className="space-y-3 mb-6">
+                    <DetailRow label="Hisoblangan oy" value={data.month} />
+                    <DetailRow label="Tasdiqlangan sana" value={data.paid_at ? new Date(data.paid_at).toLocaleDateString() : "---"} />
+                    <DetailRow label="Tasdiqlovchi" value={data.marked_by_name || data.marked_by || "---"} />
+                </div>
 
- {!data.is_paid ? (
- <button onClick={() => dispatch(setPayModal(true))} className="w-full py-3.5 rounded-xl bg-[var(--gold)] hover:bg-[var(--gold)]/90 text-black font-black text-[10px] capitalize tracking-widest flex items-center justify-center gap-2 shadow-[0_10px_30px_rgba(184,134,11,0.2)] transition-all active:scale-[0.98]">
- To'lovni tasdiqlash
- </button>
- ) : (
- <div className="w-full py-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 font-black text-[10px] capitalize tracking-widest flex items-center justify-center gap-2">
- <CheckCircle size={14} /> To'lov yakunlangan
- </div>
- )}
- </div>
- </div>
- );
+                {!data.is_paid ? (
+                    <button onClick={() => dispatch(setPayModal(true))} className="w-full py-3.5 rounded-xl bg-[var(--gold)] hover:bg-[var(--gold)]/90 text-black font-black text-[10px] capitalize tracking-widest flex items-center justify-center gap-2 shadow-[0_10px_30px_rgba(184,134,11,0.2)] transition-all active:scale-[0.98]">
+                        To'lovni tasdiqlash
+                    </button>
+                ) : (
+                    <div className="w-full py-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 font-black text-[10px] capitalize tracking-widest flex items-center justify-center gap-2">
+                        <CheckCircle size={14} /> To'lov yakunlangan
+                    </div>
+                )}
+            </div>
+        </div>
+    );
 };
 
 export default PaymentHistory;

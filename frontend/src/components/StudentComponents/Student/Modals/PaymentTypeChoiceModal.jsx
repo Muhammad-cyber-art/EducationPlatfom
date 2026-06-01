@@ -1,15 +1,16 @@
 import React from "react";
 import { createPortal } from "react-dom";
-import { Split, CheckCircle2 } from "lucide-react";
+import { Split, CheckCircle2, Settings2 } from "lucide-react";
 
 /**
- * Summa tahrirlanganda: to'liq yoki bo'lib to'lash tanlovi.
+ * Summa tahrirlanganda: to'liq, bo'lib to'lash yoki custom.
  */
 export const PaymentTypeChoiceModal = ({
     isOpen,
     onClose,
     onChooseFull,
     onChoosePartial,
+    onChooseCustom,
     enteredAmount,
     expectedAmount,
 }) => {
@@ -67,6 +68,22 @@ export const PaymentTypeChoiceModal = ({
                             <p className="text-[11px] font-black text-amber-400 uppercase tracking-wider">Bo'lib to'lash</p>
                             <p className="text-[9px] font-bold text-[var(--text-muted)] mt-0.5">
                                 Hozir {fmt(enteredAmount)} UZS, qolgani keyinroq
+                            </p>
+                        </div>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={onChooseCustom}
+                        className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-purple-500/40 bg-purple-500/10 hover:bg-purple-500/20 transition-all text-left group"
+                    >
+                        <div className="w-11 h-11 rounded-xl bg-purple-500/20 flex items-center justify-center text-purple-400 shrink-0">
+                            <Settings2 size={22} />
+                        </div>
+                        <div>
+                            <p className="text-[11px] font-black text-purple-400 uppercase tracking-wider">Belgilangan to'lov</p>
+                            <p className="text-[9px] font-bold text-[var(--text-muted)] mt-0.5">
+                                {fmt(enteredAmount)} UZS bilan oyni to'liq yopish
                             </p>
                         </div>
                     </button>
