@@ -1,4 +1,5 @@
 # finance/utils.py
+import decimal
 import math
 from datetime import date
 from decimal import Decimal
@@ -16,15 +17,57 @@ def normalize_month(value: date) -> date:
     return value.replace(day=1)
 
 
-def floor_amount(value) -> Decimal:
+def _auto_floor_precision(amount):
     """
-    Har qanday pul miqdorini eng yaqin past 1000 ga yaxlitlaydi (floor to 1000).
-    Masalan:
-        350548  -> 350000
-        125750  -> 125000
-        999     -> 0
-        1001    -> 1000
-        300000  -> 300000  (o'zgarmaydi)
+    Summa kattaligiga qarab optimal yaxlitlash aniqligini tanlaydi.
+
+    Maqsad:
+      - Har bir summa uchun nisbiy xatolik ~0.1-1% oralig'ida bo'lsin
+      - Kichik summalar ham toza ko'rinsin (9,327 → 9,300)
+      - Katta summalarda mayda-chuyda raqamlar bo'lmasin (3,453,270 → 3,450,000)
+
+    Jadval:
+      < 10,000      → 100    (max ~1%   xatolik)
+      10k - 100k    → 500    (max ~0.5% xatolik)
+      100k - 1M     → 1,000  (max ~0.1% xatolik)
+      1M - 10M      → 5,000  (max ~0.05% xatolik)
+      > 10M         → 10,000 (max ~0.1%  xatolik)
+    """
+    amount = abs(amount)
+    if amount < 10_000:
+        return 100
+    elif amount < 100_000:
+        return 500
+    elif amount < 1_000_000:
+        return 1_000
+    elif amount < 10_000_000:
+        return 5_000
+    else:
+        return 10_000
+
+
+def floor_amount(value, precision=1000):
+    """
+    Har qanday pul miqdorini eng yaqin past <precision> ga yaxlitlaydi (floor).
+
+    Parametrlar:
+        value:     Yaxlitlanadigan son (int, float, Decimal, str)
+        precision: Yaxlitlash aniqligi (default: 1000 — eski kod bilan mos)
+                   Agar None bo'lsa → _auto_floor_precision orqali avtomatik tanlanadi
+
+    Misollar (precision=1000, default):
+        350548  → 350000
+        125750  → 125000
+        999     → 0
+        1001    → 1000
+        300000  → 300000  (o'zgarmaydi)
+
+    Misollar (precision=None, adaptiv):
+        9,327       → 9,300   (precision=100)
+        45,327      → 45,000  (precision=500)
+        345,327     → 345,000 (precision=1,000)
+        3,453,270   → 3,450,000 (precision=5,000)
+        34,532,700  → 34,530,000 (precision=10,000)
 
     Barcha to'lov hisoblashlarida ishlatiladi:
       - Student to'lovlari
@@ -35,14 +78,16 @@ def floor_amount(value) -> Decimal:
     if value is None:
         return Decimal("0")
     try:
-        amount = float(value)
-        floored = math.floor(amount / 1000) * 1000
-        return Decimal(str(floored))
-    except (TypeError, ValueError):
+        amount = Decimal(str(value))
+        if precision is None:
+            precision = _auto_floor_precision(amount)
+        divisor = Decimal(str(precision))
+        return (amount // divisor) * divisor
+    except (TypeError, ValueError, decimal.InvalidOperation):
         return Decimal("0")
 
 
-def calculate_attendance_based_student_payment(student, group, month_date, ignore_today_check=False):
+def calculate_attendance_based_student_payment(student, group, month_date, ignore_today_check=False, lesson_dates_cache=None, enrollment_cache=None, attendance_cache=None):
     """
     Imtiyozli (discount) va Kelishilgan (negotiated) student uchun to'lov summasini hisoblash:
     (Oylik narx / oydagi darslar soni) * (Kelgan darslar soni)
@@ -62,18 +107,26 @@ def calculate_attendance_based_student_payment(student, group, month_date, ignor
 
     # Join date aniqlash (GroupEnrollment -> fallback Student.joined_at)
     join_date = None
-    enrollment = (
-        GroupEnrollment.objects.filter(student=student, group=group)
-        .only("joined_at")
-        .first()
-    )
-    if enrollment and enrollment.joined_at:
-        join_date = enrollment.joined_at.date()
-    elif student.joined_at:
+    if enrollment_cache is not None and ('_join_dates' in enrollment_cache):
+        join_date = enrollment_cache['_join_dates'].get((student.id, group.id))
+    else:
+        enrollment = (
+            GroupEnrollment.objects.filter(student=student, group=group)
+            .only("joined_at")
+            .first()
+        )
+        if enrollment and enrollment.joined_at:
+            join_date = enrollment.joined_at.date()
+    if join_date is None and student.joined_at:
         join_date = student.joined_at.date()
 
-    # Guruh dars kunlari shu oyda (get_lesson_dates allaqachon bekor qilingan kunlarni olib tashlaydi)
-    lesson_dates = group.get_lesson_dates(month_date.year, month_date.month)
+    # Guruh dars kunlari shu oyda (cache'dan foydalanish optimizatsiyasi)
+    if lesson_dates_cache is not None and group.id in lesson_dates_cache:
+        lesson_dates = list(lesson_dates_cache[group.id])
+    else:
+        lesson_dates = group.get_lesson_dates(month_date.year, month_date.month)
+        if lesson_dates_cache is not None:
+            lesson_dates_cache[group.id] = lesson_dates
     if join_date:
         lesson_dates = [d for d in lesson_dates if d >= join_date]
 
@@ -108,7 +161,11 @@ def calculate_attendance_based_student_payment(student, group, month_date, ignor
     if join_date:
         attendance_filters["date__gte"] = join_date
 
-    present_count = Attendance.objects.filter(**attendance_filters).count()
+    # Cache'dan foydalanish (optimizatsiya)
+    if attendance_cache is not None and (group.id, student.id) in attendance_cache:
+        present_count = attendance_cache[(group.id, student.id)]
+    else:
+        present_count = Attendance.objects.filter(**attendance_filters).count()
 
     total_amount = daily_price * Decimal(str(present_count))
 
@@ -264,7 +321,8 @@ def aggregate_attendance_refunds_by_branch(year, month, paid_only=False):
 
 
 def calculate_group_revenue_and_mentor_share(
-    group, month_date, profile=None, payment_map=None, extra_map=None, ignore_today_check=False
+    group, month_date, profile=None, payment_map=None, extra_map=None, ignore_today_check=False,
+    lesson_dates_cache=None, attendance_cache=None, enrollment_cache=None
 ):
     """
     Bir guruh uchun taxminiy tushum, real tushum va mentor ulushini hisoblash (reusable utility).
@@ -325,9 +383,14 @@ def calculate_group_revenue_and_mentor_share(
     per_student_rate = Decimal("0")
 
     if profile and profile.user.role == "mentor":
-        group_config = MentorGroupSalaryConfig.objects.filter(
-            mentor=profile.user, group=group
-        ).first()
+        if enrollment_cache is not None and ('_salary_configs' in enrollment_cache):
+            group_config = enrollment_cache['_salary_configs'].get(
+                (profile.user.id, group.id)
+            )
+        else:
+            group_config = MentorGroupSalaryConfig.objects.filter(
+                mentor=profile.user, group=group
+            ).first()
 
         if group_config:
             if group_config.salary_type == "percentage":
@@ -346,11 +409,14 @@ def calculate_group_revenue_and_mentor_share(
 
     # Guruhdagi barcha o'quvchilarni yig'ish
     all_students_map = {}
-    for enr in group.enrollments.select_related("student").all():
-        if enr.student:
-            all_students_map[enr.student.id] = enr.student
-    for st in group.old_students_fk.all():
-        all_students_map[st.id] = st
+    if enrollment_cache is not None and group.id in enrollment_cache:
+        all_students_map = dict(enrollment_cache[group.id])
+    else:
+        for enr in group.enrollments.select_related("student").all():
+            if enr.student:
+                all_students_map[enr.student.id] = enr.student
+        for st in group.old_students_fk.all():
+            all_students_map[st.id] = st
     all_students = list(all_students_map.values())
     processed_pairs = set()
 
@@ -392,7 +458,10 @@ def calculate_group_revenue_and_mentor_share(
         attendance_amount = None
         if is_discount or is_negotiated:
             attendance_amount = calculate_attendance_based_student_payment(
-                student, group, month_date, ignore_today_check=ignore_today_check
+                student, group, month_date, ignore_today_check=ignore_today_check,
+                lesson_dates_cache=lesson_dates_cache,
+                enrollment_cache=enrollment_cache,
+                attendance_cache=attendance_cache,
             )
 
         # Expected va Actual bazalar
@@ -484,21 +553,28 @@ def calculate_group_revenue_and_mentor_share(
         if profile and profile.user.role == "mentor" and not is_teacher_negotiated:
             # Birinchi, kelgan darslar sonini hisoblash (barcha statuslar uchun kerak)
             present_count = 0
+            # Cache'dan foydalanish (optimizatsiya)
+            _cached_ld = lesson_dates_cache.get(group.id) if lesson_dates_cache is not None else None
+            _group_lesson_dates = _cached_ld if _cached_ld is not None else group.get_lesson_dates(month_date.year, month_date.month)
+            if lesson_dates_cache is not None and group.id not in lesson_dates_cache:
+                lesson_dates_cache[group.id] = _group_lesson_dates
             try:
-                from homework_attends.models import Attendance
-                lesson_dates = group.get_lesson_dates(month_date.year, month_date.month)
-                present_count = Attendance.objects.filter(
-                    student=student,
-                    group=group,
-                    date__year=month_date.year,
-                    date__month=month_date.month,
-                    date__in=lesson_dates,
-                    is_present=True,
-                    marked_by__isnull=False,
-                ).count()
+                if attendance_cache is not None and (group.id, student.id) in attendance_cache:
+                    present_count = attendance_cache[(group.id, student.id)]
+                else:
+                    from homework_attends.models import Attendance
+                    present_count = Attendance.objects.filter(
+                        student=student,
+                        group=group,
+                        date__year=month_date.year,
+                        date__month=month_date.month,
+                        date__in=_group_lesson_dates,
+                        is_present=True,
+                        marked_by__isnull=False,
+                    ).count()
             except Exception:
                 present_count = 0
-            lessons_count = len(group.get_lesson_dates(month_date.year, month_date.month)) if group.get_lesson_dates(month_date.year, month_date.month) else 1
+            lessons_count = len(_group_lesson_dates) if _group_lesson_dates else 1
 
             if is_discount:
                 if is_percentage:
@@ -534,6 +610,7 @@ def calculate_group_revenue_and_mentor_share(
                         if paid_amount > 0:
                             mentor_share_paid += mentor_fee
 
+
             else:
                 # regular / low_income
                 # paid share: haqiqiy to'langan asosida
@@ -549,12 +626,16 @@ def calculate_group_revenue_and_mentor_share(
                     # per_student: refund ta'sir qilmaydi (har student uchun sobit)
                     mentor_share_expected += per_student_rate
 
+    # Yakuniy natijalarni adaptiv precision bilan yaxlitlash:
+    # - Oraliq hisoblar barqarorlik uchun default precision=1000 da qoladi
+    # - Faqat yakuniy agregat qiymatlar smart floor dan o'tadi
+    # - Bu kumulyativ xatolikni minimallashtiradi va toza sonlar beradi
     return {
         "group_id": group.id,
-        "actual_revenue": floor_amount(actual_revenue),
-        "expected_revenue": floor_amount(expected_revenue),
-        "mentor_share_paid": floor_amount(mentor_share_paid),
-        "mentor_share_expected": floor_amount(mentor_share_expected),
+        "actual_revenue": floor_amount(actual_revenue, precision=None),
+        "expected_revenue": floor_amount(expected_revenue, precision=None),
+        "mentor_share_paid": floor_amount(mentor_share_paid, precision=None),
+        "mentor_share_expected": floor_amount(mentor_share_expected, precision=None),
         "paid_students": paid_students,
         "unpaid_students": unpaid_students,
     }

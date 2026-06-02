@@ -5,6 +5,7 @@ class ReportDownloadTrack(models.Model):
     REPORT_TYPES = (
         ('daily', 'Daily Excel Report'),
         ('monthly', 'Monthly Financial Report'),
+        ('attendance_monthly', 'Monthly Attendance Report'),
     )
 
     user = models.ForeignKey(
@@ -14,7 +15,7 @@ class ReportDownloadTrack(models.Model):
         verbose_name="Foydalanuvchi"
     )
     report_type = models.CharField(
-        max_length=10,
+        max_length=20,
         choices=REPORT_TYPES,
         verbose_name="Hisobot turi"
     )

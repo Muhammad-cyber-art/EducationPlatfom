@@ -87,17 +87,27 @@ class PaymentSerializer(serializers.ModelSerializer):
     def get_remaining_amount(self, obj):
         return float(obj.remaining_amount)
 
-    def get_lessons_count(self, obj) -> int:
+    def _get_lesson_dates(self, obj):
+        """Cache'dan lesson dates olish (N+1 muammosini oldini olish)"""
+        cache = self.context.get('lesson_dates_cache')
+        if cache is not None:
+            key = (obj.group_id, obj.month.year, obj.month.month)
+            if key in cache:
+                return cache[key]
         try:
-            return len(obj.group.get_lesson_dates(obj.month.year, obj.month.month))
+            return obj.group.get_lesson_dates(obj.month.year, obj.month.month)
         except Exception:
-            return 0
+            return []
+
+    def get_lessons_count(self, obj) -> int:
+        return len(self._get_lesson_dates(obj))
 
     def get_daily_price(self, obj) -> float:
         try:
             from finance.utils import floor_amount
 
-            lessons_count = self.get_lessons_count(obj)
+            lessons = self._get_lesson_dates(obj)
+            lessons_count = len(lessons)
             if lessons_count > 0:
                 base_price = (
                     obj.student.custom_fee
@@ -125,7 +135,7 @@ class PaymentSerializer(serializers.ModelSerializer):
             from homework_attends.models import Attendance
 
             today = timezone.localdate()
-            lesson_dates = obj.group.get_lesson_dates(obj.month.year, obj.month.month)
+            lesson_dates = self._get_lesson_dates(obj)
             active_lesson_dates = [d for d in lesson_dates if d <= today]
             return Attendance.objects.filter(
                 student=obj.student,
@@ -219,6 +229,25 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "employee_id", "total_amount", "paid_at", "marked_by"]
 
+    def _get_prefetch(self):
+        """Prefetch context ma'lumotlarini olish (helper)"""
+        return self.context.get('employee_prefetch')
+
+    def _get_prefetched_groups(self, obj):
+        """Prefetch orqali olingan guruhlarni qaytarish"""
+        pf = self._get_prefetch()
+        if pf and obj.employee_id in pf.get('employee_groups', {}):
+            return pf['employee_groups'][obj.employee_id]
+        return None
+
+    def _get_prefetched_payment_map(self):
+        pf = self._get_prefetch()
+        return pf.get('payment_map', {}) if pf else None
+
+    def _get_prefetched_extras_map(self):
+        pf = self._get_prefetch()
+        return pf.get('extras_map', {}) if pf else None
+
     def get_marked_by_name(self, obj) -> str:
         try:
             if obj.marked_by:
@@ -302,44 +331,59 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                     return 0
 
                 total = Decimal("0")
-                branch_groups = Group.objects.filter(branch=obj.employee.branch)
                 processed_pairs = set()
 
-                # Barcha paymentlarni olish
-                payment_map = {}
-                payment_qs = Payment.objects.filter(
-                    group__in=branch_groups,
-                    month__year=obj.month.year,
-                    month__month=obj.month.month,
-                ).select_related("student")
-                for p in payment_qs:
-                    key = (p.student_id, p.group_id)
-                    payment_map[key] = p
+                # === OPTIMIZATSIYA: Prefetch context'dan foydalanish ===
+                prefetched_groups = self._get_prefetched_groups(obj)
+                prefetched_pm = self._get_prefetched_payment_map()
+                prefetched_em = self._get_prefetched_extras_map()
+                pf = self._get_prefetch()
+                enrollment_cache = pf.get('enrollment_cache', {}) if pf else None
+                lesson_dates_cache = pf.get('lesson_dates_cache', {}) if pf else None
+                attendance_cache = pf.get('attendance_cache', {}) if pf else None
 
-                # Student extra tranzaksiyalarni olamiz
-                extra_map = {}
-                branch_group_ids = [g.id for g in branch_groups]
-                extra_qs = FinanceTransaction.objects.filter(
-                    category="student_extra",
-                    date__year=obj.month.year,
-                    date__month=obj.month.month,
-                    group_id__in=branch_group_ids,
-                ).values("student_id", "group_id", "transaction_type", "amount")
-                for tx in extra_qs:
-                    key = (tx["student_id"], tx["group_id"])
-                    amt = Decimal(str(tx["amount"] or 0))
-                    if tx["transaction_type"] == "income":
-                        extra_map[key] = extra_map.get(key, Decimal("0")) + amt
-                    else:
-                        extra_map[key] = extra_map.get(key, Decimal("0")) - amt
+                if prefetched_groups is not None and prefetched_pm is not None:
+                    branch_groups = prefetched_groups
+                    payment_map = prefetched_pm
+                    extra_map = prefetched_em or {}
+                else:
+                    branch_groups = list(Group.objects.filter(branch=obj.employee.branch))
+                    payment_map = {}
+                    payment_qs = Payment.objects.filter(
+                        group__in=branch_groups,
+                        month__year=obj.month.year,
+                        month__month=obj.month.month,
+                    ).select_related("student")
+                    for p in payment_qs:
+                        key = (p.student_id, p.group_id)
+                        payment_map[key] = p
+                    extra_map = {}
+                    branch_group_ids = [g.id for g in branch_groups]
+                    extra_qs = FinanceTransaction.objects.filter(
+                        category="student_extra",
+                        date__year=obj.month.year,
+                        date__month=obj.month.month,
+                        group_id__in=branch_group_ids,
+                    ).values("student_id", "group_id", "transaction_type", "amount")
+                    for tx in extra_qs:
+                        key = (tx["student_id"], tx["group_id"])
+                        amt = Decimal(str(tx["amount"] or 0))
+                        if tx["transaction_type"] == "income":
+                            extra_map[key] = extra_map.get(key, Decimal("0")) + amt
+                        else:
+                            extra_map[key] = extra_map.get(key, Decimal("0")) - amt
 
                 for group in branch_groups:
+                    # Enrollment cache'dan foydalanish
                     all_students_map = {}
-                    for enr in group.enrollments.select_related("student").all():
-                        if enr.student:
-                            all_students_map[enr.student.id] = enr.student
-                    for st in group.old_students_fk.all():
-                        all_students_map[st.id] = st
+                    if enrollment_cache is not None and group.id in enrollment_cache:
+                        all_students_map = dict(enrollment_cache[group.id])
+                    else:
+                        for enr in group.enrollments.select_related("student").all():
+                            if enr.student:
+                                all_students_map[enr.student.id] = enr.student
+                        for st in group.old_students_fk.all():
+                            all_students_map[st.id] = st
 
                     for student in all_students_map.values():
                         key = (student.id, group.id)
@@ -348,7 +392,6 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                         processed_pairs.add(key)
 
                         if student.status == "teacher_negotiated":
-                            # Teacher_negotiated: real tushum faqat to'langan summa
                             p = payment_map.get(key)
                             base_amount = Decimal("0")
                             if p:
@@ -359,12 +402,14 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                             continue
 
                         if student.status in ["discount", "negotiated"]:
-                            # Discount: davomat asosida, Negotiated: faqat to'langan summa
                             p = payment_map.get(key)
                             base_amount = Decimal("0")
                             if student.status == "discount":
                                 base_amount = calculate_attendance_based_student_payment(
-                                    student, group, obj.month
+                                    student, group, obj.month,
+                                    lesson_dates_cache=lesson_dates_cache,
+                                    enrollment_cache=enrollment_cache,
+                                    attendance_cache=attendance_cache,
                                 )
                             else:
                                 if p:
@@ -374,7 +419,6 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                                 total += net_amount
                             continue
 
-                        # Oddiy studentlar uchun actual income: faqat to'langan paymentlar
                         p = payment_map.get(key)
                         base_amount = Decimal("0")
                         if p and p.is_paid:
@@ -383,10 +427,7 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                         if net_amount != 0 or (p and p.is_paid):
                             total += net_amount
 
-                result = int(floor_amount(total))
-                logger.info(
-                    f"groups_income (admin): calculated {result} for obj {obj.id}"
-                )
+                result = int(floor_amount(total, precision=None))
                 return result
 
             # Mentor uchun
@@ -397,8 +438,7 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                 return 0
             profile = obj.employee.staff_profile
             inc = profile.calculate_monthly_income(obj.month)
-            result = int(floor_amount(inc))
-            logger.info(f"groups_income (mentor): calculated {result} for obj {obj.id}")
+            result = int(floor_amount(inc, precision=None))
             return result
         except Exception as e:
             logger.error(f"groups_income error: {e}", exc_info=True)
@@ -414,7 +454,7 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             if profile.salary_type not in ["percentage", "student_count"]:
                 return None
             sal = profile.calculate_salary_for_month(obj.month, commission_basis="paid")
-            return int(floor_amount(sal))
+            return int(floor_amount(sal, precision=None))
         except:
             return None
 
@@ -431,7 +471,6 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             from finance.models import FinanceTransaction
             from finance.utils import (
                 calculate_attendance_based_student_payment,
-                calculate_attendance_based_mentor_share,
                 floor_amount,
             )
 
@@ -441,12 +480,6 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                 )
                 return 0
             if obj.employee.role == "admin":
-                # Admin uchun: staff_profile bo'lmasa ham calculate_expected_monthly_income ishlaydi
-                # Admin uchun staff_profile yo'q bo'lishi mumkin, lekin calculate_expected_monthly_income role admin uchun ishlaydi
-                # Shuning uchun oddiy User modelidan foydalanamiz, fake StaffProfile yaratmaymiz
-                # To'g'ridan-to'g'ri calculate_expected_monthly_income ni chaqira olmaymiz, chunki u StaffProfile metodi
-                # Shuning uchun admin uchun taxminiy tushumni to'g'ridan-to'g'ri hisoblaymiz
-
                 if not obj.employee.branch:
                     logger.warning(
                         f"groups_income_expected: admin has no branch for obj {obj.id}"
@@ -454,33 +487,47 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                     return 0
 
                 total = Decimal("0")
-                branch_groups = Group.objects.filter(branch=obj.employee.branch)
                 processed_pairs = set()
 
-                # Student extra tranzaksiyalarini yig'ish
-                extra_map = {}
-                branch_group_ids = [g.id for g in branch_groups]
-                extra_qs = FinanceTransaction.objects.filter(
-                    category="student_extra",
-                    date__year=obj.month.year,
-                    date__month=obj.month.month,
-                    group_id__in=branch_group_ids,
-                ).values("student_id", "group_id", "transaction_type", "amount")
-                for tx in extra_qs:
-                    key = (tx["student_id"], tx["group_id"])
-                    amt = Decimal(str(tx["amount"] or 0))
-                    if tx["transaction_type"] == "income":
-                        extra_map[key] = extra_map.get(key, Decimal("0")) + amt
-                    else:
-                        extra_map[key] = extra_map.get(key, Decimal("0")) - amt
+                # === OPTIMIZATSIYA: Prefetch context'dan foydalanish ===
+                prefetched_groups = self._get_prefetched_groups(obj)
+                prefetched_em = self._get_prefetched_extras_map()
+                pf = self._get_prefetch()
+                enrollment_cache = pf.get('enrollment_cache', {}) if pf else None
+                lesson_dates_cache = pf.get('lesson_dates_cache', {}) if pf else None
+                attendance_cache = pf.get('attendance_cache', {}) if pf else None
+
+                if prefetched_groups is not None and prefetched_em is not None:
+                    branch_groups = prefetched_groups
+                    extra_map = prefetched_em
+                else:
+                    branch_groups = list(Group.objects.filter(branch=obj.employee.branch))
+                    branch_group_ids = [g.id for g in branch_groups]
+                    extra_map = {}
+                    extra_qs = FinanceTransaction.objects.filter(
+                        category="student_extra",
+                        date__year=obj.month.year,
+                        date__month=obj.month.month,
+                        group_id__in=branch_group_ids,
+                    ).values("student_id", "group_id", "transaction_type", "amount")
+                    for tx in extra_qs:
+                        key = (tx["student_id"], tx["group_id"])
+                        amt = Decimal(str(tx["amount"] or 0))
+                        if tx["transaction_type"] == "income":
+                            extra_map[key] = extra_map.get(key, Decimal("0")) + amt
+                        else:
+                            extra_map[key] = extra_map.get(key, Decimal("0")) - amt
 
                 for group in branch_groups:
                     all_students_map = {}
-                    for enr in group.enrollments.select_related("student").all():
-                        if enr.student:
-                            all_students_map[enr.student.id] = enr.student
-                    for st in group.old_students_fk.all():
-                        all_students_map[st.id] = st
+                    if enrollment_cache is not None and group.id in enrollment_cache:
+                        all_students_map = dict(enrollment_cache[group.id])
+                    else:
+                        for enr in group.enrollments.select_related("student").all():
+                            if enr.student:
+                                all_students_map[enr.student.id] = enr.student
+                        for st in group.old_students_fk.all():
+                            all_students_map[st.id] = st
 
                     for student in all_students_map.values():
                         key = (student.id, group.id)
@@ -489,9 +536,11 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                         processed_pairs.add(key)
 
                         if student.status == "discount":
-                            # Discount: davomat asosida + student_extra
                             total += calculate_attendance_based_student_payment(
-                                student, group, obj.month
+                                student, group, obj.month,
+                                lesson_dates_cache=lesson_dates_cache,
+                                enrollment_cache=enrollment_cache,
+                                attendance_cache=attendance_cache,
                             )
                             total += extra_map.get(key, Decimal("0"))
                             continue
@@ -508,11 +557,10 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                             total += extra_map.get(key, Decimal("0"))
                             continue
 
-                        # Regular
                         total += Decimal(str(group.monthly_price or 0))
                         total += extra_map.get(key, Decimal("0"))
 
-                result = int(floor_amount(total))
+                result = int(floor_amount(total, precision=None))
                 logger.info(
                     f"groups_income_expected (admin): calculated {result} for obj {obj.id}"
                 )
@@ -598,64 +646,78 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
 
             profile = obj.employee.staff_profile
 
-            if obj.employee.role == "mentor":
-                groups_qs = Group.objects.filter(mentor=obj.employee)
-            elif obj.employee.role == "admin" and obj.employee.branch:
-                groups_qs = Group.objects.filter(branch=obj.employee.branch)
+            # === OPTIMIZATSIYA: Prefetch context'dan foydalanish ===
+            pf = self._get_prefetch()
+            prefetched_groups = self._get_prefetched_groups(obj)
+            prefetched_pm = self._get_prefetched_payment_map()
+            prefetched_em = self._get_prefetched_extras_map()
+            enrollment_cache = pf.get('enrollment_cache', {}) if pf else None
+            lesson_dates_cache = pf.get('lesson_dates_cache', {}) if pf else None
+            attendance_cache = pf.get('attendance_cache', {}) if pf else None
+
+            if prefetched_groups is not None and prefetched_pm is not None:
+                mentor_groups = prefetched_groups
+                payment_map = prefetched_pm
+                extra_map = prefetched_em or {}
             else:
-                return []
-
-            mentor_groups = list(
-                groups_qs.select_related("branch").prefetch_related(
-                    "students", "old_students_fk", "enrollments", "enrollments__student"
-                )
-            )
-            if not mentor_groups:
-                return []
-            group_ids = [g.id for g in mentor_groups]
-
-            # Barcha to'lovlarni bitta queryda olamiz (optimizatsiya)
-            _all_payments = Payment.objects.filter(
-                group_id__in=group_ids,
-                month__year=obj.month.year,
-                month__month=obj.month.month,
-            ).select_related("student")
-            payment_map = {(p.student_id, p.group_id): p for p in _all_payments}
-
-            # Qo'shimcha to'lovlarni bitta queryda olamiz (optimizatsiya)
-            extra_map = {}
-            extra_qs = FinanceTransaction.objects.filter(
-                category="student_extra",
-                date__year=obj.month.year,
-                date__month=obj.month.month,
-                group_id__in=group_ids,
-            ).values("student_id", "group_id", "transaction_type", "amount")
-            for tx in extra_qs:
-                key = (tx["student_id"], tx["group_id"])
-                amt = Decimal(str(tx["amount"] or 0))
-                if tx["transaction_type"] == "income":
-                    extra_map[key] = extra_map.get(key, Decimal("0")) + amt
+                if obj.employee.role == "mentor":
+                    groups_qs = Group.objects.filter(mentor=obj.employee)
+                elif obj.employee.role == "admin" and obj.employee.branch:
+                    groups_qs = Group.objects.filter(branch=obj.employee.branch)
                 else:
-                    extra_map[key] = extra_map.get(key, Decimal("0")) - amt
+                    return []
+                mentor_groups = list(
+                    groups_qs.select_related("branch").prefetch_related(
+                        "students", "old_students_fk", "enrollments", "enrollments__student"
+                    )
+                )
+                if not mentor_groups:
+                    return []
+                group_ids = [g.id for g in mentor_groups]
+                _all_payments = Payment.objects.filter(
+                    group_id__in=group_ids,
+                    month__year=obj.month.year,
+                    month__month=obj.month.month,
+                ).select_related("student")
+                payment_map = {(p.student_id, p.group_id): p for p in _all_payments}
+                extra_map = {}
+                extra_qs = FinanceTransaction.objects.filter(
+                    category="student_extra",
+                    date__year=obj.month.year,
+                    date__month=obj.month.month,
+                    group_id__in=group_ids,
+                ).values("student_id", "group_id", "transaction_type", "amount")
+                for tx in extra_qs:
+                    key = (tx["student_id"], tx["group_id"])
+                    amt = Decimal(str(tx["amount"] or 0))
+                    if tx["transaction_type"] == "income":
+                        extra_map[key] = extra_map.get(key, Decimal("0")) + amt
+                    else:
+                        extra_map[key] = extra_map.get(key, Decimal("0")) - amt
 
             groups_data = []
             for group in mentor_groups:
-                # Reusable utility dan foydalanamiz
                 group_result = calculate_group_revenue_and_mentor_share(
                     group=group,
                     month_date=obj.month,
                     profile=profile,
                     payment_map=payment_map,
                     extra_map=extra_map,
+                    lesson_dates_cache=lesson_dates_cache,
+                    attendance_cache=attendance_cache,
+                    enrollment_cache=enrollment_cache,
                 )
 
-                # Guruhdagi talabalar sonini hisoblash
+                # Guruhdagi talabalar sonini hisoblash (enrollment cache)
                 all_students_map = {}
-                for enr in group.enrollments.select_related("student").all():
-                    if enr.student:
-                        all_students_map[enr.student.id] = enr.student
-                for st in group.old_students_fk.all():
-                    all_students_map[st.id] = st
+                if enrollment_cache is not None and group.id in enrollment_cache:
+                    all_students_map = dict(enrollment_cache[group.id])
+                else:
+                    for enr in group.enrollments.select_related("student").all():
+                        if enr.student:
+                            all_students_map[enr.student.id] = enr.student
+                    for st in group.old_students_fk.all():
+                        all_students_map[st.id] = st
 
                 groups_data.append(
                     {
@@ -687,8 +749,14 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_advances_history(self, obj) -> list:
-        from .models import EmployeeAdvance
+        # === OPTIMIZATSIYA: Prefetch advance map'dan foydalanish ===
+        pf = self._get_prefetch()
+        if pf is not None:
+            key = (obj.employee_id, str(obj.month))
+            advances = pf.get('advances_map', {}).get(key, [])
+            return EmployeeAdvanceSerializer(advances, many=True).data
 
+        from .models import EmployeeAdvance
         qs = EmployeeAdvance.objects.filter(
             employee=obj.employee, month=obj.month
         ).order_by("-created_at")

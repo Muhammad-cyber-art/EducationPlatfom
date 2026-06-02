@@ -5,8 +5,14 @@ from calendar import monthrange
 from .models import Attendance, Homework, HomeworkSubmission, MockTest, MockTestResult
 from groups.models import Group, Student
 
-def get_or_create_attendance_records(group, requested_date):
-    """Davomat yozuvlarini olish yoki yaratish (istalgan kun uchun)"""
+def get_or_create_attendance_records(group, requested_date, view_only=False):
+    """Davomat yozuvlarini olish yoki yaratish (istalgan kun uchun)
+    
+    Args:
+        group: Guruh obyekti
+        requested_date: So'ralgan sana
+        view_only: Agar True bo'lsa, yangi yozuvlar yaratilmaydi (o'tgan oylar uchun)
+    """
     # 1. Shu kunda guruhda faol bo'lgan studentlarni aniqlash
     # (GroupEnrollment orqali aniqroq filter qilamiz)
     from groups.models import GroupEnrollment
@@ -22,15 +28,16 @@ def get_or_create_attendance_records(group, requested_date):
     queryset = Attendance.objects.filter(group=group, date=requested_date)
     existing_student_ids = set(queryset.values_list('student_id', flat=True))
     
-    # 3. Yetishmayotgan yozuvlarni yaratish
-    missing_ids = active_student_ids - existing_student_ids
-    if missing_ids:
-        new_records = [
-            Attendance(student_id=sid, group=group, date=requested_date, is_present=True)
-            for sid in missing_ids
-        ]
-        Attendance.objects.bulk_create(new_records)
-        queryset = Attendance.objects.filter(group=group, date=requested_date)
+    # 3. Yetishmayotgan yozuvlarni yaratish (faqat view_only=False bo'lganda)
+    if not view_only:
+        missing_ids = active_student_ids - existing_student_ids
+        if missing_ids:
+            new_records = [
+                Attendance(student_id=sid, group=group, date=requested_date, is_present=True)
+                for sid in missing_ids
+            ]
+            Attendance.objects.bulk_create(new_records)
+            queryset = Attendance.objects.filter(group=group, date=requested_date)
     
     # Faqat o'sha kunda guruhda bo'lgan studentlarni qaytaramiz
     return queryset.filter(student_id__in=active_student_ids).select_related('student').order_by('student__full_name')

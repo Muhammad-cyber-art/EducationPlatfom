@@ -5,7 +5,7 @@ import { get_user_info } from "../../Authorized/getRole";
 
 const EMPTY_ARRAY = [];
 
-export const useGroupDetails = (group_id) => {
+export const useGroupDetails = (group_id, selectedMonth, selectedYear) => {
   const user_info = get_user_info();
 
   const { data: userData = {} } = useQuery({
@@ -34,10 +34,10 @@ export const useGroupDetails = (group_id) => {
   });
 
   const { data: lessonDates = EMPTY_ARRAY } = useQuery({
-    queryKey: ['group-lesson-dates', group_id],
-    queryFn: () => api.get(`/groups/groups/${group_id}/lesson-dates/`).then(res => res.data),
+    queryKey: ['group-lesson-dates', group_id, selectedMonth, selectedYear],
+    queryFn: () => api.get(`/groups/groups/${group_id}/lesson-dates/?month=${selectedMonth}&year=${selectedYear}`).then(res => res.data),
     staleTime: 0,
-    enabled: !!group_id,
+    enabled: !!group_id && !!selectedMonth && !!selectedYear,
   });
 
   // Pagination yoki oddiy massivni qo'llab-quvvatlash

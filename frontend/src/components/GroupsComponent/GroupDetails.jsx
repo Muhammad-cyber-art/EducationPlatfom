@@ -75,6 +75,11 @@ export default function GroupDetailPage() {
   const queryClient = useQueryClient();
   const branchID = useCurrentBranch();
   const todayStr = new Date().toLocaleDateString('sv-SE');
+  const todayObj = new Date();
+
+  // Oy navigatsiyasi uchun state
+  const [selectedMonth, setSelectedMonth] = useState(todayObj.getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(todayObj.getFullYear());
 
   const [uiState, uiDispatch] = useReducer(uiReducer, {
     ...initialUIState,
@@ -87,7 +92,7 @@ export default function GroupDetailPage() {
   } = uiState;
 
   // Data & Permissions
-  const { groupinfo, groupStudents, lessonDates, botStats, permissions, userData, isGroupError } = useGroupDetails(group_id);
+  const { groupinfo, groupStudents, lessonDates, botStats, permissions, userData, isGroupError } = useGroupDetails(group_id, selectedMonth, selectedYear);
   const {
     attendanceData, mergedAttendanceForDate, isAttendanceConfirmed,
     handleLocalAttendanceChange, handleConfirmAttendance, refetchAttends
@@ -135,11 +140,11 @@ export default function GroupDetailPage() {
   const handleDownloadMonthlyReport = async () => {
     try {
       toast.loading("Yuklanmoqda...", { id: 'dl' });
-      const res = await api.get(`homework_attends/attendances/monthly-report/?group_id=${group_id}&export=excel`, { responseType: 'blob' });
+      const res = await api.get(`homework_attends/attendances/monthly-report/?group_id=${group_id}&month=${selectedMonth}&year=${selectedYear}&export=excel`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `davomat_${groupinfo.name}.xlsx`);
+      link.setAttribute('download', `davomat_${groupinfo.name}_${selectedYear}_${String(selectedMonth).padStart(2, '0')}.xlsx`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -172,17 +177,57 @@ export default function GroupDetailPage() {
   });
   const mockTests = mockTestsRaw?.results || mockTestsRaw || [];
 
+  const isCurrentMonth = selectedMonth === todayObj.getMonth() + 1 && selectedYear === todayObj.getFullYear();
+
+  const handlePrevMonth = useCallback(() => {
+    setSelectedMonth(prev => {
+      if (prev === 1) {
+        setSelectedYear(y => y - 1);
+        return 12;
+      }
+      return prev - 1;
+    });
+  }, []);
+
+  const handleNextMonth = useCallback(() => {
+    const now = new Date();
+    setSelectedMonth(prev => {
+      const nextMonth = prev === 12 ? 1 : prev + 1;
+      const nextYear = prev === 12 ? selectedYear + 1 : selectedYear;
+      // Joriy oydan keyinga o'tishni oldini olish
+      if (nextYear > now.getFullYear() || (nextYear === now.getFullYear() && nextMonth > now.getMonth() + 1)) {
+        return prev;
+      }
+      if (prev === 12) setSelectedYear(nextYear);
+      return nextMonth;
+    });
+  }, [selectedYear]);
+
+  const handleGoToCurrentMonth = useCallback(() => {
+    const now = new Date();
+    setSelectedMonth(now.getMonth() + 1);
+    setSelectedYear(now.getFullYear());
+  }, []);
+
   const availableDates = useMemo(() => {
     if (!lessonDates) return [todayStr];
     let dates = [...lessonDates];
-    // Bugungi sana dars kunlari ro'yxatida bo'lmasa, uni qo'shib qo'yamiz
-    if (!dates.includes(todayStr)) {
+    // Faqat joriy oy uchun bugungi kunni qo'shamiz
+    if (isCurrentMonth && !dates.includes(todayStr)) {
       dates = [todayStr, ...dates].sort((a, b) => b.localeCompare(a));
+    } else if (!isCurrentMonth) {
+      // O'tgan oylar uchun: eskidan yangiga tartiblash
+      dates.sort((a, b) => a.localeCompare(b));
     }
     return dates;
-  }, [lessonDates, todayStr]);
+  }, [lessonDates, todayStr, isCurrentMonth]);
 
-
+  // Oy o'zgarganda selectedDate'ni moslash
+  useEffect(() => {
+    if (availableDates.length > 0 && !availableDates.includes(selectedDate)) {
+      uiDispatch({ type: "SET_FIELD", field: "selectedDate", value: availableDates[0] });
+    }
+  }, [availableDates, selectedDate]);
 
   const filteredStudents = useMemo(() => {
     const search = studentSearch.trim().toLowerCase();
@@ -236,7 +281,9 @@ export default function GroupDetailPage() {
                 attendanceData, isAttendanceConfirmed, canEditAttendance, isGroupLogicActive,
                 isEditing, studentSearch, markedStudents: uiState.markedStudents, mergedAttendanceForDate,
                 uiDispatch, handleConfirmAttendance, handleLocalAttendanceChange, refetchAttends, queryClient,
-                canTakeAttendance: permissions.canTakeAttendance
+                canTakeAttendance: permissions.canTakeAttendance,
+                selectedMonth, selectedYear, isCurrentMonth,
+                onPrevMonth: handlePrevMonth, onNextMonth: handleNextMonth, onGoToCurrentMonth: handleGoToCurrentMonth
               }}
 
               branchID={branchID.currentBranchId}

@@ -33,7 +33,7 @@ from .services import (
     get_monthly_branch_trends
 )
 from .exports import export_absent_students_to_excel
-from groups.models import Student, Group, Branch
+from groups.models import Student, Group, Branch, GroupEnrollment
 from homework_attends.models import Attendance
 
 logger = logging.getLogger(__name__)
@@ -102,6 +102,38 @@ class StudentPaymentViewSet(viewsets.ModelViewSet):
         elif user.role != 'super_admin':
             return Payment.objects.none()
         return qs
+
+    def get_serializer_context(self):
+        """OPTIMIZATSIYA: PaymentSerializer uchun lesson_dates cache"""
+        context = super().get_serializer_context()
+        if self.action not in ('list', 'retrieve'):
+            return context
+        try:
+            # Barcha noyob (group, year, month) larni aniqlash
+            queryset = self.filter_queryset(self.get_queryset())
+            if self.action == 'list':
+                page = self.paginate_queryset(queryset)
+                items = page if page is not None else list(queryset)
+            else:
+                items = [self.get_object()]
+
+            group_months = set()
+            for p in items:
+                if p.group_id and p.month:
+                    group_months.add((p.group_id, p.month.year, p.month.month))
+
+            lesson_dates_cache = {}
+            for gid, year, month in group_months:
+                try:
+                    group = Group.objects.get(id=gid)
+                    lesson_dates_cache[(gid, year, month)] = group.get_lesson_dates(year, month)
+                except Group.DoesNotExist:
+                    lesson_dates_cache[(gid, year, month)] = []
+
+            context['lesson_dates_cache'] = lesson_dates_cache
+        except Exception as e:
+            logger.error(f"StudentPayment prefetch error: {e}")
+        return context
 
     def perform_update(self, serializer):
         """Adminlar tasdiqlangan to'lovni tahrirlaganda Ledger'ni yangilash"""
@@ -191,7 +223,7 @@ class StudentPaymentViewSet(viewsets.ModelViewSet):
 
 class EmployeePaymentViewSet(viewsets.ModelViewSet):
     """Xodimlar maoshlarini boshqarish"""
-    queryset = EmployeePayment.objects.select_related('employee', 'marked_by').all()
+    queryset = EmployeePayment.objects.select_related('employee', 'employee__branch', 'marked_by').all()
     serializer_class = EmployeePaymentSerializer
     permission_classes = [IsAuthenticated, HasModulePermission]
     module_name = 'finance'
@@ -210,6 +242,183 @@ class EmployeePaymentViewSet(viewsets.ModelViewSet):
         elif user.role != 'super_admin':
             return qs.filter(employee=user)
         return qs
+
+    def get_serializer_context(self):
+        """OPTIMIZATSIYA: Serializer uchun batch-prefetched ma'lumotlarni tayyorlash"""
+        context = super().get_serializer_context()
+        # Faqat list va retrieve uchun prefetch qilish
+        if self.action not in ('list', 'retrieve'):
+            return context
+        try:
+            queryset = self.filter_queryset(self.get_queryset())
+            if self.action == 'list':
+                page = self.paginate_queryset(queryset)
+                items = page if page is not None else list(queryset)
+            else:
+                items = [self.get_object()]
+
+            if not items:
+                return context
+
+            # 1. Unique (employee_id, month) juftliklarini yig'ish
+            employee_months = set()
+            employee_ids = set()
+            for ep in items:
+                employee_months.add((ep.employee_id, str(ep.month)))
+                employee_ids.add(ep.employee_id)
+
+            # 2. Har bir xodim uchun guruhlar (mentor/admin)
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            employees = {u.id: u for u in User.objects.filter(id__in=employee_ids).select_related('branch')}
+
+            mentor_ids = [uid for uid, u in employees.items() if u.role == 'mentor']
+            admin_branch_ids = list(set(
+                u.branch_id for uid, u in employees.items()
+                if u.role == 'admin' and u.branch_id
+            ))
+
+            # Guruhlarni yig'ish
+            groups_qs = Group.objects.none()
+            if mentor_ids:
+                groups_qs = groups_qs | Group.objects.filter(mentor_id__in=mentor_ids)
+            if admin_branch_ids:
+                groups_qs = groups_qs | Group.objects.filter(branch_id__in=admin_branch_ids)
+            groups_qs = groups_qs.select_related('branch', 'mentor')
+
+            employee_groups = {}  # employee_id -> [Group]
+            group_by_id = {}
+            for g in groups_qs:
+                group_by_id[g.id] = g
+                if g.mentor_id in employee_ids:
+                    employee_groups.setdefault(g.mentor_id, []).append(g)
+            for uid, u in employees.items():
+                if u.role == 'admin' and u.branch_id:
+                    for g in groups_qs:
+                        if g.branch_id == u.branch_id and g.id not in [
+                            gg.id for gg in employee_groups.get(uid, [])
+                        ]:
+                            employee_groups.setdefault(uid, []).append(g)
+
+            # 3. Lesson dates cache (har guruh uchun bir marta)
+            lesson_dates_cache = {}
+            for g in groups_qs:
+                for (eid, month_str) in employee_months:
+                    if eid in employee_groups and g.id in [
+                        gg.id for gg in employee_groups.get(eid, [])
+                    ]:
+                        if g.id not in lesson_dates_cache:
+                            parts = month_str.split('-')
+                            lesson_dates_cache[g.id] = g.get_lesson_dates(
+                                int(parts[0]), int(parts[1])
+                            )
+
+            # 4. Payments batch
+            payment_conditions = Q()
+            for eid, month_str in employee_months:
+                parts = month_str.split('-')
+                month_date = f"{parts[0]}-{parts[1]}-01"
+                g_ids = [g.id for g in employee_groups.get(eid, [])]
+                if g_ids:
+                    payment_conditions |= Q(group_id__in=g_ids, month=month_date)
+
+            payment_map_global = {}
+            if payment_conditions != Q():
+                for p in Payment.objects.filter(
+                    payment_conditions
+                ).select_related('student'):
+                    payment_map_global[(p.student_id, p.group_id)] = p
+
+            # 5. Extra transactions batch
+            extras_map_global = {}
+            if payment_conditions != Q():
+                extra_conditions = Q(category='student_extra')
+                date_conds = Q()
+                for eid, month_str in employee_months:
+                    parts = month_str.split('-')
+                    date_conds |= Q(date__year=int(parts[0]), date__month=int(parts[1]))
+                extra_conditions &= date_conds
+                for tx in FinanceTransaction.objects.filter(extra_conditions).values(
+                    'student_id', 'group_id', 'transaction_type', 'amount'
+                ):
+                    key = (tx['student_id'], tx['group_id'])
+                    amt = Decimal(str(tx['amount'] or 0))
+                    if tx['transaction_type'] == 'income':
+                        extras_map_global[key] = extras_map_global.get(key, Decimal('0')) + amt
+                    else:
+                        extras_map_global[key] = extras_map_global.get(key, Decimal('0')) - amt
+
+            # 6. Attendance cache
+            all_group_ids = list(group_by_id.keys())
+            attendance_cache = {}
+            if all_group_ids:
+                for month_str in set(m for _, m in employee_months):
+                    parts = month_str.split('-')
+                    for row in Attendance.objects.filter(
+                        group_id__in=all_group_ids,
+                        date__year=int(parts[0]),
+                        date__month=int(parts[1]),
+                        is_present=True,
+                        marked_by__isnull=False,
+                    ).values('group_id', 'student_id'):
+                        k = (row['group_id'], row['student_id'])
+                        attendance_cache[k] = attendance_cache.get(k, 0) + 1
+
+            # 7. Enrollment cache
+            enrollment_cache = {}
+            _join_dates = {}
+            if all_group_ids:
+                for enr in GroupEnrollment.objects.filter(
+                    group_id__in=all_group_ids
+                ).select_related('student'):
+                    if enr.group_id not in enrollment_cache:
+                        enrollment_cache[enr.group_id] = {}
+                    if enr.student:
+                        enrollment_cache[enr.group_id][enr.student.id] = enr.student
+                    if enr.joined_at:
+                        _join_dates[(enr.student_id, enr.group_id)] = enr.joined_at.date()
+            enrollment_cache['_join_dates'] = _join_dates
+
+            # Legacy old_students_fk (eski tizimdan qolgan o'quvchilar)
+            for st in Student.objects.filter(
+                group_id__in=all_group_ids
+            ).only('id', 'custom_fee', 'status', 'full_name', 'joined_at', 'group_id'):
+                gid = st.group_id
+                if gid not in enrollment_cache:
+                    enrollment_cache[gid] = {}
+                enrollment_cache[gid][st.id] = st
+
+            # 8. Salary configs
+            _salary_configs = {}
+            if mentor_ids:
+                for sc in MentorGroupSalaryConfig.objects.filter(
+                    mentor_id__in=mentor_ids, group_id__in=all_group_ids
+                ):
+                    _salary_configs[(sc.mentor_id, sc.group_id)] = sc
+            enrollment_cache['_salary_configs'] = _salary_configs
+
+            # 9. Advances batch
+            from .models import EmployeeAdvance
+            current_month = timezone.localdate().replace(day=1)
+            advances_map = {}
+            for adv in EmployeeAdvance.objects.filter(
+                employee_id__in=employee_ids, month=current_month
+            ).order_by('-created_at'):
+                key = (adv.employee_id, str(adv.month))
+                advances_map.setdefault(key, []).append(adv)
+
+            context['employee_prefetch'] = {
+                'employee_groups': employee_groups,
+                'payment_map': payment_map_global,
+                'extras_map': extras_map_global,
+                'lesson_dates_cache': lesson_dates_cache,
+                'attendance_cache': attendance_cache,
+                'enrollment_cache': enrollment_cache,
+                'advances_map': advances_map,
+            }
+        except Exception as e:
+            logger.error(f"EmployeePayment prefetch error: {e}")
+        return context
 
     @action(detail=False, methods=['get'], url_path='current')
     def current(self, request):
@@ -691,31 +900,44 @@ class MentorGroupSalaryConfigViewSet(viewsets.ModelViewSet):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def payment_statistics_view(request):
-    """Har bir guruh uchun to'lov statistikasi"""
+    """Har bir guruh uchun to'lov statistikasi (N+1 optimallashtirilgan)"""
     from django.utils import timezone
+    from django.db.models import Count, Q
 
     branch_id = request.query_params.get('branch_id')
     today = timezone.localdate()
     month_start = today.replace(day=1)
 
-    # Faol guruhlarni olish
-    groups_qs = Group.objects.filter(is_faol=True).select_related('branch')
+    # OPTIMIZATSIYA: annotate bilan student count ni birga olish
+    groups_qs = Group.objects.filter(is_faol=True).select_related('branch').annotate(
+        st_count=Count('enrollments', filter=Q(enrollments__is_active=True))
+    )
     if branch_id:
         groups_qs = groups_qs.filter(branch_id=branch_id)
 
+    # OPTIMIZATSIYA: Barcha to'lovlarni BIR so'rovda guruhlab olish
+    all_group_ids = list(groups_qs.values_list('id', flat=True))
+    payment_stats = {}
+    if all_group_ids:
+        stats_qs = Payment.objects.filter(
+            group_id__in=all_group_ids, month=month_start
+        ).values('group_id', 'is_paid').annotate(cnt=Count('id'))
+        for row in stats_qs:
+            gid = row['group_id']
+            if gid not in payment_stats:
+                payment_stats[gid] = {'paid': 0, 'unpaid': 0}
+            if row['is_paid']:
+                payment_stats[gid]['paid'] = row['cnt']
+            else:
+                payment_stats[gid]['unpaid'] = row['cnt']
+
     groups_data = []
     for group in groups_qs:
-        # Shu guruhda faol o'quvchilar soni
-        students_count = group.enrollments.filter(is_active=True).count()
-
-        # Shu oy uchun to'lovlar
-        payments_qs = Payment.objects.filter(group=group, month=month_start)
-        paid_count = payments_qs.filter(is_paid=True).count()
-        unpaid_count = payments_qs.filter(is_paid=False).count()
-        # Agar hali payment yaratilmagan bo'lsa
-        no_payment = students_count - paid_count - unpaid_count
-        if no_payment < 0:
-            no_payment = 0
+        students_count = group.st_count
+        ps = payment_stats.get(group.id, {'paid': 0, 'unpaid': 0})
+        paid_count = ps['paid']
+        unpaid_count = ps['unpaid']
+        no_payment = max(0, students_count - paid_count - unpaid_count)
 
         groups_data.append({
             "id": group.id,
@@ -726,7 +948,6 @@ def payment_statistics_view(request):
             "payment_rate": round((paid_count / students_count * 100) if students_count > 0 else 0, 1)
         })
 
-    # Umumiy statistika
     total_groups = len(groups_data)
     total_students = sum(g['students_count'] for g in groups_data)
     total_paid = sum(g['paid_count'] for g in groups_data)

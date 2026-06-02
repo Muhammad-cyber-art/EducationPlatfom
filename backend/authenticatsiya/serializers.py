@@ -297,8 +297,16 @@ class BranchAccessSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         request = self.context.get('request')
-        if not request or request.user.role != 'super_admin':
-            raise serializers.ValidationError("Faqat super_admin ruxsat bera oladi.")
+        if not request:
+            raise serializers.ValidationError("So'rov topilmadi.")
+
+        user = request.user
+
+        # Super admin va admin ruxsatga ega
+        if user.role not in ['super_admin', 'admin']:
+            raise serializers.ValidationError(
+                "Faqat super_admin yoki admin ruxsat bera oladi."
+            )
 
         user_id = data['user_id']
         branch = data['branch_id']  # Bu yerda Branch object keladi

@@ -579,7 +579,7 @@ class StaffProfile(models.Model):
                     if net_amount != 0 or (p and p.is_paid):
                         total += net_amount
 
-            return floor_amount(total)
+            return floor_amount(total, precision=None)
 
         if self.user.role != "mentor":
             return Decimal("0")
@@ -687,7 +687,7 @@ class StaffProfile(models.Model):
         from finance.utils import calculate_group_revenue_and_mentor_share, floor_amount
 
         if self.salary_type == "fixed":
-            return floor_amount(self.fixed_salary)
+            return floor_amount(self.fixed_salary, precision=None)
 
         from groups.models import Group
 
@@ -725,6 +725,56 @@ class StaffProfile(models.Model):
             else:
                 extra_map[key] = extra_map.get(key, Decimal("0")) - amt
 
+        # === OPTIMIZATSIYA: cache'larni bir marta qurish ===
+        lesson_dates_cache = {}
+        for g in mentor_groups:
+            lesson_dates_cache[g.id] = g.get_lesson_dates(month.year, month.month)
+
+        from homework_attends.models import Attendance
+        _all_att = Attendance.objects.filter(
+            group_id__in=mentor_group_ids,
+            date__year=month.year,
+            date__month=month.month,
+            is_present=True,
+            marked_by__isnull=False,
+        ).values("group_id", "student_id")
+        attendance_cache = {}
+        for row in _all_att:
+            k = (row["group_id"], row["student_id"])
+            attendance_cache[k] = attendance_cache.get(k, 0) + 1
+
+        from groups.models import GroupEnrollment
+        _all_enrollments = GroupEnrollment.objects.filter(
+            group_id__in=mentor_group_ids
+        ).select_related("student")
+        enrollment_cache = {}
+        _join_dates = {}
+        for enr in _all_enrollments:
+            if enr.group_id not in enrollment_cache:
+                enrollment_cache[enr.group_id] = {}
+            if enr.student:
+                enrollment_cache[enr.group_id][enr.student.id] = enr.student
+            if enr.joined_at:
+                _join_dates[(enr.student_id, enr.group_id)] = enr.joined_at.date()
+        enrollment_cache['_join_dates'] = _join_dates
+
+        # Legacy old_students_fk (eski tizimdan qolgan o'quvchilar)
+        from groups.models import Student
+        for st in Student.objects.filter(group_id__in=mentor_group_ids).only(
+            'id', 'custom_fee', 'status', 'full_name', 'joined_at', 'group_id'
+        ):
+            gid = st.group_id
+            if gid not in enrollment_cache:
+                enrollment_cache[gid] = {}
+            enrollment_cache[gid][st.id] = st
+
+        _salary_configs = {}
+        for sc in MentorGroupSalaryConfig.objects.filter(
+            mentor=self.user, group_id__in=mentor_group_ids
+        ):
+            _salary_configs[(self.user.id, sc.group_id)] = sc
+        enrollment_cache['_salary_configs'] = _salary_configs
+
         total_expected_share = Decimal("0")
 
         for group in mentor_groups:
@@ -735,17 +785,29 @@ class StaffProfile(models.Model):
                 payment_map=payment_map,
                 extra_map=extra_map,
                 ignore_today_check=False,
+                lesson_dates_cache=lesson_dates_cache,
+                attendance_cache=attendance_cache,
+                enrollment_cache=enrollment_cache,
             )
             total_expected_share += group_result["expected_revenue"]
 
-        return floor_amount(total_expected_share)
+        return floor_amount(total_expected_share, precision=None)
 
     def calculate_salary_for_month(self, month, commission_basis="paid"):
         """Berilgan oy uchun maoshni hisoblash (natija floor qilinadi)"""
         from finance.utils import calculate_group_revenue_and_mentor_share, floor_amount
 
+        # Memoization: bir xil parametrlar bilan qayta hisoblashni oldini olish
+        cache_key = (str(month), commission_basis)
+        if not hasattr(self, '_salary_memo'):
+            self._salary_memo = {}
+        if cache_key in self._salary_memo:
+            return self._salary_memo[cache_key]
+
         if self.salary_type == "fixed":
-            return floor_amount(self.fixed_salary)
+            result = floor_amount(self.fixed_salary, precision=None)
+            self._salary_memo[cache_key] = result
+            return result
 
         from groups.models import Group
 
@@ -753,7 +815,9 @@ class StaffProfile(models.Model):
 
         mentor_groups = Group.objects.filter(mentor=self.user)
         if not mentor_groups:
-            return Decimal("0")
+            result = Decimal("0")
+            self._salary_memo[cache_key] = result
+            return result
 
         # Barcha to'lovlarni bitta queryda olamiz (optimizatsiya)
         mentor_group_ids = [g.id for g in mentor_groups]
@@ -784,6 +848,59 @@ class StaffProfile(models.Model):
             else:
                 extra_map[key] = extra_map.get(key, Decimal("0")) - amt
 
+        # === OPTIMIZATSIYA: lesson_dates, attendance, enrollment cache'larni bir marta qurish ===
+        lesson_dates_cache = {}
+        for g in mentor_groups:
+            lesson_dates_cache[g.id] = g.get_lesson_dates(month.year, month.month)
+
+        # Attendance cache: bitta query bilan barcha guruhlar uchun davomatni olish
+        from homework_attends.models import Attendance
+        _all_att = Attendance.objects.filter(
+            group_id__in=mentor_group_ids,
+            date__year=month.year,
+            date__month=month.month,
+            is_present=True,
+            marked_by__isnull=False,
+        ).values("group_id", "student_id")
+        attendance_cache = {}
+        for row in _all_att:
+            k = (row["group_id"], row["student_id"])
+            attendance_cache[k] = attendance_cache.get(k, 0) + 1
+
+        # Enrollment cache: barcha guruhlar uchun enrollment + salary config + join dates
+        from groups.models import GroupEnrollment
+        _all_enrollments = GroupEnrollment.objects.filter(
+            group_id__in=mentor_group_ids
+        ).select_related("student")
+        enrollment_cache = {}
+        _join_dates = {}
+        for enr in _all_enrollments:
+            if enr.group_id not in enrollment_cache:
+                enrollment_cache[enr.group_id] = {}
+            if enr.student:
+                enrollment_cache[enr.group_id][enr.student.id] = enr.student
+            if enr.joined_at:
+                _join_dates[(enr.student_id, enr.group_id)] = enr.joined_at.date()
+        enrollment_cache['_join_dates'] = _join_dates
+
+        # Legacy old_students_fk (eski tizimdan qolgan o'quvchilar)
+        from groups.models import Student
+        for st in Student.objects.filter(group_id__in=mentor_group_ids).only(
+            'id', 'custom_fee', 'status', 'full_name', 'joined_at', 'group_id'
+        ):
+            gid = st.group_id
+            if gid not in enrollment_cache:
+                enrollment_cache[gid] = {}
+            enrollment_cache[gid][st.id] = st
+
+        # Salary config cache
+        _salary_configs = {}
+        for sc in MentorGroupSalaryConfig.objects.filter(
+            mentor=self.user, group_id__in=mentor_group_ids
+        ):
+            _salary_configs[(self.user.id, sc.group_id)] = sc
+        enrollment_cache['_salary_configs'] = _salary_configs
+
         total_salary = Decimal("0")
 
         for group in mentor_groups:
@@ -794,13 +911,18 @@ class StaffProfile(models.Model):
                 payment_map=payment_map,
                 extra_map=extra_map,
                 ignore_today_check=False,
+                lesson_dates_cache=lesson_dates_cache,
+                attendance_cache=attendance_cache,
+                enrollment_cache=enrollment_cache,
             )
             if commission_basis == "paid":
                 total_salary += group_result["mentor_share_paid"]
             else:
                 total_salary += group_result["mentor_share_expected"]
 
-        return floor_amount(total_salary)
+        result = floor_amount(total_salary, precision=None)
+        self._salary_memo[cache_key] = result
+        return result
 
     def calculate_attendance_based_salary(self, month):
         """

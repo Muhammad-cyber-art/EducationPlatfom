@@ -32,7 +32,7 @@ class Command(BaseCommand):
         # Get a user to set as marked_by
         marker = User.objects.first()
 
-        for student_id in [10]:
+        for student_id in [15,16,17,18,19,20]:
             self.stdout.write(f"\nO'quvchi ID: {student_id} uchun davomatlarini yaratib yangilamoqda... (Oy: {month}.{year})")
 
             try:

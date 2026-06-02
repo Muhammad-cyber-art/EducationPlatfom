@@ -1,10 +1,15 @@
 import React, { useState } from "react";
-import { Users, Check, RotateCw, Search, Lock, Plus, Info, CheckCircle2, Trash2, X, UserMinus, Loader2 } from "lucide-react";
+import { Users, Check, RotateCw, Search, Lock, Plus, Info, CheckCircle2, Trash2, X, UserMinus, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import api from "../../../tokenUpdater/updater";
 import toast from "react-hot-toast";
 import GroupsStudent from "../GrupsStudent";
 import AddSpecialLessonModal from "./AddSpecialLessonModal";
+
+const MONTH_NAMES = [
+  'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
+  'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'
+];
 
 
 const AttendanceSection = ({
@@ -29,7 +34,13 @@ const AttendanceSection = ({
   handleLocalAttendanceChange,
   refetchAttends,
   queryClient,
-  canTakeAttendance
+  canTakeAttendance,
+  selectedMonth,
+  selectedYear,
+  isCurrentMonth,
+  onPrevMonth,
+  onNextMonth,
+  onGoToCurrentMonth
 }) => {
   const [isSpecialLessonModalOpen, setIsSpecialLessonModalOpen] = useState(false);
   const [loadingAction, setLoadingAction] = useState(false);
@@ -309,6 +320,48 @@ const AttendanceSection = ({
           </div>
         </div>
       )}
+
+      {/* MONTH NAVIGATION */}
+      <div className="px-4 sm:px-6 py-3 flex items-center justify-between gap-3 border-b border-[var(--border-glass)] bg-[var(--bg-void)]/30">
+        <button
+          onClick={onPrevMonth}
+          className="flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--gold)] hover:border-[var(--gold)]/30 transition-all active:scale-95"
+          title="O'tgan oy"
+        >
+          <ChevronLeft size={18} />
+        </button>
+
+        <div className="flex items-center gap-3">
+          <h4 className="text-sm sm:text-base font-black text-[var(--text-primary)] tracking-tight">
+            {MONTH_NAMES[selectedMonth - 1]} {selectedYear}
+          </h4>
+          {!isCurrentMonth && (
+            <span className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[7px] font-black uppercase tracking-widest flex items-center gap-1">
+              <Lock size={8} /> Arxiv
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {!isCurrentMonth && (
+            <button
+              onClick={onGoToCurrentMonth}
+              className="h-8 px-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-[8px] font-black uppercase tracking-widest hover:bg-emerald-500/20 transition-all active:scale-95"
+              title="Joriy oyga qaytish"
+            >
+              Bugun
+            </button>
+          )}
+          <button
+            onClick={onNextMonth}
+            disabled={isCurrentMonth}
+            className="flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--gold)] hover:border-[var(--gold)]/30 transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Keyingi oy"
+          >
+            <ChevronRight size={18} />
+          </button>
+        </div>
+      </div>
 
       {/* DATE PROTOCOLS */}
       <div className="px-4 sm:px-6 py-2 border-b border-[var(--border-glass)] flex gap-2 overflow-x-auto scrollbar-hide bg-[var(--bg-void)]/10">

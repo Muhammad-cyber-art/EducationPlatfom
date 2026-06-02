@@ -21,6 +21,8 @@ from homework_attends.services import (
     get_monthly_attendance_data
 )
 from permissions.permissions import HasModulePermission
+from reports.models import ReportDownloadTrack
+from datetime import date as date_type
 
 class AttendanceViewSet(viewsets.ModelViewSet):
     serializer_class = AttendanceSerializer
@@ -42,7 +44,10 @@ class AttendanceViewSet(viewsets.ModelViewSet):
            requested_date = timezone.localdate()
 
        group = get_object_or_404(Group, id=group_id)
-       return get_or_create_attendance_records(group, requested_date)
+       # O'tgan oylar uchun: faqat mavjud yozuvlarni ko'rsatish (yangi yaratmaslik)
+       today = timezone.localdate()
+       is_past_month = requested_date.year < today.year or (requested_date.year == today.year and requested_date.month < today.month)
+       return get_or_create_attendance_records(group, requested_date, view_only=is_past_month)
 
     @action(detail=False, methods=['get'])
     def weekly_report(self, request):
@@ -227,6 +232,14 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                         cell.value = "!" 
                         cell.font = Font(color="FF0000", bold=True)
                     cell.alignment = center_align
+
+            # Yuklab olish tarixini saqlash
+            report_date = date_type(year, month, 1)
+            ReportDownloadTrack.objects.get_or_create(
+                user=request.user,
+                report_type='attendance_monthly',
+                report_date=report_date
+            )
 
             from urllib.parse import quote
             # Format filename safely to avoid UnicodeEncodeError in Content-Disposition header

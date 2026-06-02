@@ -105,9 +105,23 @@ class RegisterViewSet(ModelViewSet):
     @extend_schema(responses={200: UsersListSerializer(many=True)})
     @action(detail=False, methods=['get'], url_path='admins')
     def list_admins(self, request):
-        if request.user.role != 'super_admin':
-            return Response({"detail": "Faqat Super Admin ko'ra oladi."}, status=403)
-        admins = UserModel.objects.filter(role='admin')
+        # Super admin va adminlar ko'ra oladi
+        if request.user.role == 'super_admin':
+            admins = UserModel.objects.filter(role='admin')
+        elif request.user.role == 'admin':
+            # Admin faqat o'zi ruxsatga ega filiallardagi adminlarni ko'radi
+            allowed_branches = []
+            if request.user.branch_id:
+                allowed_branches.append(request.user.branch_id)
+            allowed_branches.extend(
+                request.user.branch_accesses.values_list('branch_id', flat=True)
+            )
+            admins = UserModel.objects.filter(
+                role='admin',
+                branch_id__in=allowed_branches
+            )
+        else:
+            return Response({"detail": "Faqat Super Admin yoki Admin ko'ra oladi."}, status=403)
         serializer = UsersListSerializer(admins, many=True)
         return Response(serializer.data)
 
@@ -143,46 +157,109 @@ class CurrentUserView(RetrieveAPIView):
 
     def get_object(self):
         return self.request.user
-from .permissions import  IsSuperAdmin
+from .permissions import IsSuperAdmin, IsSuperAdminOrAdmin
 
 class BranchAccessViewSet(ModelViewSet):
     queryset = BranchAccess.objects.all().select_related('user', 'branch', 'granted_by')
     serializer_class = BranchAccessSerializer
-    permission_classes = [IsAuthenticated,IsSuperAdmin]
+    permission_classes = [IsAuthenticated, IsSuperAdminOrAdmin]
 
     def get_queryset(self):
         """
         Agar user_id parametri berilgan bo'lsa, shu xodimning barcha filiallarini qaytaradi.
         Bu profilda xodimning qaysi filiallarda ishlashini ko'rsatish uchun kerak.
+        Admin uchun: faqat o'zi ruxsatga ega bo'lgan filiallardagi BranchAccess yozuvlarini ko'radi.
         """
         queryset = super().get_queryset()
+        user = self.request.user
+
+        # Admin uchun: faqat o'ziga ruxsat berilgan filiallardagi yozuvlarni qaytaramiz
+        if user.role == 'admin':
+            allowed_branches = []
+            if user.branch_id:
+                allowed_branches.append(user.branch_id)
+            allowed_branches.extend(
+                user.branch_accesses.values_list('branch_id', flat=True)
+            )
+            queryset = queryset.filter(
+                Q(branch_id__in=allowed_branches) | Q(user__branch_id__in=allowed_branches)
+            )
+
         user_id = self.request.query_params.get('user_id')
         if user_id:
             queryset = queryset.filter(user_id=user_id)
         return queryset
 
+    def _get_admin_allowed_branch_ids(self, user):
+        """Admin ruxsatga ega bo'lgan filial ID'larini qaytaradi."""
+        allowed = []
+        if user.branch_id:
+            allowed.append(user.branch_id)
+        allowed.extend(user.branch_accesses.values_list('branch_id', flat=True))
+        return list(set(allowed))
+
+    def _check_admin_transfer_allowed(self, user, validated_data):
+        """
+        Admin uchun transfer cheklovlarini tekshiradi:
+        - Faqat mentorlarni transfer qilishi mumkin (adminlarni emas)
+        - Faqat o'zi ruxsatga ega bo'lgan filiallar orasida transfer qilishi mumkin
+        """
+        target_user_id = validated_data.get('user_id')
+        target_branch = validated_data.get('branch_id')  # Branch object
+
+        # Admin faqat mentorlarni transfer qilishi mumkin
+        try:
+            target_user = UserModel.objects.get(id=target_user_id)
+        except UserModel.DoesNotExist:
+            raise PermissionDenied("Ko'rsatilgan foydalanuvchi topilmadi.")
+
+        if target_user.role != 'mentor':
+            raise PermissionDenied("Admin faqat mentorlarni boshqa filialga o'tkaza oladi.")
+
+        allowed_branch_ids = self._get_admin_allowed_branch_ids(user)
+
+        # Target user ning hozirgi filiali admin ruxsatlarida bo'lishi kerak
+        if target_user.branch_id and target_user.branch_id not in allowed_branch_ids:
+            raise PermissionDenied("Siz ushbu mentorning hozirgi filialiga ruxsatingiz yo'q.")
+
+        # Yangi filial ham admin ruxsatlarida bo'lishi kerak
+        target_branch_id = target_branch.id if hasattr(target_branch, 'id') else target_branch
+        if target_branch_id not in allowed_branch_ids:
+            raise PermissionDenied("Siz ko'rsatilgan yangi filialga ruxsatingiz yo'q.")
+
     def perform_create(self, serializer):
-        # Oldingi super_admin tekshiruvi (o'zgartirilmagan)
-        if self.request.user.role != 'super_admin':
-            raise PermissionDenied("Faqat super_admin ruxsat bera oladi.")
+        user = self.request.user
+
+        if user.role == 'admin':
+            # Admin uchun qo'shimcha cheklovlar
+            self._check_admin_transfer_allowed(user, serializer.validated_data)
+        # Super admin uchun cheklov yo'q (oldingi mantiq)
         
-        # Yangi mantiq: Biriktirilayotgan user 'mentor' yoki 'admin' ekanligini tekshirish
-        # (Bu qism mentorlarga branch biriktirishni ta'minlaydi)
+        # Biriktirilayotgan user 'mentor' yoki 'admin' ekanligini tekshirish
         target_user = serializer.validated_data.get('user')
         if target_user and target_user.role not in ['mentor', 'admin']:
             raise ValidationError("Branch faqat mentor yoki adminlarga biriktirilishi mumkin.")
 
         serializer.save(granted_by=self.request.user)
 
-    # Qolgan metodlar (o'zgartirilmagan, keraksiz bo'lsa ham saqlab qolindi)
     def check_super_admin(self):
         if self.request.user.role != 'super_admin':
             raise PermissionDenied("Faqat super_admin uchun ruxsat etilgan.")
 
+    def _check_admin_or_super_admin(self):
+        """Super admin yoki admin rolini tekshiradi."""
+        user = self.request.user
+        if user.role in ['super_admin', 'admin']:
+            return
+        raise PermissionDenied("Bu amal uchun ruxsatingiz yo'q.")
+
     def perform_update(self, serializer):
-        self.check_super_admin()
+        self._check_admin_or_super_admin()
         
-        # Update jarayonida ham target user mentor ekanligini tekshirish (ixtiyoriy lekin xavfsiz)
+        # Admin uchun qo'shimcha cheklovlar
+        if self.request.user.role == 'admin':
+            self._check_admin_transfer_allowed(self.request.user, serializer.validated_data)
+
         target_user = serializer.validated_data.get('user')
         if target_user and target_user.role not in ['mentor', 'admin']:
             raise ValidationError("Faqat mentor yoki adminlarga branch biriktirish mumkin.")
@@ -194,7 +271,17 @@ class BranchAccessViewSet(ModelViewSet):
         Xodimni filialdan olib tashlash.
         Muhim: Asosiy filialdan (user.branch) olib tashlashga ruxsat bermaymiz.
         """
-        self.check_super_admin()
+        self._check_admin_or_super_admin()
+        
+        # Admin uchun: faqat o'zi ruxsatga ega filiallardan olib tashlashi mumkin
+        user = self.request.user
+        if user.role == 'admin':
+            allowed_branch_ids = self._get_admin_allowed_branch_ids(user)
+            if instance.branch_id not in allowed_branch_ids:
+                raise PermissionDenied("Siz ushbu filialdan olib tashlash huquqiga ega emassiz.")
+            # Admin faqat mentorlarni olib tashlashi mumkin
+            if instance.user.role != 'mentor':
+                raise PermissionDenied("Admin faqat mentorlarni filialdan olib tashlay oladi.")
         
         # Xavfsizlik: Asosiy filialdan olib tashlashni oldini olish
         if instance.user.branch and instance.branch.id == instance.user.branch.id:

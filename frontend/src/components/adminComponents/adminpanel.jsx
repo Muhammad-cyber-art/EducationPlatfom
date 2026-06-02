@@ -7,7 +7,7 @@ import api from "../../tokenUpdater/updater";
 import toast from "react-hot-toast";
 import { GlobalContext } from "../../GlobalContext";
 import { get_user_info } from "../Authorized/getRole";
-import { Bell, FileDown, AlertTriangle, CheckCircle, Volume2 } from "lucide-react";
+import { Bell, FileDown, AlertTriangle, CheckCircle, Volume2, History, Download } from "lucide-react";
 import MobileBottomNav from "../Navigation/MobileBottomNav";
 import {
     fetchAdminMe,
@@ -70,7 +70,8 @@ export default function AdminPanel() {
         pending_daily: false,
         pending_monthly: false,
         daily_message: null,
-        monthly_message: null
+        monthly_message: null,
+        uncollected_past: []
     });
 
     // Fetch pending report download notifications from backend
@@ -193,6 +194,55 @@ export default function AdminPanel() {
         }
     };
 
+    // Handle Past Daily Report Download
+    const handlePastDailyDownload = async (dateStr, label) => {
+        try {
+            toast.loading("Yuklanmoqda...", { id: 'past_dl' });
+            const response = await api.get('/reports/', {
+                params: { date: dateStr },
+                responseType: 'blob',
+            });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `${dateStr}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+            toast.success(`${label} yuklandi`, { id: 'past_dl' });
+            setTimeout(fetchNotifications, 1000);
+        } catch (error) {
+            toast.error("Hisobotni yuklashda xatolik", { id: 'past_dl' });
+        }
+    };
+
+    // Handle Past Monthly Finance Report Download
+    const handlePastMonthlyDownload = async (reportDate, label) => {
+        try {
+            toast.loading("Yuklanmoqda...", { id: 'past_dl' });
+            const d = new Date(reportDate);
+            const year = d.getFullYear();
+            const month = d.getMonth() + 1;
+            const response = await api.get('/reports/monthly-finance/', {
+                params: { year, month },
+                responseType: 'blob',
+            });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Moliya_Hisoboti_${year}_${String(month).padStart(2, '0')}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+            toast.success(`${label} yuklandi`, { id: 'past_dl' });
+            setTimeout(fetchNotifications, 1000);
+        } catch (error) {
+            toast.error("Hisobotni yuklashda xatolik", { id: 'past_dl' });
+        }
+    };
+
     const getPageTitle = () => {
         const path = location.pathname;
         if (path === "/admin") return "Asosiy";
@@ -293,10 +343,57 @@ export default function AdminPanel() {
                                         )}
 
                                         {/* NO PENDING NOTIFICATIONS */}
-                                        {!hasPendingNotification && (
+                                        {!hasPendingNotification && !pendingNotifications.uncollected_past?.length && (
                                             <div className="p-8 text-center flex flex-col items-center justify-center gap-2">
                                                 <CheckCircle size={24} className="text-emerald-500" />
                                                 <p className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-wider">Barcha hisobotlar yuklangan</p>
+                                            </div>
+                                        )}
+
+                                        {/* UNCOLLECTED PAST REPORTS */}
+                                        {pendingNotifications.uncollected_past?.length > 0 && (
+                                            <div className="border-t border-[var(--border-glass)] pt-2 mt-2">
+                                                <div className="flex items-center gap-2 px-2 py-1.5 mb-1">
+                                                    <History size={12} className="text-amber-500" />
+                                                    <p className="text-[8px] font-black text-amber-500 uppercase tracking-widest">
+                                                        Yuklab olinmagan hisobotlar
+                                                    </p>
+                                                    <span className="text-[7px] font-black bg-amber-500/10 text-amber-500 px-1.5 py-0.5 rounded-full border border-amber-500/20">
+                                                        {pendingNotifications.uncollected_past.length}
+                                                    </span>
+                                                </div>
+                                                <div className="max-h-[200px] overflow-y-auto space-y-1 scrollbar-hide">
+                                                    {pendingNotifications.uncollected_past.map((report, idx) => {
+                                                        const iconColor = report.type === 'daily' ? 'text-[var(--gold)]' : report.type === 'monthly' ? 'text-emerald-400' : 'text-sky-400';
+                                                        const bgColor = report.type === 'daily' ? 'bg-[var(--gold)]/10' : report.type === 'monthly' ? 'bg-emerald-500/10' : 'bg-sky-500/10';
+                                                        return (
+                                                            <button
+                                                                key={`${report.type}-${report.date}-${idx}`}
+                                                                onClick={() => {
+                                                                    if (report.type === 'daily') handlePastDailyDownload(report.date, report.label);
+                                                                    else if (report.type === 'monthly') handlePastMonthlyDownload(report.report_date, report.label);
+                                                                    dispatch(setNotificationOpen(false));
+                                                                }}
+                                                                className="w-full flex items-center gap-2.5 p-2 hover:bg-[var(--bg-void)]/50 border border-[var(--border-glass)]/50 rounded-lg transition-all group text-left"
+                                                            >
+                                                                <div className={`p-1.5 rounded-md ${bgColor} ${iconColor} shrink-0`}>
+                                                                    <Download size={12} />
+                                                                </div>
+                                                                <div className="min-w-0 flex-1">
+                                                                    <p className="text-[9px] font-black text-[var(--text-primary)] truncate">{report.label}</p>
+                                                                    <p className="text-[7px] text-[var(--text-muted)] font-bold capitalize">
+                                                                        {report.type === 'daily' ? 'Kunlik' : report.type === 'monthly' ? 'Oylik moliya' : 'Davomat'}
+                                                                    </p>
+                                                                </div>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                                {pendingNotifications.uncollected_past.length > 0 && (
+                                                    <p className="text-[7px] text-[var(--text-muted)] font-bold text-center mt-2 px-2">
+                                                        Davomat hisobotlarini guruh sahifasidan yuklab oling
+                                                    </p>
+                                                )}
                                             </div>
                                         )}
 
