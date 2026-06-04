@@ -7,7 +7,6 @@ from django.db.models import Q
 from groups.models import Group, Student
 from .utils import send_telegram_message_async, get_student_telegram_ids
 from .serializers import BotStatsSerializer, BroadcastMessageSerializer, BotSuccessSerializer
-from django.db.models import Q
 from drf_spectacular.utils import extend_schema
 
 class BroadcastMessageView(APIView):
@@ -26,6 +25,7 @@ class BroadcastMessageView(APIView):
             return Response({"error": "Xabar matni kiritilmadi"}, status=status.HTTP_400_BAD_REQUEST)
 
         target_chat_ids = set()
+        group_obj = None  # Guruh obyektini saqlash
 
         if target_audience == 'active_students':
             # Base Queryset for students
@@ -39,22 +39,22 @@ class BroadcastMessageView(APIView):
 
         # 2. Guruh bo'yicha
         elif group_id:
-            group = get_object_or_404(Group, id=group_id)
+            group_obj = get_object_or_404(Group, id=group_id)
             # Permission check...
             has_permission = False
             if user.role == 'super_admin': has_permission = True
             elif user.role == 'admin':
                 allowed_branches = [user.branch.id] if user.branch else []
                 allowed_branches.extend(user.branch_accesses.values_list('branch_id', flat=True))
-                if group.branch_id in allowed_branches: has_permission = True
+                if group_obj.branch_id in allowed_branches: has_permission = True
             elif user.role == 'mentor':
-                if group.mentor == user or group.additional_mentors.filter(mentor=user).exists():
+                if group_obj.mentor == user or group_obj.additional_mentors.filter(mentor=user).exists():
                     has_permission = True
             
             if not has_permission:
                 return Response({"error": "Siz ushbu guruhga xabar yuborish huquqiga ega emassiz"}, status=status.HTTP_403_FORBIDDEN)
             
-            students_qs = group.students.all()
+            students_qs = group_obj.students.all()
 
         # 3. Filial bo'yicha
         elif branch_id:
@@ -99,10 +99,8 @@ class BroadcastMessageView(APIView):
         
         # Yakuniy xabar mazmuni
         final_message = message
-        if group_id:
-            group = Group.objects.filter(id=group_id).first()
-            if group:
-                final_message = f"<b>{group.name}</b>\n\n{message}"
+        if group_obj:
+            final_message = f"<b>{group_obj.name}</b>\n\n{message}"
 
         # Xabarlarni yuborish (Celery va Fallback Threading bilan)
         try:
@@ -127,7 +125,7 @@ class BroadcastMessageView(APIView):
             threading.Thread(target=fallback_broadcast, args=(list(target_chat_ids), final_message)).start()
         
         sent_count = len(target_chat_ids)
-        target_name = "Barcha o'quvchilar" if send_to_all_branches or (not group_id and not branch_id) else f"'{group.name if 'group' in locals() and group else 'Tanlangan'}' guruhi"
+        target_name = "Barcha o'quvchilar" if send_to_all_branches or (not group_id and not branch_id) else f"'{group_obj.name}' guruhi" if group_obj else "Tanlangan"
         return Response({
             "status": "success", 
             "detail": f"Xabar {sent_count} ta unikal foydalanuvchiga yuborilmoqda ({target_name})."

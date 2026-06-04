@@ -56,8 +56,8 @@ def get_and_update_students(clean_phone, chat_id):
     """
     Telefon raqami bo'yicha barcha mos keluvchi o'quvchilarni topish va 
     ularning Telegram IDlarini yangilash.
+    Optimizatsiya: bulk_update orqali signal triggerlarini oldini oladi.
     """
-    # Telefon raqamidan faqat raqamlarni qoldiramiz (qavslar, chiziqlar, plyus va bo'shliqlarni yo'qotadi)
     clean_phone = re.sub(r'\D', '', clean_phone)
     if len(clean_phone) < 7:
         return []
@@ -69,26 +69,27 @@ def get_and_update_students(clean_phone, chat_id):
     
     found_student_info = []
     seen_entries = set()
+    to_update = []  # bulk_update uchun
 
     for student in all_students:
         is_match = False
         
-        # Student o'zining raqami
+        # Student o'zining raqami (aniq moslik: oxirgi 9 raqam)
         if student.phone:
             s_phone_clean = re.sub(r'\D', '', student.phone)
-            if last_9 in s_phone_clean:
+            if s_phone_clean.endswith(last_9):
                 student.telegram_id = chat_id
                 is_match = True
         
-        # Ota-ona raqami
+        # Ota-ona raqami (aniq moslik: oxirgi 9 raqam)
         if student.parent_phone:
             p_phone_clean = re.sub(r'\D', '', student.parent_phone)
-            if last_9 in p_phone_clean:
+            if p_phone_clean.endswith(last_9):
                 student.parent_telegram_id = chat_id
                 is_match = True
         
         if is_match:
-            student.save()
+            to_update.append(student)
             # Guruh nomini ham qo'shamiz
             group_name = student.group.name if student.group else "Guruhsiz"
             full_name = student.full_name.strip()
@@ -97,6 +98,16 @@ def get_and_update_students(clean_phone, chat_id):
             if entry.lower() not in seen_entries:
                 found_student_info.append(entry)
                 seen_entries.add(entry.lower())
+    
+    # Optimizatsiya: bulk_update orqali signallarni trigger qilmasdan saqlash
+    if to_update:
+        update_fields = []
+        for s in to_update:
+            if s.telegram_id == chat_id and 'telegram_id' not in update_fields:
+                update_fields.append('telegram_id')
+            if s.parent_telegram_id == chat_id and 'parent_telegram_id' not in update_fields:
+                update_fields.append('parent_telegram_id')
+        Student.objects.bulk_update(to_update, update_fields)
             
     return found_student_info
 

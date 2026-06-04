@@ -45,7 +45,10 @@ class RegisterViewSet(ModelViewSet):
             allowed.append(user.branch_id)
         
         if user.role == 'admin':
-            return UserModel.objects.filter(branch_id__in=allowed).exclude(role='super_admin')
+            # BranchAccess orqali ko'chirilgan mentorlarni ham ko'rish
+            return UserModel.objects.filter(
+                Q(branch_id__in=allowed) | Q(branch_accesses__branch_id__in=allowed)
+            ).exclude(role='super_admin').distinct()
         return UserModel.objects.filter(id=user.id)
 
     def create(self, request, *args, **kwargs):
@@ -146,10 +149,12 @@ class UsersListView(ListAPIView):
         if user.branch_id: allowed_branches.append(user.branch_id)
         allowed_branches.extend(user.branch_accesses.values_list('branch_id', flat=True))
 
+        # BranchAccess orqali ko'chirilgan mentorlarni ham ko'rish
         return UserModel.objects.filter(
             role='mentor',
-            branch_id__in=allowed_branches
-        )
+        ).filter(
+            Q(branch_id__in=allowed_branches) | Q(branch_accesses__branch_id__in=allowed_branches)
+        ).distinct()
 
 class CurrentUserView(RetrieveAPIView):
     permission_classes = [IsAuthenticated]

@@ -89,7 +89,7 @@ const GroupHeader = ({
                   <MoreVertical size={18} />
                 </button>
                 {showMenu && (
-                  <div className="absolute right-0 top-full mt-2 w-56 bg-black !shadow-2xl !p-2 z-[100] border border-[var(--border-glass)] rounded-xl animate-in fade-in zoom-in-95 duration-200 origin-top-right">
+                  <div className="absolute right-0 top-full mt-2 w-56 lux-card-for-grps !shadow-2xl !p-2 z-[100] border border-[var(--border-glass)] rounded-xl animate-in fade-in zoom-in-95 duration-200 origin-top-right">
                     {canEditGroup && (
                       <button onClick={() => uiDispatch({ type: "START_EDITING", payload: { ...groupinfo, mentor_id: groupinfo.mentor?.id } })} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[var(--gold-dim)] text-[var(--text-primary)] text-[10px] font-black capitalize tracking-widest rounded-xl transition-all">
                         <Edit3 size={14} className="text-[var(--gold)]" /> Guruhni tahrirlash

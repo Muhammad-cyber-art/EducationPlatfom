@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.http import HttpResponse
 
+import logging
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils import get_column_letter
@@ -24,12 +25,20 @@ from permissions.permissions import HasModulePermission
 from reports.models import ReportDownloadTrack
 from datetime import date as date_type
 
+logger = logging.getLogger(__name__)
+
 class AttendanceViewSet(viewsets.ModelViewSet):
     serializer_class = AttendanceSerializer
     permission_classes = [AllowAny]
     pagination_class = None
     module_name = 'homework'
     http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
+
+    def get_permissions(self):
+        """Monthly report uchun autentifikatsiya majburiy (ReportDownloadTrack user talab qiladi)"""
+        if self.action == 'monthly_report':
+            return [IsAuthenticated()]
+        return super().get_permissions()
 
     def get_queryset(self):
        group_id = self.request.query_params.get('group_id')
@@ -233,13 +242,19 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                         cell.font = Font(color="FF0000", bold=True)
                     cell.alignment = center_align
 
-            # Yuklab olish tarixini saqlash
-            report_date = date_type(year, month, 1)
-            ReportDownloadTrack.objects.get_or_create(
-                user=request.user,
-                report_type='attendance_monthly',
-                report_date=report_date
-            )
+            # Yuklab olish tarixini saqlash (xatolik bo'lsa ham report yuklanishi kerak)
+            try:
+                report_date = date_type(year, month, 1)
+                ReportDownloadTrack.objects.get_or_create(
+                    user=request.user,
+                    report_type='attendance_monthly',
+                    report_date=report_date
+                )
+            except Exception as e:
+                logger.warning(
+                    "ReportDownloadTrack saqlashda xatolik: user=%s, group=%s, month=%s-%s — %s",
+                    request.user, group.id, year, month, e
+                )
 
             from urllib.parse import quote
             # Format filename safely to avoid UnicodeEncodeError in Content-Disposition header

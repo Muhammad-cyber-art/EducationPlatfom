@@ -9,6 +9,7 @@
  --bg-void: #000000;
  --bg-panel: #050505;
  --card-bg: rgba(255, 255, 255, 0.03);
+ --card-bg-for-grps: rgb(0, 0, 0);
  --sidebar-bg: rgba(5, 5, 5, 0.95);
  --border-glass: 1px solid rgba(255, 255, 255, 0.06);
  --border-highlight: 1px solid rgba(255, 255, 255, 0.12);
@@ -32,6 +33,7 @@
  --bg-void: #fdfaf5;
  --bg-panel: #ffffff;
  --card-bg: #ffffff;
+ --card-bg-for-grps: #ffffff;
  --sidebar-bg: #ffffff;
  --border-glass: 1px solid rgba(150, 123, 79, 0.12);
  --border-highlight: 1px solid rgba(150, 123, 79, 0.25);
@@ -300,6 +302,17 @@ body {
  backdrop-filter: blur(40px) saturate(200%);
  -webkit-backdrop-filter: blur(40px) saturate(200%);
     position: relative;
+}
+.lux-card-for-grps {
+ background: var(--card-bg-for-grps);
+ border-radius: 28px;
+ padding: 24px;
+ transition: opacity 0.3s, transform 0.3s, border-color 0.3s, box-shadow 0.3s;
+ box-shadow: 0 12px 40px -10px var(--shadow-color);
+ /* Mobile optimization */
+ backdrop-filter: blur(20px) saturate(200%);
+ -webkit-backdrop-filter: blur(20px) saturate(200%);
+    position: absolute;
 }
 
 .lux-card::before {
@@ -728,4 +741,4 @@ select option {
   background-color: #0a0a0a !important;
   color: #ffffff !important;
   padding: 10px;
-}
+}

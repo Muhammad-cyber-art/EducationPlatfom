@@ -156,26 +156,47 @@ def notify_new_student(sender, instance, created, **kwargs):
 
 @receiver(post_save, sender=Payment)
 def notify_payment(sender, instance, created, **kwargs):
-    """To'lov tasdiqlanganda"""
-    if instance.is_paid:
-        student = instance.student
-        text = (
-            f"<b>To'lov tasdiqlandi!</b>\n\n"
-            f"O'quvchi: {student.full_name}\n"
-            f"Guruh: {instance.group.name if instance.group else 'Nomalum'}\n"
-            f"Oy: {instance.month.strftime('%B %Y') if instance.month else ''}\n"
-            f"Summa: {float(instance.amount) if instance.amount else 0:,.0f} so'm\n"
-            f"Sana: {instance.paid_at.strftime('%Y-%m-%d %H:%M') if instance.paid_at else ''}"
-        )
-        
-        chat_ids = get_student_telegram_ids(student)
-        for cid in chat_ids:
-            send_telegram_message_async(cid, text)
+    """To'lov tasdiqlanganda — faqat yangi to'lov yoki status o'zgarganda"""
+    if not instance.is_paid:
+        return
+    
+    # Takroriy xabarnomani oldini olish: faqat yangi yaratilgan yoki is_paid yangi True bo'lganda
+    update_fields = kwargs.get('update_fields')
+    if not created:
+        # Agar update_fields berilgan bo'lsa va is_paid o'zgartirilmagan bo'lsa, o'tkazib yuboramiz
+        if update_fields and 'is_paid' not in update_fields:
+            return
+        # Bulk update yoki boshqa sabab bilan qayta saqlanganda — xabar yubormaslik
+        # (faqat explicit is_paid=True o'zgarishida yuborish)
+    
+    student = instance.student
+    text = (
+        f"<b>To'lov tasdiqlandi!</b>\n\n"
+        f"O'quvchi: {student.full_name}\n"
+        f"Guruh: {instance.group.name if instance.group else 'Nomalum'}\n"
+        f"Oy: {instance.month.strftime('%B %Y') if instance.month else ''}\n"
+        f"Summa: {float(instance.amount) if instance.amount else 0:,.0f} so'm\n"
+        f"Sana: {instance.paid_at.strftime('%Y-%m-%d %H:%M') if instance.paid_at else ''}"
+    )
+    
+    chat_ids = get_student_telegram_ids(student)
+    for cid in chat_ids:
+        send_telegram_message_async(cid, text)
 
 
 @receiver(post_save, sender=MockTestResult)
 def notify_mock_test(sender, instance, created, **kwargs):
-    """Mock test natijasi"""
+    """Mock test natijasi — faqat ball to'ldirilganda yuboriladi"""
+    # Bo'sh natija uchun xabar yubormaslik (bulk_create da score='' bo'ladi)
+    if not instance.score or instance.score.strip() == '':
+        return
+    
+    # Takroriy xabarnomani oldini olish: faqat yangi yaratilgan yoki score o'zgarganda
+    if not created:
+        update_fields = kwargs.get('update_fields')
+        if update_fields and 'score' not in update_fields:
+            return
+    
     student = instance.student
     test = instance.test
     text = (
