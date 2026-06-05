@@ -112,6 +112,8 @@ class GroupSimpleSerializer(serializers.ModelSerializer):
 
     def get_students_count(self, obj) -> int:
         try:
+            if hasattr(obj, '_students_count'):
+                return obj._students_count
             # Faqat is_active=True bo'lgan o'quvchilarni sanaymiz
             return obj.enrollments.filter(is_active=True).count()
         except Exception:

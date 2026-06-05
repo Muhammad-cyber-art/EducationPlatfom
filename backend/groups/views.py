@@ -114,10 +114,47 @@ class GroupViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         """
         Har bir guruhni alohida serialize qilamiz, bitta guruh xato bersa ham qolganlari chiqadi.
+        Bugungi davomatni va o'quvchilar sonini bir queryda olamiz.
         """
         try:
+            from django.utils import timezone
+            from django.db.models import Count
+            from homework_attends.models import Attendance
+            
             queryset = self.filter_queryset(self.get_queryset())
             logger.info(f"Found {queryset.count()} groups for user {request.user.id}, branch_id: {request.query_params.get('branch_id')}")
+
+            # Bugungi davomatni bir queryda olish
+            today = timezone.localdate()
+            group_ids = [g.id for g in queryset]
+            attendances = Attendance.objects.filter(
+                group_id__in=group_ids,
+                date=today
+            ).values('group_id', 'marked_by', 'is_present')
+            
+            # O'quvchilar sonini bir queryda olish
+            enrollments = GroupEnrollment.objects.filter(
+                group_id__in=group_ids,
+                is_active=True
+            ).values('group_id').annotate(count=Count('id'))
+            
+            # Davomatni dict ga saqlash
+            attendance_map = {}
+            for att in attendances:
+                group_id = att['group_id']
+                if group_id not in attendance_map:
+                    attendance_map[group_id] = {
+                        'confirmed': att['marked_by'] is not None,
+                        'present': 0,
+                        'absent': 0
+                    }
+                if att['is_present']:
+                    attendance_map[group_id]['present'] += 1
+                else:
+                    attendance_map[group_id]['absent'] += 1
+            
+            # O'quvchilar sonini dict ga saqlash
+            students_count_map = {e['group_id']: e['count'] for e in enrollments}
 
             page = self.paginate_queryset(queryset)
             if page is not None:
@@ -125,6 +162,15 @@ class GroupViewSet(viewsets.ModelViewSet):
                 serialized_data = []
                 for item in page:
                     try:
+                        # Guruh uchun davomatni va o'quvchilar sonini qo'shish
+                        item_attendance = attendance_map.get(item.id, {
+                            'confirmed': False,
+                            'present': 0,
+                            'absent': 0
+                        })
+                        item._attendance_metrics = item_attendance
+                        item._students_count = students_count_map.get(item.id, 0)
+                        
                         serializer = self.get_serializer(item)
                         serialized_data.append(serializer.data)
                         logger.info(f"Successfully serialized group {item.id} - {item.name}")
@@ -137,6 +183,15 @@ class GroupViewSet(viewsets.ModelViewSet):
             serialized_data = []
             for item in queryset:
                 try:
+                    # Guruh uchun davomatni va o'quvchilar sonini qo'shish
+                    item_attendance = attendance_map.get(item.id, {
+                        'confirmed': False,
+                        'present': 0,
+                        'absent': 0
+                    })
+                    item._attendance_metrics = item_attendance
+                    item._students_count = students_count_map.get(item.id, 0)
+                    
                     serializer = self.get_serializer(item)
                     serialized_data.append(serializer.data)
                 except Exception as e:
