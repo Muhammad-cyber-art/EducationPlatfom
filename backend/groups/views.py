@@ -57,17 +57,9 @@ class GroupViewSet(viewsets.ModelViewSet):
     filterset_fields = ['days', 'group_type', 'is_faol', 'branch']
     search_fields = [
         'name', 
-        'subject', 
-        'group_type',
-        'days',
-        'dars_kunlari',
-        'dars_vaqti',
+        'subject',
         'mentor__first_name', 
-        'mentor__last_name', 
-        'mentor__username',
-        'additional_mentors__mentor__first_name',
-        'additional_mentors__mentor__last_name',
-        'additional_mentors__mentor__username'
+        'mentor__last_name',  
     ]
 
     def get_serializer_class(self):
@@ -78,8 +70,28 @@ class GroupViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         try:
             user = self.request.user
-            qs = super().get_queryset()
+            qs = super().get_queryset().filter(is_archived=False).select_related(
+                'mentor', 'admin', 'branch'
+            ).prefetch_related(
+                'enrollments', 
+                'additional_mentors__mentor',
+                'mentor__branch_accesses__branch'
+            )
             branch_id = self.request.query_params.get('branch_id')
+            search = self.request.query_params.get('search', '').strip()
+
+            if search:
+                # To'g'ridan-to'g'ri qidiruv, faqat mos keladigan guruhlarni qaytarish
+                qs = qs.filter(
+                    Q(name__icontains=search) | 
+                    Q(subject__icontains=search) | 
+                    Q(mentor__first_name__icontains=search) | 
+                    Q(mentor__last_name__icontains=search) | 
+                    Q(mentor__username__icontains=search) |
+                    Q(additional_mentors__mentor__first_name__icontains=search) |
+                    Q(additional_mentors__mentor__last_name__icontains=search) |
+                    Q(additional_mentors__mentor__username__icontains=search)
+                ).distinct()
 
             if user.role == 'super_admin':
                 return qs.filter(branch_id=branch_id) if branch_id else qs
@@ -101,10 +113,36 @@ class GroupViewSet(viewsets.ModelViewSet):
 
     def list(self, request, *args, **kwargs):
         """
-        Productionda bitta nosoz row yoki serializer xatosi butun ro'yxatni yiqitmasin.
+        Har bir guruhni alohida serialize qilamiz, bitta guruh xato bersa ham qolganlari chiqadi.
         """
         try:
-            return super().list(request, *args, **kwargs)
+            queryset = self.filter_queryset(self.get_queryset())
+            logger.info(f"Found {queryset.count()} groups for user {request.user.id}, branch_id: {request.query_params.get('branch_id')}")
+
+            page = self.paginate_queryset(queryset)
+            if page is not None:
+                # Har bir guruhni alohida serialize qilamiz, xatolarni loglaymiz
+                serialized_data = []
+                for item in page:
+                    try:
+                        serializer = self.get_serializer(item)
+                        serialized_data.append(serializer.data)
+                        logger.info(f"Successfully serialized group {item.id} - {item.name}")
+                    except Exception as e:
+                        logger.exception(f"Group {item.id} serialization error: {e}")
+                        continue
+                return self.get_paginated_response(serialized_data)
+
+            # Agar pagination bo'lmasa
+            serialized_data = []
+            for item in queryset:
+                try:
+                    serializer = self.get_serializer(item)
+                    serialized_data.append(serializer.data)
+                except Exception as e:
+                    logger.exception(f"Group {item.id} serialization error: {e}")
+                    continue
+            return Response(serialized_data)
         except Exception as e:
             page = request.query_params.get('page', 'unknown')
             branch_id = request.query_params.get('branch_id', 'unknown')

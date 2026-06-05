@@ -93,17 +93,29 @@ class GroupSimpleSerializer(serializers.ModelSerializer):
         )
 
     def get_today_attendance_confirmed(self, obj) -> bool:
-        return _safe_attendance_metrics(obj)["confirmed"]
+        try:
+            return _safe_attendance_metrics(obj)["confirmed"]
+        except Exception:
+            return False
 
     def get_present_count(self, obj) -> int:
-        return _safe_attendance_metrics(obj)["present"]
+        try:
+            return _safe_attendance_metrics(obj)["present"]
+        except Exception:
+            return 0
 
     def get_absent_count(self, obj) -> int:
-        return _safe_attendance_metrics(obj)["absent"]
+        try:
+            return _safe_attendance_metrics(obj)["absent"]
+        except Exception:
+            return 0
 
     def get_students_count(self, obj) -> int:
-        # Faqat is_active=True bo'lgan o'quvchilarni sanaymiz
-        return obj.enrollments.filter(is_active=True).count()
+        try:
+            # Faqat is_active=True bo'lgan o'quvchilarni sanaymiz
+            return obj.enrollments.filter(is_active=True).count()
+        except Exception:
+            return 0
 
 
 class MentorAssignmentSerializer(serializers.ModelSerializer):

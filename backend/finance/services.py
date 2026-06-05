@@ -17,7 +17,7 @@ from finance.utils import (
     aggregate_attendance_refunds_by_branch,
     calculate_attendance_based_student_payment,
     floor_amount,
-    normalize_month,
+    normalize_month,calculate_discount_student_payment
 )
 
 from .models import (

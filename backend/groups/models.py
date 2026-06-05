@@ -134,21 +134,24 @@ class Group(models.Model):
         - 'activating_soon': is_faol = True va today <= start_date <= today + 5 kun
         - 'active': is_faol = True va (start_date is None yoki start_date <= today)
         """
-        if not self.is_faol:
-            return "inactive"
+        try:
+            if not self.is_faol:
+                return "inactive"
 
-        if not self.start_date:
+            if not self.start_date:
+                return "active"
+
+            today = timezone.localdate()
+
+            if self.start_date > today:
+                # Agar 5 kun ichida boshlansa
+                if self.start_date <= today + datetime.timedelta(days=5):
+                    return "activating_soon"
+                return "waiting"
+
             return "active"
-
-        today = timezone.localdate()
-
-        if self.start_date > today:
-            # Agar 5 kun ichida boshlansa
-            if self.start_date <= today + datetime.timedelta(days=5):
-                return "activating_soon"
-            return "waiting"
-
-        return "active"
+        except Exception:
+            return "active"
 
     @property
     def is_currently_active(self):
@@ -174,6 +177,8 @@ class Group(models.Model):
             models.Index(fields=["branch", "is_faol"]),
             models.Index(fields=["mentor", "is_faol"]),
             models.Index(fields=["start_date", "days"]),
+            models.Index(fields=["name"]),
+            models.Index(fields=["subject"]),
         ]
 
     def __str__(self):
