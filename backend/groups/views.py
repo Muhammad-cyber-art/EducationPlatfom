@@ -105,8 +105,14 @@ class GroupViewSet(viewsets.ModelViewSet):
         """
         try:
             return super().list(request, *args, **kwargs)
-        except Exception:
-            logger.exception("Group list error")
+        except Exception as e:
+            page = request.query_params.get('page', 'unknown')
+            branch_id = request.query_params.get('branch_id', 'unknown')
+            search = request.query_params.get('search', '')
+            logger.exception(
+                "Group list error (page=%s, branch_id=%s, search=%s): %s",
+                page, branch_id, search, str(e)
+            )
             page = self.paginate_queryset(Group.objects.none())
             if page is not None:
                 return self.get_paginated_response([])
@@ -808,12 +814,24 @@ class AdminViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_superuser: return self.queryset
+        qs = self.queryset
+        branch_id = self.request.query_params.get('branch_id')
+        
+        if branch_id:
+            # Asosiy branchi yoki BranchAccess orqali biriktirilgan branchi bo'lgan adminlar
+            qs = qs.filter(Q(branch_id=branch_id) | Q(branch_accesses__branch_id=branch_id)).distinct()
+        
+        if user.role == 'super_admin': 
+            return qs
+        
         if user.branch:
             allowed = list(user.branch_accesses.values_list('branch_id', flat=True))
             allowed.append(user.branch.id)
-            return self.queryset.filter(Q(branch_id__in=allowed) | Q(branch_accesses__branch_id__in=allowed))
-        return self.queryset.none()
+            if not branch_id:
+                qs = qs.filter(Q(branch_id__in=allowed) | Q(branch_accesses__branch_id__in=allowed))
+            return qs
+        
+        return qs.none()
 
 class GroupSimpleViewSet(viewsets.ReadOnlyModelViewSet):
     """Guruhlar ro'yxati (oddiy)"""

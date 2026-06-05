@@ -24,19 +24,31 @@ class BranchSerializer(serializers.ModelSerializer):
         ]
     
     def get_mentors_count(self, obj) -> int:
-        return User.objects.filter(branch=obj, role='mentor', is_active=True).count()
+        try:
+            return User.objects.filter(branch=obj, role='mentor', is_active=True).count()
+        except Exception:
+            return 0
     
     def get_admins_count(self, obj) -> int:
-        return User.objects.filter(branch=obj, role='admin', is_active=True).count()
+        try:
+            return User.objects.filter(branch=obj, role='admin', is_active=True).count()
+        except Exception:
+            return 0
     
     def get_students_count(self, obj) -> int:
-        from groups.models import GroupEnrollment
-        return GroupEnrollment.objects.filter(
-            is_active=True,
-            group__branch=obj,
-            group__is_faol=True
-        ).values('student_id').distinct().count()
+        try:
+            from groups.models import GroupEnrollment
+            return GroupEnrollment.objects.filter(
+                is_active=True,
+                group__branch=obj,
+                group__is_faol=True
+            ).values('student_id').distinct().count()
+        except Exception:
+            return 0
     
     def get_groups_count(self, obj) -> int:
-        from groups.models import Group
-        return Group.objects.filter(branch=obj, is_faol=True).count()
+        try:
+            from groups.models import Group
+            return Group.objects.filter(branch=obj, is_faol=True).count()
+        except Exception:
+            return 0

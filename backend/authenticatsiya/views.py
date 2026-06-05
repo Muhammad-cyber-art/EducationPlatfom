@@ -109,8 +109,12 @@ class RegisterViewSet(ModelViewSet):
     @action(detail=False, methods=['get'], url_path='admins')
     def list_admins(self, request):
         # Super admin va adminlar ko'ra oladi
+        branch_id = request.query_params.get('branch_id')
+        
         if request.user.role == 'super_admin':
             admins = UserModel.objects.filter(role='admin')
+            if branch_id:
+                admins = admins.filter(Q(branch_id=branch_id) | Q(branch_accesses__branch_id=branch_id)).distinct()
         elif request.user.role == 'admin':
             # Admin faqat o'zi ruxsatga ega filiallardagi adminlarni ko'radi
             allowed_branches = []
@@ -120,9 +124,11 @@ class RegisterViewSet(ModelViewSet):
                 request.user.branch_accesses.values_list('branch_id', flat=True)
             )
             admins = UserModel.objects.filter(
-                role='admin',
-                branch_id__in=allowed_branches
-            )
+                Q(role='admin') & 
+                (Q(branch_id__in=allowed_branches) | Q(branch_accesses__branch_id__in=allowed_branches))
+            ).distinct()
+            if branch_id:
+                admins = admins.filter(Q(branch_id=branch_id) | Q(branch_accesses__branch_id=branch_id)).distinct()
         else:
             return Response({"detail": "Faqat Super Admin yoki Admin ko'ra oladi."}, status=403)
         serializer = UsersListSerializer(admins, many=True)
