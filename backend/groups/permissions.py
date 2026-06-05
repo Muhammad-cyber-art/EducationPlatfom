@@ -178,10 +178,6 @@ class IsMentorBranchAccessible(permissions.BasePermission):
         return request.user.role in ['super_admin', 'admin', 'mentor']
 
     def has_object_permission(self, request, view, obj):
-        # DRF calls this with request, view, obj (in BasePermission)
-        # So we swap the variable names if the old code had request, obj, view
-        # Wait, the old code used request, obj, view which is not standard.
-        # Let's use request, view, obj.
         user = request.user
         
         if user.role == 'super_admin':
@@ -193,9 +189,17 @@ class IsMentorBranchAccessible(permissions.BasePermission):
             target_branch_id = obj.branch.id
 
         if user.role == 'admin':
+            # 1. Adminning o'z branchi mentorniki bilan bir xil bo'lsa
             if user.branch_id == target_branch_id:
                 return True
-            return user.branch_accesses.filter(branch_id=target_branch_id).exists()
+            # 2. Adminning mentor branchiga BranchAccess ruxsati bo'lsa
+            if user.branch_accesses.filter(branch_id=target_branch_id).exists():
+                return True
+            # 3. Mentor adminning branchlaridan biriga BranchAccess orqali biriktirilgan bo'lsa
+            #    (boshqa filialdan ko'chirilgan/yuborilgan mentorlar uchun)
+            allowed_branches = [user.branch_id] if user.branch_id else []
+            allowed_branches.extend(user.branch_accesses.values_list('branch_id', flat=True))
+            return BranchAccess.objects.filter(user=obj, branch_id__in=allowed_branches).exists()
 
         if user.role == 'mentor':
             if user.branch_id == target_branch_id:

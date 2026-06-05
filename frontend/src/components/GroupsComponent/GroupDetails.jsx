@@ -149,7 +149,10 @@ export default function GroupDetailPage() {
       link.click();
       link.remove();
       toast.success("Hisobot yuklab olindi", { id: 'dl' });
-    } catch (err) { toast.error("Xatolik!", { id: 'dl' }); }
+    } catch (err) {
+      const msg = err.response?.data?.detail || err.message || "Xatolik yuz berdi";
+      toast.error(msg, { id: 'dl' });
+    }
   };
 
   const { data: mentorsRaw } = useQuery({

@@ -158,22 +158,57 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         serializer = AttendanceSerializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    def _user_can_access_group(self, user, group):
+        """Foydalanuvchi guruhga kirish huquqini tekshirish"""
+        if user.role == 'super_admin':
+            return True
+        if user.role == 'admin':
+            allowed = [user.branch_id] if user.branch_id else []
+            if hasattr(user, 'branch_accesses'):
+                allowed.extend(user.branch_accesses.values_list('branch_id', flat=True))
+            return group.branch_id in allowed
+        if user.role == 'mentor':
+            return group.mentor == user or group.additional_mentors.filter(mentor=user).exists()
+        return False
+
     @action(detail=False, methods=['get'], url_path='monthly-report')
     def monthly_report(self, request):
         group_id = request.query_params.get('group_id')
         if not group_id:
             return Response({"detail": "group_id majburiy"}, status=status.HTTP_400_BAD_REQUEST)
-            
-        group = get_object_or_404(Group, id=group_id)
-        today = timezone.localdate()
         
         try:
-            month = int(request.query_params.get('month', today.month))
-            year = int(request.query_params.get('year', today.year))
-        except (ValueError, TypeError):
-            month, year = today.month, today.year
+            group = get_object_or_404(Group, id=group_id)
             
-        date_list, students, att_data = get_monthly_attendance_data(group, month, year)
+            # Foydalanuvchining guruhga kirish huquqini tekshirish
+            if not self._user_can_access_group(request.user, group):
+                logger.warning(
+                    "User %s (role=%s) has no access to group %s (branch=%s)",
+                    request.user, request.user.role, group.id, group.branch_id
+                )
+                return Response(
+                    {"detail": "Sizda ushbu guruh davomatini ko'rish huquqi yo'q"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            today = timezone.localdate()
+            
+            try:
+                month = int(request.query_params.get('month', today.month))
+                year = int(request.query_params.get('year', today.year))
+                # Oy va yil qiymatlarini tekshirish
+                date_type(year, month, 1)
+            except (ValueError, TypeError):
+                month, year = today.month, today.year
+                
+            date_list, students, att_data = get_monthly_attendance_data(group, month, year)
+        except Exception as e:
+            logger.exception("Monthly report data olishda xatolik: group=%s, month=%s-%s", group_id, year, month)
+            return Response(
+                {"detail": f"Hisobot ma'lumotlarini olishda xatolik: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
         export_mode = request.query_params.get('export', 'json')
         
         if export_mode == 'excel':
@@ -265,7 +300,14 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             
             response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
             response['Content-Disposition'] = f'attachment; filename="{encoded_filename}"; filename*=utf-8\'\'{encoded_filename}'
-            wb.save(response)
+            try:
+                wb.save(response)
+            except Exception as e:
+                logger.exception("Excel faylni yaratishda xatolik: group=%s, month=%s-%s", group.id, year, month)
+                return Response(
+                    {"detail": f"Excel faylni yaratishda xatolik: {str(e)}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
             return response
 
         # JSON Response
