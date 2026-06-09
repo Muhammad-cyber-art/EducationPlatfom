@@ -142,10 +142,20 @@ def send_attendance_notification(attendance, async_send=True):
 def notify_new_student(sender, instance, created, **kwargs):
     """Yangi o'quvchi ro'yxatdan o'tganda"""
     if created:
+        # Barcha guruhlarini olish
+        active_groups = instance.groups.filter(enrollments__is_active=True).distinct()
+        if not active_groups and instance.group:
+            active_groups = [instance.group]
+        
+        group_text = "Biriktirilmagan"
+        if active_groups:
+            group_names = [gr.name for gr in active_groups]
+            group_text = ", ".join(group_names)
+        
         text = (
             f"<b>Salom, {instance.full_name}!</b>\n\n"
             f"Siz muvaffaqiyatli ro'yxatdan o'tdingiz.\n"
-            f"Guruh: {instance.group.name if instance.group else 'Biriktirilmagan'}\n"
+            f"Guruh(lar): {group_text}\n"
             f"Sana: {instance.joined_at.strftime('%Y-%m-%d')}"
         )
         

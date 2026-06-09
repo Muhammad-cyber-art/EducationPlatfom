@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from django.forms.models import model_to_dict
 from django.db import transaction
-from .models import ArchivedStudent, ArchivedStaff ,ArchivedGroup
+from .models import ArchivedStudent, ArchivedStaff, ArchivedGroup, ArchivedLid
 from finance.models import Payment
 import json
 def json_serializable_convert(obj):
@@ -128,7 +128,7 @@ def move_staff_to_archive(staff, archived_by, reason: str = "") -> ArchivedStaff
     staff.delete()
     return archived
 def send_to_archive(instance, request_user, reason: str = ""):
-    from groups.models import Student
+    from groups.models import Student, WaitingStudent
     from django.contrib.auth import get_user_model
     User = get_user_model()
 
@@ -137,6 +137,9 @@ def send_to_archive(instance, request_user, reason: str = ""):
     
     if isinstance(instance, User):
         return move_staff_to_archive(instance, archived_by=request_user, reason=reason)
+    
+    if isinstance(instance, WaitingStudent):
+        return move_lid_to_archive(instance, archived_by=request_user, reason=reason)
     
     raise ValueError(f"Archive qo'llab-quvvatlanmagan model: {type(instance).__name__}")
 
@@ -488,3 +491,106 @@ def restore_group_from_archive(archived_group_id, restored_by):
         'skipped_students': skipped_count,
         'errors': errors,
     }
+
+
+@transaction.atomic
+def move_lid_to_archive(waiting_student, archived_by, reason: str = "") -> ArchivedLid:
+    from groups.models import WaitingStudent
+    
+    # 1. WaitingStudent ma'lumotlarini dict qilish va sanalarni tozalash
+    student_data = model_to_dict(waiting_student)
+    cleaned_student_data = json_serializable_convert(student_data)
+    
+    # 2. Arxiv yaratish
+    archived = ArchivedLid.objects.create(
+        original_id=waiting_student.id,
+        full_name=waiting_student.full_name,
+        branch_name=getattr(waiting_student.branch, "name", "Noma'lum"),
+        phone=waiting_student.phone,
+        subject=waiting_student.subject,
+        archived_by=archived_by,
+        reason=reason,
+        metadata=cleaned_student_data,
+    )
+    
+    # 3. O'chirish
+    waiting_student.delete()
+    
+    return archived
+
+
+@transaction.atomic
+def restore_lid_from_archive(archived_lid_id, restored_by):
+    from groups.models import WaitingStudent
+    from branches.models import Branch
+    
+    archived = ArchivedLid.objects.get(id=archived_lid_id)
+    metadata = archived.metadata
+    
+    # Branch ni topish (agar mavjud bo'lsa)
+    branch = None
+    if metadata.get('branch'):
+        branch = Branch.objects.filter(id=metadata['branch']).first()
+    
+    # WaitingStudent ni qayta yaratish
+    waiting_student = WaitingStudent.objects.create(
+        full_name=archived.full_name,
+        branch=branch,
+        phone=archived.phone,
+        subject=archived.subject,
+        notes=metadata.get('notes', ''),
+        telegram_id=metadata.get('telegram_id'),
+        parent_telegram_id=metadata.get('parent_telegram_id'),
+    )
+    
+    return waiting_student
+
+
+@transaction.atomic
+def move_student_to_waiting_hall(student, archived_by, reason, branch):
+    from groups.models import WaitingStudent
+    from .models import ArchivedStudent
+    
+    # 1. Bog'liq ma'lumotlarni yig'ish
+    from finance.models import Payment
+    payments = Payment.objects.filter(student=student)
+    
+    # 2. Student ma'lumotlarini dict qilish va sanalarni tozalash
+    student_data = model_to_dict(student)
+    cleaned_student_data = json_serializable_convert(student_data)
+    
+    # Qo'shimcha ID larni qo'shish
+    cleaned_student_data["branch_id"] = student.branch_id
+    cleaned_student_data["group_id"] = student.group_id
+    
+    # 3. Bog'langan ma'lumotlarni tozalab qo'shish
+    cleaned_student_data["payments"] = serialize_related(payments)
+
+    # 4. Arxiv yaratish (Waiting Hall uchun reason ni [WAITING_HALL] bilan boshlaymiz)
+    archived = ArchivedStudent.objects.create(
+        original_id=student.id,
+        full_name=student.full_name,
+        branch_name=getattr(student.branch, "name", "Noma'lum"),
+        last_group_name=getattr(student.group, "name", "Guruhsiz"),
+        archived_by=archived_by,
+        reason=f"[WAITING_HALL] {reason}",
+        metadata=cleaned_student_data,
+    )
+
+    # 5. Waiting Student yaratish
+    WaitingStudent.objects.create(
+        full_name=student.full_name,
+        phone=student.phone,
+        branch=branch,
+        notes=f"Oldingi ID: {student.id} | {reason}",
+        telegram_id=student.telegram_id,
+        parent_telegram_id=student.parent_telegram_id
+    )
+    
+    # 6. Bog'liq to'lovlarni o'chirish
+    payments.delete()
+    
+    # 7. Asl studentni o'chirish
+    student.delete()
+    
+    return archived

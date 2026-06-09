@@ -62,8 +62,6 @@ def get_and_update_students(clean_phone, chat_id):
     if len(clean_phone) < 7:
         return []
 
-    last_9 = clean_phone[-9:]
-    
     # Bazadagi barcha o'quvchilarni tekshiramiz
     all_students = Student.objects.all()
     
@@ -74,30 +72,38 @@ def get_and_update_students(clean_phone, chat_id):
     for student in all_students:
         is_match = False
         
-        # Student o'zining raqami (aniq moslik: oxirgi 9 raqam)
+        # Student o'zining raqami (TO'LIQ moslik!)
         if student.phone:
             s_phone_clean = re.sub(r'\D', '', student.phone)
-            if s_phone_clean.endswith(last_9):
+            if s_phone_clean == clean_phone:  # OLDIN: endswith(last_9) → END: to'liq teng!
                 student.telegram_id = chat_id
                 is_match = True
         
-        # Ota-ona raqami (aniq moslik: oxirgi 9 raqam)
+        # Ota-ona raqami (TO'LIQ moslik!)
         if student.parent_phone:
             p_phone_clean = re.sub(r'\D', '', student.parent_phone)
-            if p_phone_clean.endswith(last_9):
+            if p_phone_clean == clean_phone:  # OLDIN: endswith(last_9) → END: to'liq teng!
                 student.parent_telegram_id = chat_id
                 is_match = True
         
         if is_match:
             to_update.append(student)
-            # Guruh nomini ham qo'shamiz
-            group_name = student.group.name if student.group else "Guruhsiz"
-            full_name = student.full_name.strip()
-            entry = f"{full_name} ({group_name})"
+            # Barcha guruhlarini qo'shamiz
+            active_groups = student.groups.filter(enrollments__is_active=True).distinct()
+            if not active_groups and student.group:
+                active_groups = [student.group]
             
-            if entry.lower() not in seen_entries:
-                found_student_info.append(entry)
-                seen_entries.add(entry.lower())
+            if not active_groups:
+                entry = f"{student.full_name.strip()} (Guruhsiz)"
+                if entry.lower() not in seen_entries:
+                    found_student_info.append(entry)
+                    seen_entries.add(entry.lower())
+            else:
+                for group in active_groups:
+                    entry = f"{student.full_name.strip()} ({group.name})"
+                    if entry.lower() not in seen_entries:
+                        found_student_info.append(entry)
+                        seen_entries.add(entry.lower())
     
     # Optimizatsiya: bulk_update orqali signallarni trigger qilmasdan saqlash
     if to_update:

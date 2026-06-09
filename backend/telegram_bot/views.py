@@ -143,3 +143,92 @@ class BotStatisticsView(APIView):
             "parents_bot_count": parents_bot,
             "total_bot_users": students_bot + parents_bot
         })
+
+
+class ExportUnregisteredStudentsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        branch_id = request.query_params.get('branch_id')
+        group_id = request.query_params.get('group_id')
+        
+        # Permission check
+        if user.role not in ['super_admin', 'admin']:
+            return Response({"error": "Sizda bu huquqga ega emassiz"}, status=status.HTTP_403_FORBIDDEN)
+            
+        qs = Student.objects.all()
+        
+        # Filter by branch
+        if user.role == 'admin':
+            allowed_branches = [user.branch.id] if user.branch else []
+            if hasattr(user, 'branch_accesses'):
+                allowed_branches.extend(user.branch_accesses.values_list('branch_id', flat=True))
+            qs = qs.filter(branch_id__in=allowed_branches)
+            
+        if branch_id:
+            if user.role == 'admin':
+                # Check permission for admin
+                allowed_branches = [user.branch.id] if user.branch else []
+                if hasattr(user, 'branch_accesses'):
+                    allowed_branches.extend(user.branch_accesses.values_list('branch_id', flat=True))
+                if int(branch_id) not in allowed_branches:
+                    return Response({"error": "Siz ushbu filialga ruxsat yo'q"}, status=status.HTTP_403_FORBIDDEN)
+            qs = qs.filter(branch_id=branch_id)
+            
+        if group_id:
+            group = get_object_or_404(Group, id=group_id)
+            # Check if user has access
+            has_permission = False
+            if user.role == 'super_admin': has_permission = True
+            elif user.role == 'admin':
+                allowed_branches = [user.branch.id] if user.branch else []
+                if hasattr(user, 'branch_accesses'):
+                    allowed_branches.extend(user.branch_accesses.values_list('branch_id', flat=True))
+                if group.branch_id in allowed_branches: has_permission = True
+            if not has_permission:
+                return Response({"error": "Siz ushbu guruhga ruxsat yo'q"}, status=status.HTTP_403_FORBIDDEN)
+            qs = group.students.all()
+            
+        # Filter for unregistered (no telegram_id and no parent_telegram_id
+        unregistered = qs.filter(
+            (Q(telegram_id__isnull=True) | Q(telegram_id='')) &
+            (Q(parent_telegram_id__isnull=True) | Q(parent_telegram_id=''))
+        )
+        
+        # Create Excel
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        from django.http import HttpResponse
+        
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Ro'yxatdan o'tmaganlar"
+        
+        # Header row
+        headers = ["ID", "Ism Familiya", "Telefon", "Guruh", "Filial"]
+        ws.append(headers)
+        
+        # Style header
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+            
+        # Fill data
+        for student in unregistered:
+            group_name = student.group.name if student.group else "Guruhsiz"
+            branch_name = student.branch.name if student.branch else "Filialless"
+            ws.append([
+                student.id,
+                student.full_name,
+                student.phone,
+                group_name,
+                branch_name
+            ])
+        
+        # Create response
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        response['Content-Disposition'] = 'attachment; filename=royxatdan_otmagan_oquvchilar.xlsx'
+        wb.save(response)
+        return response

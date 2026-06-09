@@ -273,8 +273,9 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                         cell.value = "-"
                     else:
                         # Record yo'q bo'lsa va dars kuni bo'lsa (date_list dars kunlaridan iborat)
-                        cell.value = "!" 
+                        cell.value = "!"
                         cell.font = Font(color="FF0000", bold=True)
+
                     cell.alignment = center_align
 
             # Yuklab olish tarixini saqlash (xatolik bo'lsa ham report yuklanishi kerak)
