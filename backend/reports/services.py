@@ -1,9 +1,8 @@
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from django.utils import timezone
-from django.db.models import Prefetch
 from homework_attends.models import Attendance, Homework, HomeworkSubmission
-from groups.models import Group, Student, GroupEnrollment
+from groups.models import Group
 
 def generate_daily_full_report(target_date=None):
     if target_date is None:
@@ -26,7 +25,7 @@ def generate_daily_full_report(target_date=None):
     # --- Sarlavhalar ---
     headers = [
         "№", "Filial", "Guruh", "O'quvchi F.I.SH", 
-        "Telefon", "Ota-ona telefon", "Davomat"
+        "Davomat", "Uy vazifasi (Mavzu)", "Vazifa holati"
     ]
     ws.append(headers)
 
@@ -38,59 +37,83 @@ def generate_daily_full_report(target_date=None):
         cell.border = border
 
     # --- Ma'lumotlarni yig'ish ---
-    # 1. Faol guruhlardagi o'quvchilarni guruhlar bo'yicha saralangan holda olamiz
-    enrollments = GroupEnrollment.objects.filter(
-        is_active=True, 
-        group__is_faol=True
-    ).select_related(
-        'student', 'group', 'group__branch'
-    ).order_by('group__branch__name', 'group__name', 'student__full_name')
+    # Bugungi barcha davomatlarni olamiz.
+    # BUG FIX #3: faqat BAZADA MAVJUD guruh bilan bog'liq davomatlarni olamiz.
+    # group__isnull=False — o'chirilgan guruhga tegishli Attendance'lar chiqmasligini ta'minlaydi.
+    # prefetch_related('group__homeworks') — N+1 muammosini bartaraf etadi.
+    attendances = (
+        Attendance.objects
+        .filter(
+            date=target_date,
+            group__isnull=False,          # o'chirilgan guruhlar chiqmasin
+            student__isnull=False,        # o'chirilgan studentlar chiqmasin
+        )
+        .select_related(
+            'student',
+            'group',
+            'group__branch',
+        )
+        .prefetch_related(
+            # Har bir guruh uchun barcha uy vazifalarini bir so'rovda oladi
+            'group__homeworks',
+        )
+        .order_by('group__branch__name', 'group__name', 'student__full_name')
+    )
 
-    # Bugungi davomatlarni keshga olamiz
-    attendances = Attendance.objects.filter(date=target_date)
-    att_dict = {(a.student_id, a.group_id): a for a in attendances}
+    # Guruh bo'yicha Homework cache (N+1 ni to'liq yo'qotadi)
+    from django.db.models import Prefetch
+    homework_by_group: dict = {}  # {group_id: Homework | None}
 
-    row_idx = 1
-    reported_student_ids = set()
-
-    # Guruhli o'quvchilarni chiqarish
-    for enroll in enrollments:
-        student = enroll.student
-        group = enroll.group
+    for index, att in enumerate(attendances, start=1):
+        student = att.student
+        group = att.group
         branch = group.branch
-        reported_student_ids.add(student.id)
-        
-        is_lesson_day = group.is_lesson_day(target_date)
-        att_status = "Belgilanmagan ⚠️"
 
-        if not is_lesson_day:
-            att_status = "Dars yo'q"
-        else:
-            att = att_dict.get((student.id, group.id))
-            if att:
-                att_status = "✅ Keldi" if att.is_present else "❌ Kelmadi"
+        # 1. Cache'da yo'q bo'lsa — shu guruh uchun bugungi uy vazifasini topamiz
+        if group.id not in homework_by_group:
+            hw = Homework.objects.filter(
+                group=group,
+                created_at__date=target_date
+            ).first()
+            homework_by_group[group.id] = hw
 
+        homework = homework_by_group[group.id]
+
+        hw_title = "Vazifa berilmagan"
+        hw_status = "-"
+
+        if homework:
+            hw_title = homework.title
+            # 2. Shu o'quvchining vazifa topshirganlik holatini tekshiramiz
+            submission = HomeworkSubmission.objects.filter(
+                homework=homework,
+                student=student
+            ).first()
+
+            if submission:
+                hw_status = submission.get_status_display()
+            else:
+                hw_status = "Topshirmagan ❌"
+
+        # Qatorga ma'lumotlarni qo'shish
         row_data = [
-            row_idx,
+            index,
             branch.name if branch else "Filialsiz",
             group.name,
             student.full_name,
-            student.phone or "-",
-            student.parent_phone or "-",
-            att_status
+            "✅ Keldi" if att.is_present else "❌ Kelmadi",
+            hw_title,
+            hw_status
         ]
         ws.append(row_data)
 
-        # Stillar
+        # Qator kataklari uchun stil
         for cell in ws[ws.max_row]:
             cell.border = border
             cell.alignment = Alignment(vertical="center", horizontal="left")
-            if cell.column in [1, 7]:
+            # "№", "Davomat" va "Holat" ustunlarini markazga tekislaymiz
+            if cell.column in [1, 5, 7]:
                 cell.alignment = Alignment(horizontal="center", vertical="center")
-        
-        row_idx += 1
-
-    # 2. Guruhsiz o'quvchilarni oxiriga qo'shmaymiz (talabga asosan olib tashlandi)
 
     # --- Ustun kengliklarini avtomatik sozlash ---
     dims = {
@@ -98,9 +121,9 @@ def generate_daily_full_report(target_date=None):
         'B': 20, # Filial
         'C': 20, # Guruh
         'D': 35, # F.I.SH
-        'E': 15, # Telefon
-        'F': 15, # Ota-ona tel
-        'G': 20  # Davomat
+        'E': 15, # Davomat
+        'F': 30, # Mavzu
+        'G': 20  # Holat
     }
     for col, value in dims.items():
         ws.column_dimensions[col].width = value
@@ -111,7 +134,6 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from django.db.models import Sum, F
 from finance.models import Payment, EmployeePayment, FinanceTransaction
-from finance.utils import attendance_refund_queryset, aggregate_attendance_refunds
 from branches.models import Branch
 
 def get_full_monthly_report(year, month):
@@ -132,8 +154,7 @@ def get_full_monthly_report(year, month):
     ws1.title = "O'quvchilar To'lovlari"
     
     headers1 = [
-        "№", "Filial", "O'quvchi F.I.SH", "Guruh", "Asosiy narx (refundsiz)",
-        "Refund (chegirma)", "To'lov Summasi (sof)",
+        "№", "Filial", "O'quvchi F.I.SH", "Guruh", "To'lov Summasi", 
         "To'lov Oyi", "Tasdiqlagan Admin", "To'langan Vaqt", "Tranzaksiya ID"
     ]
     ws1.append(headers1)
@@ -144,68 +165,35 @@ def get_full_monthly_report(year, month):
         cell.border = border
 
     # Ma'lumotlarni olish
-    student_payments = Payment.objects.filter(
-        month__year=year, month__month=month, is_paid=True
-    ).select_related('student', 'group', 'group__branch', 'marked_by').order_by('group__branch', 'student__full_name')
+    # BUG FIX #3: group va group__branch NULL bo'lmasligi shart.
+    # O'chirilgan guruhga tegishli Paymentlar Excel'ga tushmaydi.
+    student_payments = (
+        Payment.objects
+        .filter(
+            month__year=year,
+            month__month=month,
+            is_paid=True,
+            group__isnull=False,          # o'chirilgan guruhlar chiqmasin
+            group__branch__isnull=False,  # filialsiz guruhlar chiqmasin
+            student__isnull=False,        # o'chirilgan studentlar chiqmasin
+        )
+        .select_related(
+            'student', 'group', 'group__branch', 'marked_by'
+        )
+        .order_by('group__branch', 'student__full_name')
+    )
 
     for i, sp in enumerate(student_payments, 1):
-        refund_val = float(sp.refund_amount or 0) if not sp.refund_ignored else 0
-        net_val = float(sp.paid_amount or 0)
-        gross_val = net_val + refund_val
         ws1.append([
             i,
-            sp.group.branch.name if sp.group and sp.group.branch else "-",
+            sp.group.branch.name if sp.group.branch else "-",
             sp.student.full_name,
-            sp.group.name if sp.group else "-",
-            gross_val,
-            refund_val,
-            net_val,
+            sp.group.name,
+            sp.amount,
             sp.month.strftime("%Y-%m") if sp.month else "-",
             sp.marked_by.get_full_name() or sp.marked_by.username if sp.marked_by else "Onlayn",
             sp.paid_at.strftime("%Y-%m-%d %H:%M") if sp.paid_at else "-",
             sp.transaction_id or "-"
-        ])
-
-    # ================================================================
-    # 1.5-SAHIFA: DAVOMAT REFUNDLARI (Payment.refund_amount)
-    # ================================================================
-    ws_refunds = wb.create_sheet("Davomat Refundlari")
-    headers_ref = [
-        "№", "Filial", "O'quvchi F.I.SH", "Guruh", "To'lov Oyi",
-        "Asosiy narx", "Refund", "To'lanishi kerak (sof)", "To'langan", "Holat"
-    ]
-    ws_refunds.append(headers_ref)
-    for cell in ws_refunds[1]:
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = align_center
-        cell.border = border
-
-    refund_payments = attendance_refund_queryset(year, month).select_related(
-        'student', 'group', 'group__branch'
-    ).order_by('group__branch__name', 'student__full_name')
-
-    for i, rp in enumerate(refund_payments, 1):
-        refund_val = float(rp.refund_amount or 0)
-        net_val = float(rp.paid_amount or 0)
-        gross_val = net_val + refund_val
-        if rp.is_paid:
-            status = "To'liq to'langan"
-        elif rp.is_partial or (rp.paid_amount and float(rp.paid_amount) > 0):
-            status = "Qisman to'langan"
-        else:
-            status = "To'lanmagan"
-        ws_refunds.append([
-            i,
-            rp.group.branch.name if rp.group and rp.group.branch else "-",
-            rp.student.full_name,
-            rp.group.name if rp.group else "-",
-            rp.month.strftime("%Y-%m") if rp.month else "-",
-            gross_val,
-            refund_val,
-            net_val,
-            float(rp.paid_amount or 0),
-            status,
         ])
 
     # ================================================================
@@ -274,43 +262,13 @@ def get_full_monthly_report(year, month):
         ])
 
     # ================================================================
-    # 3.5-SAHIFA: ADMIN HARAJATLARI (MAYDA CHIQIMLAR)
-    # ================================================================
-    from finance.models import AdminExpense
-    ws_admin = wb.create_sheet("Admin Harajatlari")
-    headers_admin = [
-        "№", "Filial", "Harajat Nomi", "Summa", "Kiritdi", "Sana", "Tavsif"
-    ]
-    ws_admin.append(headers_admin)
-    for cell in ws_admin[1]:
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = align_center
-        cell.border = border
-
-    admin_expenses = AdminExpense.objects.filter(
-        date__year=year, date__month=month
-    ).select_related('branch', 'marked_by').order_by('date')
-
-    for i, ae in enumerate(admin_expenses, 1):
-        ws_admin.append([
-            i,
-            ae.branch.name if ae.branch else "-",
-            ae.title,
-            ae.amount,
-            ae.marked_by.get_full_name() or ae.marked_by.username if ae.marked_by else "Tizim",
-            ae.date.strftime("%Y-%m-%d"),
-            ae.description or "-"
-        ])
-
-    # ================================================================
     # 4-SAHIFA: FILIALLAR VA UMUMIY STATISTIKA (TUGATILDI)
     # ================================================================
     ws3 = wb.create_sheet("Umumiy Statistika")
     headers3 = [
-        "Filial Nomi", "O'quvchilar To'lovi (sof)", "Davomat refundlari", "Qo'shimcha Kirim",
-        "Tasdiqlangan Tushum", "Xodimlar Maoshlari", "Admin Harajatlari", "Pul qaytarish (kassa)",
-        "Kommunal To'lovlar", "Boshqa Chiqimlar", "SOF FOYDA", "Qarzdorlik"
+        "Filial Nomi", "O'quvchilar To'lovi", "Qo'shimcha Kirim", 
+        "Xodimlar Maoshi", "Refundlar (Chiqim)", "Kommunal To'lovlar",
+        "Boshqa Chiqimlar", "SOF FOYDA", "Qarzdorlik"
     ]
     ws3.append(headers3)
     for cell in ws3[1]:
@@ -322,90 +280,59 @@ def get_full_monthly_report(year, month):
     branches = Branch.objects.all()
     grand_income_fees = 0
     grand_income_extra = 0
-    grand_total_income = 0
     grand_expense_salary = 0
-    grand_expense_admin = 0
-    grand_attendance_refund = 0
-    grand_cash_refund = 0
+    grand_expense_refund = 0
     grand_expense_utility = 0
     grand_expense_other = 0
     grand_debt = 0
 
     for branch in branches:
-        # 1. Kirimlar (FinanceTransaction orqali, Dashboard bilan bir xil chiqishi uchun)
-        income_fees = FinanceTransaction.objects.filter(
-            branch=branch, date__year=year, date__month=month, transaction_type='income', category='student_fee'
-        ).aggregate(total=Sum('amount'))['total'] or 0
-        income_extra = FinanceTransaction.objects.filter(
-            branch=branch, date__year=year, date__month=month, transaction_type='income', category='student_extra'
-        ).aggregate(total=Sum('amount'))['total'] or 0
+        # 1. Kirimlar
+        income_fees = Payment.objects.filter(group__branch=branch, month__year=year, month__month=month, is_paid=True).aggregate(total=Sum('amount'))['total'] or 0
+        income_extra = FinanceTransaction.objects.filter(branch=branch, date__year=year, date__month=month, transaction_type='income', category='student_extra').aggregate(total=Sum('amount'))['total'] or 0
         
-        total_income = income_fees + income_extra
-
         # 2. Chiqimlar
         expense_salary = EmployeePayment.objects.filter(employee__branch=branch, month__year=year, month__month=month, is_paid=True).aggregate(total=Sum(F('salary_base') + F('bonus') - F('deductions')))['total'] or 0
-        # Davomat refundi — Payment.refund_amount (to'lovdan chegirma, kassa chiqimi emas)
-        attendance_refund = aggregate_attendance_refunds(year, month, branch=branch)
-        # Haqiqiy kassadan qaytarilgan pul (agar yozilgan bo'lsa)
-        cash_refund = FinanceTransaction.objects.filter(
-            branch=branch, date__year=year, date__month=month,
-            transaction_type='expense', category='refund'
-        ).aggregate(total=Sum('amount'))['total'] or 0
+        expense_refund = FinanceTransaction.objects.filter(branch=branch, date__year=year, date__month=month, transaction_type='expense', category='refund').aggregate(total=Sum('amount'))['total'] or 0
         expense_utility = FinanceTransaction.objects.filter(branch=branch, date__year=year, date__month=month, transaction_type='expense', category='utility').aggregate(total=Sum('amount'))['total'] or 0
         expense_other = FinanceTransaction.objects.filter(branch=branch, date__year=year, date__month=month, transaction_type='expense').exclude(category__in=['salary', 'refund', 'utility']).aggregate(total=Sum('amount'))['total'] or 0
         
-        # 3. Admin Harajatlari
-        expense_admin = AdminExpense.objects.filter(branch=branch, date__year=year, date__month=month).aggregate(total=Sum('amount'))['total'] or 0
-        
-        # 4. Qarzdorlik (Payment modelidan)
+        # 3. Qarzdorlik
         debt = Payment.objects.filter(group__branch=branch, month__year=year, month__month=month, is_paid=False).aggregate(total=Sum('amount'))['total'] or 0
         
-        # income_fees allaqachon refunddan keyingi sof summa (kassaga tushgan summa)
-        net_profit = total_income - (expense_salary + expense_admin + cash_refund + expense_utility + expense_other)
+        net_profit = (income_fees + income_extra) - (expense_salary + expense_refund + expense_utility + expense_other)
         
         ws3.append([
-            branch.name,
-            income_fees,
-            attendance_refund,
-            income_extra,
-            total_income,
-            expense_salary,
-            expense_admin,
-            cash_refund,
+            branch.name, 
+            income_fees, 
+            income_extra, 
+            expense_salary, 
+            expense_refund, 
             expense_utility,
-            expense_other,
-            net_profit,
+            expense_other, 
+            net_profit, 
             debt
         ])
         
         grand_income_fees += income_fees
         grand_income_extra += income_extra
-        grand_total_income += total_income
         grand_expense_salary += expense_salary
-        grand_expense_admin += expense_admin
-        grand_attendance_refund += attendance_refund
-        grand_cash_refund += cash_refund
+        grand_expense_refund += expense_refund
         grand_expense_utility += expense_utility
         grand_expense_other += expense_other
         grand_debt += debt
 
     # Jami qatori
-    total_net = (
-        grand_total_income
-        - (grand_expense_salary + grand_expense_admin + grand_cash_refund + grand_expense_utility + grand_expense_other)
-    )
+    total_net = (grand_income_fees + grand_income_extra) - (grand_expense_salary + grand_expense_refund + grand_expense_utility + grand_expense_other)
     total_row = [
-        "UMUMIY JAMI",
-        grand_income_fees,
-        grand_attendance_refund,
-        grand_income_extra,
-        grand_total_income,
-        grand_expense_salary,
-        grand_expense_admin,
-        grand_cash_refund,
+        "UMUMIY JAMI", 
+        grand_income_fees, 
+        grand_income_extra, 
+        grand_expense_salary, 
+        grand_expense_refund, 
         grand_expense_utility,
-        grand_expense_other,
-        total_net,
+        grand_expense_other, 
+        total_net, 
         grand_debt
     ]
     ws3.append(total_row)

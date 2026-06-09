@@ -493,8 +493,8 @@ class MentorNestedSerializer(serializers.ModelSerializer):
             except ValueError:
                 pass
         else:
-            # Agar branch_id kelmasa, faqat mentorning o'z branchiga tegishli guruhlar
-            all_groups = all_groups.filter(branch_id=obj.branch_id)
+            # Agar branch_id URL da berilmasa, mentorga ochiq barcha filiallardagi guruhlarini ko'rsatamiz
+            pass
 
         # 5. Natijani qaytarish (Sizda bor bo'lgan GroupSimpleSerializer orqali)
         return GroupSimpleSerializer(all_groups, many=True, context=self.context).data
@@ -839,8 +839,8 @@ class MentorSerializer(serializers.ModelSerializer):
             # Agar frontenddan branch_id kelgan bo'lsa, o'shani filterlaymiz
             all_groups = all_groups.filter(branch_id=active_branch_id)
         else:
-            # Agar branch_id kelmasa, mentorning asosiy filialidagilarni ko'rsatamiz
-            all_groups = all_groups.filter(branch_id=obj.branch_id)
+            # Agar branch_id kelmasa, mentor ruxsatidagi barcha guruhlar ko'rinadi
+            pass
 
         return GroupSimpleSerializer(all_groups, many=True, context=self.context).data
 

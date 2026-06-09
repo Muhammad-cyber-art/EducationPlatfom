@@ -234,30 +234,61 @@ class ArchivedGroupViewSet(mixins.DestroyModelMixin, viewsets.ReadOnlyModelViewS
     @action(detail=True, methods=['post'], url_path='restore')
     def restore(self, request, pk=None):
         """
-        Arxivlangan guruhni qayta tiklash.
-        Ruxsat: Faqat Super Admin
+        Arxivlangan guruhni va uning o'quvchilarini qayta tiklash.
+        Ruxsat: Faqat Super Admin.
+
+        Response:
+            {
+                "success": true,
+                "message": "...",
+                "group_id": 47,
+                "restored_students": 8,
+                "skipped_students": 1,
+                "errors": []
+            }
         """
         user = request.user
-        
+
         if user.role != 'super_admin':
             return Response(
                 {"error": "Faqat super_admin guruhlarni tiklashi mumkin"},
                 status=status.HTTP_403_FORBIDDEN
             )
-        
+
         archived = self.get_object()
-        
+
         try:
-            group = restore_group_from_archive(archived.id, user)
-            archived.delete() # Arxivdan o'chirish
-            return Response({
+            result = restore_group_from_archive(archived.id, user)
+            group = result['group']
+
+            # Arxiv yozuvini o'chirish (tarix saqlash uchun ixtiyoriy)
+            archived.delete()
+
+            response_data = {
                 "success": True,
-                "message": f"{group.name} guruhi muvaffaqiyatli tiklandi",
-                "group_id": group.id
-            }, status=status.HTTP_201_CREATED)
+                "message": (
+                    f"'{group.name}' guruhi muvaffaqiyatli tiklandi. "
+                    f"{result['restored_students']} ta o'quvchi ham tiklandi."
+                ),
+                "group_id": group.id,
+                "group_name": group.name,
+                "restored_students": result['restored_students'],
+                "skipped_students": result['skipped_students'],
+            }
+
+            # Agar ba'zi studentlar tiklanmagan bo'lsa — xatolarni ham yuboramiz
+            if result['errors']:
+                response_data["warnings"] = result['errors']
+
+            return Response(response_data, status=status.HTTP_201_CREATED)
+
         except Exception as e:
+            import traceback
             return Response(
-                {"error": f"Tiklashda xato: {str(e)}"},
+                {
+                    "error": f"Tiklashda xato: {str(e)}",
+                    "detail": traceback.format_exc()
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
