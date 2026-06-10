@@ -56,11 +56,19 @@ def get_and_update_students(clean_phone, chat_id):
     """
     Telefon raqami bo'yicha barcha mos keluvchi o'quvchilarni topish va 
     ularning Telegram IDlarini yangilash.
+    998 mamlakat kodi bilan va bo'lmasa ham ishlaydi.
     Optimizatsiya: bulk_update orqali signal triggerlarini oldini oladi.
     """
     clean_phone = re.sub(r'\D', '', clean_phone)
     if len(clean_phone) < 7:
         return []
+
+    # Ikkita variantni tekshiramiz: 998 bilan va bo'lmasa
+    possible_numbers = {clean_phone}
+    if clean_phone.startswith('998'):
+        possible_numbers.add(clean_phone[3:])  # 998 ni olib tashlash
+    else:
+        possible_numbers.add('998' + clean_phone)  # 998 ni qo'shish
 
     # Bazadagi barcha o'quvchilarni tekshiramiz
     all_students = Student.objects.all()
@@ -72,17 +80,17 @@ def get_and_update_students(clean_phone, chat_id):
     for student in all_students:
         is_match = False
         
-        # Student o'zining raqami (TO'LIQ moslik!)
+        # Student o'zining raqami (998 bilan va bo'lmasa ham moslashtirish)
         if student.phone:
             s_phone_clean = re.sub(r'\D', '', student.phone)
-            if s_phone_clean == clean_phone:  # OLDIN: endswith(last_9) → END: to'liq teng!
+            if s_phone_clean in possible_numbers:
                 student.telegram_id = chat_id
                 is_match = True
         
-        # Ota-ona raqami (TO'LIQ moslik!)
+        # Ota-ona raqami (998 bilan va bo'lmasa ham moslashtirish)
         if student.parent_phone:
             p_phone_clean = re.sub(r'\D', '', student.parent_phone)
-            if p_phone_clean == clean_phone:  # OLDIN: endswith(last_9) → END: to'liq teng!
+            if p_phone_clean in possible_numbers:
                 student.parent_telegram_id = chat_id
                 is_match = True
         
