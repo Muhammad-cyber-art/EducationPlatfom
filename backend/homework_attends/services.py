@@ -19,7 +19,9 @@ def get_or_create_attendance_records(group, requested_date, view_only=False):
     active_enrollments = GroupEnrollment.objects.filter(
         group=group,
         joined_at__date__lte=requested_date,
-        is_active=True
+        is_active=True,
+        student__is_archived=False,
+        student__is_active=True
     ).select_related('student')
     
     active_student_ids = set(active_enrollments.values_list('student_id', flat=True))
@@ -51,7 +53,13 @@ def generate_weekly_attendance_report(group, today=None):
     start_of_week = today - timedelta(days=today.weekday()) 
     date_list = [(start_of_week + timedelta(days=i)) for i in range(7)]
 
-    students = group.students.all().order_by('full_name')
+    active_student_ids = group.enrollments.filter(is_active=True).values_list('student_id', flat=True)
+    students = group.students.filter(
+        id__in=active_student_ids, 
+        is_archived=False, 
+        is_active=True
+    ).order_by('full_name')
+    
     attendances = Attendance.objects.filter(
         group=group, 
         date__range=[date_list[0], date_list[-1]]
@@ -96,10 +104,26 @@ def generate_weekly_attendance_report(group, today=None):
     }
 
 def bulk_confirm_attendance(group, requested_date, attendances_payload, user):
-    """Davomatlarni bulk tasdiqlash va xabarnomalarni yuborish"""
+    """Davomatlarni bulk tasdiqlash va xabarnomalarni yuborish.
+    
+    BUG #3 FIX: Guruhda hozir FAOL bo'lgan studentlar ID larini oldindan
+    aniqlab olamiz. Payload'da kelgan lekin guruhdan allaqachon chiqarilgan
+    student ID lari e'tiborga olinmaydi — bu ularning keyingi hisobotlarda
+    yana paydo bo'lib qolishini oldini oladi.
+    """
+    from groups.models import GroupEnrollment
+
+    # --- BUG #3 FIX: Faqat guruhda faol bo'lgan studentlar ID larini olamiz ---
+    active_student_ids = set(
+        GroupEnrollment.objects.filter(
+            group=group,
+            is_active=True
+        ).values_list('student_id', flat=True)
+    )
+
     existing_attendances = Attendance.objects.filter(group=group, date=requested_date)
     attendance_map = {att.student_id: att for att in existing_attendances}
-    
+
     to_create = []
     to_update = []
     updated_ids = []
@@ -109,11 +133,16 @@ def bulk_confirm_attendance(group, requested_date, attendances_payload, user):
         for item in attendances_payload:
             try:
                 raw_student_id = item.get('student_id')
-                if raw_student_id is None: continue
-                student_id = int(raw_student_id) # Type safety
+                if raw_student_id is None:
+                    continue
+                student_id = int(raw_student_id)  # Type safety
             except (ValueError, TypeError):
                 continue
-                
+
+            # --- BUG #3 FIX: Guruhdan chiqarilgan student ID lari o'tkazib yuboriladi ---
+            if student_id not in active_student_ids:
+                continue
+
             is_present = item.get('is_present', True)
 
             if student_id in attendance_map:
@@ -125,7 +154,7 @@ def bulk_confirm_attendance(group, requested_date, attendances_payload, user):
                 updated_ids.append(attendance.id)
                 processed_student_ids.add(student_id)
             else:
-                # Agar rekord bazada yo'q bo'lsa (masalan, kutilmagan student)
+                # Rekord yo'q — faqat faol student uchun yaratiladi (yuqorida tekshirildi)
                 to_create.append(Attendance(
                     student_id=student_id,
                     group=group,
@@ -134,7 +163,6 @@ def bulk_confirm_attendance(group, requested_date, attendances_payload, user):
                     marked_by=user
                 ))
                 processed_student_ids.add(student_id)
-
 
         if to_update:
             Attendance.objects.bulk_update(to_update, ['is_present', 'marked_by'])
@@ -152,10 +180,11 @@ def bulk_confirm_attendance(group, requested_date, attendances_payload, user):
             except Exception as e:
                 import logging
                 logger = logging.getLogger(__name__)
-                logger.error(f"Failed to update payments for student %s in bulk: %s", student.id, e)
+                logger.error("Failed to update payments for student %s in bulk: %s", student.id, e)
 
     # Xabarnomalarni yuborishni fonda bajaramiz (API tez qaytishi uchun)
     import threading
+
     def background_notifications(ids):
         try:
             # 1. Celery orqali urinib ko'ramiz
@@ -169,13 +198,21 @@ def bulk_confirm_attendance(group, requested_date, attendances_payload, user):
                 for a in atts:
                     try:
                         send_attendance_notification(a, async_send=False)
-                    except: pass
-            except: pass
+                    except Exception:
+                        pass
+            except Exception:
+                pass
 
     if updated_ids:
         threading.Thread(target=background_notifications, args=(updated_ids,)).start()
 
-    return Attendance.objects.filter(group=group, date=requested_date).select_related('student').order_by('student__full_name')
+    # Faqat guruhda faol studentlarning davomatini qaytaramiz
+    return (
+        Attendance.objects
+        .filter(group=group, date=requested_date, student_id__in=active_student_ids)
+        .select_related('student')
+        .order_by('student__full_name')
+    )
 
 
 def get_monthly_attendance_data(group, month, year):
@@ -190,19 +227,39 @@ def get_monthly_attendance_data(group, month, year):
     lesson_dates = group.get_lesson_dates(year, month)
     date_list = [d for d in lesson_dates if d <= report_end_day]
     
-    students = group.students.all().order_by('full_name')
-    attendances = Attendance.objects.filter(group=group, date__range=[first_day, report_end_day])
+    active_student_ids = group.enrollments.filter(is_active=True).values_list('student_id', flat=True)
+    students = group.students.filter(
+        id__in=active_student_ids, 
+        is_archived=False, 
+        is_active=True
+    ).order_by('full_name')
     
+    # BUG #4 FIX: att_data faqat hozir faol studentlar uchun yig'iladi.
+    # Arxivlangan yoki guruhdan chiqarilgan studentlarning eski davomat
+    # yozuvlari att_data ga tushmaydi — bu ortiqcha DB yuklanishini va
+    # kelajakda yuz berishi mumkin bo'lgan ma'lumot noto'g'riligini oldini oladi.
+    active_student_ids_set = set(active_student_ids)  # QuerySet -> set (tezroq lookup)
+    attendances = (
+        Attendance.objects
+        .filter(
+            group=group,
+            date__range=[first_day, report_end_day],
+            student_id__in=active_student_ids_set,  # Faqat faol studentlar
+        )
+        .values('student_id', 'date', 'is_present', 'marked_by_id')  # SELECT optimallashtirish
+    )
+
     att_data = {}
     for att in attendances:
-        if att.student_id not in att_data:
-            att_data[att.student_id] = {}
+        sid = att['student_id']
+        if sid not in att_data:
+            att_data[sid] = {}
         # is_present dan tashqari, mentor tasdiqlaganligini (marked_by) ham saqlaymiz
-        att_data[att.student_id][str(att.date)] = {
-            'is_present': att.is_present,
-            'is_confirmed': att.marked_by_id is not None
+        att_data[sid][str(att['date'])] = {
+            'is_present': att['is_present'],
+            'is_confirmed': att['marked_by_id'] is not None
         }
-        
+
     return date_list, students, att_data
 
 def create_homework_with_submissions(serializer, user, group):
