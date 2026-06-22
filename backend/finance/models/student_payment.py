@@ -184,8 +184,9 @@ class Payment(models.Model):
                 amount=installment,
                 date=self.paid_at.date(),
                 marked_by=admin_user,
-                branch=self.student.branch,
+                branch=self.student.branch or (self.group.branch if self.group else None),
                 student=self.student,
+                group=self.group,
                 title=f"To'lov: {self.student.full_name}",
                 description=(
                     f"{self.group.name} ({'To''liq' if self.is_full_amount else 'Bo''lib' if self.is_partial else 'Davomat'}) "

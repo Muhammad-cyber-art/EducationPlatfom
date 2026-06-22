@@ -105,14 +105,14 @@ const AllPayments = () => {
       const trendsData = trendsRes.data;
 
       const statsMap = {};
-      statsData.branches?.forEach(b => {
-        statsMap[b.id] = b;
-      });
+        statsData.branches?.forEach(b => {
+            statsMap[Number(b.id)] = b;
+        });
 
-      const mergedBranches = branchesData.map(b => ({
-        ...b,
-        finance: statsMap[b.id] || { income: 0, expense: 0, profit: 0 }
-      }));
+        const mergedBranches = branchesData.map(b => ({
+            ...b,
+            finance: statsMap[Number(b.id)] || { income: 0, expense: 0, profit: 0 }
+        }));
 
       setBranches(mergedBranches);
       setStatistics(statsData);
