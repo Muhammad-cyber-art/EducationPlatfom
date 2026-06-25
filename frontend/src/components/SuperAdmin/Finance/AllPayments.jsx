@@ -113,7 +113,6 @@ const AllPayments = () => {
             ...b,
             finance: statsMap[Number(b.id)] || { income: 0, expense: 0, profit: 0 }
         }));
-
       setBranches(mergedBranches);
       setStatistics(statsData);
 
@@ -141,7 +140,8 @@ const AllPayments = () => {
       return `hsl(${h}, 65%, 55%)`;
     });
   }, [trendBranches]);
-
+  
+  
   return (
     <div className="space-y-4 pb-6">
       {/* Background removed as per request */}

@@ -277,7 +277,11 @@ class Student(models.Model):
             )
 
     def get_absences_count(self, year, month, group=None):
-        """O'quvchining berilgan oydagi qoldirgan darslari sonini qaytaradi"""
+        """O'quvchining berilgan oydagi qoldirgan darslari sonini qaytaradi.
+
+        BUG #5 TUZATILDI: calculate_attendance_based_student_payment() bilan
+        izchillik uchun marked_by__isnull=False filtri qo'shildi.
+        """
         target_group = group or self.group
         if not target_group:
             return 0
@@ -289,13 +293,14 @@ class Student(models.Model):
         passed_lessons = [d for d in lesson_dates if d <= today]
         total_passed = len(passed_lessons)
 
-        # Kelgan kunlar soni (faqat oydagi)
+        # Kelgan kunlar soni — faqat tasdiqlangan (marked_by mavjud) davomatlar
         present_count = self.attendances.filter(
             group=target_group,
             date__year=year,
             date__month=month,
             date__in=passed_lessons,
             is_present=True,
+            marked_by__isnull=False,  # BUG #5 FIX: calculate_attendance_based_student_payment bilan izchil
         ).count()
 
         # Qoldirgan darslar = (O'tilgan darslar soni) - (Kelgan darslar soni)
@@ -352,19 +357,22 @@ class Student(models.Model):
         """
         Dars qoldirganlik uchun refund (chegirma) summasini hisoblash.
 
-        Mantiq: oy narxi (individual yoki guruh) oydagi rejalashtirilgan darslar soniga
-        bo'linadi — kunlik narx.
+        BUG #2 TUZATILDI: Oldingi versiyada floor_amount IKKI MARTA qo'llanilardi:
+          1) daily_price = floor_amount(base_price / lessons)  ← birinchi floor
+          2) refund = floor_amount(daily_price * absences)     ← ikkinchi floor
+        Bu kumulyativ rounding loss yaratardi (har bir o'quvchi 1,000–3,000 so'm
+        kam chegirma olardi).
 
-        get_absences_count allaqachon pre-join darslarni ham hisobga oladi,
-        shuning uchun bu yerda alohida qo'shish shart emas.
+        Tuzatma: raw daily_price hisoblash, bir marta floor qilish.
         """
+        from decimal import Decimal
         from finance.utils import floor_amount
 
         target_group = group or self.group
         if not target_group:
             return 0
 
-        # get_absences_count endi pre-join darslarni ham o'z ichiga oladi
+        # get_absences_count endi marked_by filtri bilan ishlaydi (Bug #5 bilan izchil)
         absences = self.get_absences_count(year, month, group=target_group)
 
         if absences <= 0:
@@ -384,8 +392,10 @@ class Student(models.Model):
         if lessons_count <= 0:
             return 0
 
-        daily_price = floor_amount(base_price / lessons_count)
-        refund = floor_amount(daily_price * absences)
+        # BUG #2 FIX: Xom (floor qilinmagan) kunlik narxdan refund hisoblaymiz,
+        # keyin BITTA floor_amount qo'llaymiz — kumulyativ xatolikni oldini oladi.
+        raw_daily_price = Decimal(str(base_price)) / Decimal(str(lessons_count))
+        refund = floor_amount(raw_daily_price * Decimal(str(absences)))
 
         # Yaxlitlash tufayli refund asosiy narxdan oshib ketmasin
         base_floor = floor_amount(base_price)

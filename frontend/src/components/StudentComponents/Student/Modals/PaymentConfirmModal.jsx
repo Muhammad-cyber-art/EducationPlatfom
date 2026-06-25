@@ -49,7 +49,7 @@ export const PaymentConfirmModal = ({ isOpen, onClose, onConfirm, data, loading 
         is_receiptless: method === 'click' ? noReceipt : false,
         notes: notes,
         ignore_refund: !calculateRefund,
-        pay_full_month: !isPartial && !isCustom,
+        pay_full_month: !isPartial && !isCustom && !calculateRefund,
         is_partial_payment: isPartial,
         is_custom_amount: isCustom,
         amount: String(Math.floor(payAmount)),

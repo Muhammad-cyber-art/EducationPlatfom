@@ -789,7 +789,11 @@ class StaffProfile(models.Model):
                 attendance_cache=attendance_cache,
                 enrollment_cache=enrollment_cache,
             )
-            total_expected_share += group_result["expected_revenue"]
+            # BUG #6 FIX: expected_revenue bu GURUH daromadi, mentor ulushi EMAS.
+            # Mentor faqat o'z ulushini (foiz yoki per_student) olishi kerak.
+            # Oldin: total_expected_share += group_result["expected_revenue"]  ← NOTO'G'RI
+            # Hozir: to'g'ri field ishlatilmoqda
+            total_expected_share += group_result["mentor_share_expected"]
 
         return floor_amount(total_expected_share, precision=None)
 

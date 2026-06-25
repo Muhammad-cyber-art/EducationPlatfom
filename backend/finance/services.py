@@ -472,17 +472,22 @@ def confirm_student_payment(request_user, payment, data):
     if is_custom_amount:
         # ---------------------------------------------------------------
         # CUSTOM PAYMENT: foydalanuvchi tomonidan belgilangan summa.
-        # payment.amount = custom summa (contract o'zgaradi),
-        # installment shu summada qoladi — ortiqcha reset YO'Q.
+        #
+        # BUG #4 TUZATILDI: Oldingi versiyada payment.amount = custom_summa
+        # qilib qo'yilardi — bu asl shartnoma summasini yo'q qilardi va
+        # remaining_amount noto'g'ri hisoblangandi.
+        #
+        # Tuzatma: payment.amount GA TEGMAYMIZ. Faqat refund_ignored
+        # belgilaymiz. installment_amount o'zgarishsiz apply_payment ga ketadi.
         # ---------------------------------------------------------------
         if installment_amount is None:
             raise ValueError("Custom to'lov uchun summa kiritish shart")
         if installment_amount <= 0:
             raise ValueError("Custom to'lov summasi 0 dan katta bo'lishi kerak")
-        payment.amount = floor_amount(installment_amount)
+        # payment.amount ni O'ZGARTIRMAYMIZ — shartnoma summasi saqlanadi
         payment.refund_amount = Decimal("0")
         payment.refund_ignored = True
-        # installment custom rejimda o'zgartirilmaydi — foydalanuvchi tanlaganida qoladi
+        # installment_amount o'zgarishsiz apply_payment ga uzatiladi
     else:
         # ---------------------------------------------------------------
         # ODDIY REJIM: to'liq / bo'lib / refund bilan
@@ -549,7 +554,10 @@ def confirm_student_payment(request_user, payment, data):
             if remaining > 0:
                 installment_amount = remaining
             else:
-                installment_amount = final_amount
+                # BUG #3 FIX: Allaqachon to'liq to'langan — installment 0 bo'lsin.
+                # apply_payment ichidagi himoya (remaining==0 guard) buni to'g'ri
+                # boshqaradi va ikkinchi marta tranzaksiya yozilmaydi.
+                installment_amount = Decimal("0")
 
     # Yangi maydonlarni extract qilamiz
     method = data.get("payment_method", "cash")
@@ -583,6 +591,13 @@ def confirm_student_payment(request_user, payment, data):
     if is_custom_amount:
         notes_parts.append("Custom to'lov")
     notes = " | ".join(notes_parts)
+
+    # BUG #3 FIX (qo'shimcha himoya): installment_amount == 0 bo'lsa (allaqachon
+    # to'liq to'langan holat), apply_payment ga kirmay, payment holatini saqlab chiqamiz.
+    # Bu apply_payment ichidagi "installment <= 0 → ValueError" dan ham himoyalaydi.
+    if installment_amount is not None and Decimal(str(installment_amount)) <= 0:
+        payment.save()
+        return payment
 
     payment.apply_payment(
         request_user,
@@ -688,28 +703,20 @@ def get_finance_dashboard_stats(user, month, year):
 
         branches_data = list(branch_map.values())
 
-    # 1. Barcha to'lgan paymentlarni guruh bo'yicha sum (paid_amount ni ishlatamiz!)
-    group_payment_income = {}
-    payment_qs = Payment.objects.filter(month__month=month, month__year=year)
-    if user.role == "admin":
-        payment_qs = payment_qs.filter(group__branch=user.branch)
-    payment_qs = payment_qs.values("group_id").annotate(total=Sum("paid_amount"))
-    for p in payment_qs:
-        group_payment_income[p["group_id"]] = _to_decimal(p["total"])
-
-    # 2. Barcha student_extra income tranzaksiyalarini guruh bo'yicha sum
-    group_extra_income = {}
-    extra_qs = FinanceTransaction.objects.filter(
-        category="student_extra",
-        transaction_type="income",
-        date__year=year,
+    # 1. Barcha income tranzaksiyalarini guruh bo'yicha yig'amiz (shu oydagi haqiqiy tushum)
+    group_transaction_income = {}
+    tx_qs = FinanceTransaction.objects.filter(
         date__month=month,
+        date__year=year,
+        transaction_type="income"
     )
     if user.role == "admin":
-        extra_qs = extra_qs.filter(branch=user.branch)
-    extra_qs = extra_qs.values("group_id").annotate(total=Sum("amount"))
-    for x in extra_qs:
-        group_extra_income[x["group_id"]] = _to_decimal(x["total"])
+        tx_qs = tx_qs.filter(branch=user.branch)
+    
+    tx_qs = tx_qs.values("group_id").annotate(total=Sum("amount"))
+    for row in tx_qs:
+        if row["group_id"]:
+            group_transaction_income[row["group_id"]] = _to_decimal(row["total"])
 
     # 3. Guruhlarni olish va income ni hisoblash
     top_groups_qs = Group.objects.filter(is_faol=True)
@@ -720,9 +727,7 @@ def get_finance_dashboard_stats(user, month, year):
     # Har guruh uchun total income ni hisoblash va sort qilish
     groups_with_income = []
     for g in top_groups_qs:
-        p_inc = group_payment_income.get(g.id, Decimal("0"))
-        e_inc = group_extra_income.get(g.id, Decimal("0"))
-        total_inc = p_inc + e_inc
+        total_inc = group_transaction_income.get(g.id, Decimal("0"))
         groups_with_income.append({"group": g, "income": total_inc})
 
     # Eng yuqori income li 5 ta guruhni olish
@@ -874,6 +879,18 @@ def get_branch_finance_stats(branch_id, month, year):
             else:
                 extra_map[key] -= _to_decimal(tx.amount)
 
+        # Guruhlar bo'yicha joriy oydagi tranzaksiya tushumlarini bitta so'rovda guruhlab olamiz
+        group_transaction_income = {}
+        tx_income_qs = FinanceTransaction.objects.filter(
+            branch=branch,
+            date__month=month,
+            date__year=year,
+            transaction_type="income"
+        ).values("group_id").annotate(total=Sum("amount"))
+        for row in tx_income_qs:
+            if row["group_id"]:
+                group_transaction_income[row["group_id"]] = _to_decimal(row["total"])
+
         # 3. Guruhlar va ulardagi studentlarni olamiz
         active_groups = (
             Group.objects.filter(branch=branch, is_faol=True)
@@ -891,7 +908,8 @@ def get_branch_finance_stats(branch_id, month, year):
         for group in active_groups:
             try:
                 g_expected = Decimal("0")
-                g_received = Decimal("0")
+                g_received = group_transaction_income.get(group.id, Decimal("0"))
+                g_debt = Decimal("0")
                 # Barcha studentlarni olamiz
                 all_students_map = {}
                 for enrollment in group.enrollments.all():
@@ -927,20 +945,15 @@ def get_branch_finance_stats(branch_id, month, year):
                         base_expected = Decimal(str(group.monthly_price or 0))
                     base_expected = floor_amount(base_expected)
 
-                    # Actual summa: to'langan summa yoki davomat asosida (discount) + student_extra
-                    p = payment_map.get(key)
-                    actual_base = Decimal("0")
-                    if student.status == "discount":
-                        actual_base = calculate_discount_student_payment(
-                            student, group, date(year, month, 1)
-                        )
-                    elif p:
-                        actual_base = Decimal(str(p.paid_amount or 0))
-                    actual_total = actual_base + student_extra
                     expected_total = base_expected + student_extra
-
                     g_expected += expected_total
-                    g_received += actual_total
+
+                    # Debt calculation: Payment remaining_amount if payment exists, else expected_total
+                    p = payment_map.get(key)
+                    if p:
+                        g_debt += p.remaining_amount
+                    else:
+                        g_debt += expected_total
 
                 expected_income += g_expected
                 total_received += g_received
@@ -966,7 +979,7 @@ def get_branch_finance_stats(branch_id, month, year):
                         "received_income": float(g_received),
                         "refund_amount": g_refund_amount,
                         "real_income": float(g_received),
-                        "debt": max(0, float(g_expected) - float(g_received)),
+                        "debt": float(g_debt),
                         "mentor": mentor_name,
                     }
                 )

@@ -112,13 +112,18 @@ const StudentGroupsSection = ({
                                                 Qolgan: {Math.floor(payStatus.remainingAmount).toLocaleString()} UZS
                                             </p>
                                         )}
-                                        <div className="flex items-center gap-2 mt-1.5">
+                                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                                             <span className="text-[9px] font-bold text-[var(--text-muted)] whitespace-nowrap">
-                                                Dars: {groupPayment?.attended_count || 0}/{groupPayment?.lessons_count || 0}
+                                                Qatnashdi: {groupPayment?.attended_count || 0}/{groupPayment?.lessons_count || 0}
                                             </span>
                                             {groupPayment?.lessons_count > 0 && (
                                                 <span className="text-[8px] font-black text-amber-500/80 bg-amber-500/5 px-1.5 py-0.5 rounded border border-amber-500/10">
                                                     {Math.round(((groupPayment?.attended_count || 0) / groupPayment?.lessons_count) * 100)}%
+                                                </span>
+                                            )}
+                                            {groupPayment?.absences_count > 0 && (
+                                                <span className="text-[9px] font-bold text-red-400/80 whitespace-nowrap ml-1">
+                                                    Qoldirdi: {groupPayment?.absences_count}
                                                 </span>
                                             )}
                                         </div>
