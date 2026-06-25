@@ -193,6 +193,10 @@ class Payment(models.Model):
 
             # Faqat haqiqiy pul harakati bo'lsa tranzaksiya yaratamiz
             if installment > 0:
+                payment_type_str = "To'liq" if self.is_full_amount else "Bo'lib" if self.is_partial else "Davomat"
+                receiptless_str = "(Cheksiz)" if self.is_receiptless else ""
+                notes_str = self.notes or ""
+                
                 FinanceTransaction.objects.create(
                     related_id=f"STP-{self.id}-INS-{uuid.uuid4().hex[:12]}",
                     transaction_type='income',
@@ -205,10 +209,10 @@ class Payment(models.Model):
                     group=self.group,
                     title=f"To'lov: {self.student.full_name}",
                     description=(
-                        f"{self.group.name} ({'To\'liq' if self.is_full_amount else 'Bo\'lib' if self.is_partial else 'Davomat'}) "
+                        f"{self.group.name} ({payment_type_str}) "
                         f"{self.month.strftime('%Y-%m')} — {installment} UZS. "
                         f"Usul: {self.get_payment_method_display()}. "
-                        f"{'(Cheksiz)' if self.is_receiptless else ''} {self.notes or ''}"
+                        f"{receiptless_str} {notes_str}"
                     ).strip(),
                 )
 
