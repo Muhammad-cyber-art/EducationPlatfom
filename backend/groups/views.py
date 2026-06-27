@@ -946,10 +946,10 @@ class GroupSimpleViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = self.queryset
+        qs = self.queryset.filter(is_archived=False)
         branch_id = self.request.query_params.get('branch_id')
         
-        if branch_id:
+        if branch_id and branch_id not in ['undefined', 'null', '']:
             qs = qs.filter(branch_id=branch_id)
             
         if user.role == 'super_admin': return qs

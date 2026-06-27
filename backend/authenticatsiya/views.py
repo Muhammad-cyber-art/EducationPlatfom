@@ -138,6 +138,94 @@ class RegisterViewSet(ModelViewSet):
         reason = self.request.query_params.get('reason', "Admin tomonidan o'chirildi")
         from archivebase.services import send_to_archive
         send_to_archive(instance, request_user=self.request.user, reason=reason)
+
+    @action(detail=True, methods=['post'], url_path='remove-from-branch')
+    def remove_from_branch(self, request, pk=None):
+        """
+        Mentorni asosiy filialidan o'chirish.
+        Faqat super_admin va admin uchun ruxsat etilgan.
+        Mentor branch = null bo'ladi (filialdan ajratiladi).
+        """
+        user = request.user
+        if user.role not in ['super_admin', 'admin']:
+            return Response(
+                {"detail": "Bu amal uchun ruxsatingiz yo'q."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        try:
+            target_user = self.get_object()
+        except Exception:
+            return Response({"detail": "Foydalanuvchi topilmadi."}, status=status.HTTP_404_NOT_FOUND)
+
+        if target_user.role == 'super_admin':
+            return Response(
+                {"detail": "Super adminni filialdan olib tashlash mumkin emas."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Admin uchun: faqat o'zi ruxsatga ega filiallardan olib tashlashi mumkin
+        if user.role == 'admin':
+            allowed = []
+            if user.branch_id:
+                allowed.append(user.branch_id)
+            allowed.extend(user.branch_accesses.values_list('branch_id', flat=True))
+            if target_user.branch_id not in allowed:
+                return Response(
+                    {"detail": "Siz ushbu filialga ruxsatingiz yo'q."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+        old_branch_name = target_user.branch.name if target_user.branch else "Noma'lum"
+        target_user.branch = None
+        target_user.save(update_fields=['branch'])
+
+        return Response(
+            {"detail": f"{target_user.get_full_name() or target_user.username} '{old_branch_name}' filialidan muvaffaqiyatli olib tashlandi."},
+            status=status.HTTP_200_OK
+        )
+
+    @action(detail=True, methods=['post'], url_path='remove-branch-access')
+    def remove_branch_access(self, request, pk=None):
+        """
+        Mentordan qo'shilgan (BranchAccess) filialni o'chirish.
+        """
+        user = request.user
+        if user.role not in ['super_admin', 'admin']:
+            return Response(
+                {"detail": "Bu amal uchun ruxsatingiz yo'q."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        branch_id = request.data.get('branch_id')
+        if not branch_id:
+            return Response({"detail": "branch_id kiritilishi shart."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            target_user = self.get_object()
+        except Exception:
+            return Response({"detail": "Foydalanuvchi topilmadi."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Admin ruxsatlarini tekshirish
+        if user.role == 'admin':
+            allowed = []
+            if user.branch_id:
+                allowed.append(user.branch_id)
+            allowed.extend(user.branch_accesses.values_list('branch_id', flat=True))
+            if int(branch_id) not in allowed:
+                return Response(
+                    {"detail": "Siz ushbu filialga ruxsatingiz yo'q."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+        try:
+            from .models import BranchAccess
+            access = BranchAccess.objects.get(user=target_user, branch_id=branch_id)
+            access.delete()
+            return Response({"detail": "Qo'shilgan filialdan muvaffaqiyatli o'chirildi."}, status=status.HTTP_200_OK)
+        except BranchAccess.DoesNotExist:
+            return Response({"detail": "Bunday filial ruxsati topilmadi."}, status=status.HTTP_404_NOT_FOUND)
+
 class UsersListView(ListAPIView):
     """Mentorlar ro'yxatini olish uchun (BranchAccess inobatga olingan)"""
     serializer_class = UsersListSerializer

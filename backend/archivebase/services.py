@@ -180,12 +180,19 @@ def move_group_to_archive(group, archived_by, reason: str = "") -> ArchivedGroup
         f"{len(students_to_unenroll_only)} ta faqat unenroll."
     )
 
+    # ⚠️ O'quvchi ID larini arxivlashdan OLDIN saqlab olamiz.
+    # Sabab: move_student_to_archive → student.delete() chaqirilgandan keyin
+    # Django ob'ektning pk (id) ni None ga o'rnatadi.
+    student_ids_to_archive = [s.id for s in students_to_fully_archive]
+
     # 2a. Faqat shu guruhda bo'lgan o'quvchilarni to'liq arxivlaymiz
+    archived_student_records = []   # ArchivedStudent id larini saqlaymiz
     for student in students_to_fully_archive:
-        move_student_to_archive(
+        archived_rec = move_student_to_archive(
             student, archived_by,
             reason=f"Guruh arxivlangani uchun: {reason}"
         )
+        archived_student_records.append(archived_rec.id)
 
     # 2b. Bir nechta guruhda bo'lgan o'quvchilar — faqat shu guruhdan chiqaramiz
     #     Ularning boshqa guruhlardagi ma'lumotlari va to'lovlari SAQLANIB QOLADI.
@@ -212,7 +219,10 @@ def move_group_to_archive(group, archived_by, reason: str = "") -> ArchivedGroup
     # 4. Guruh ma'lumotlarini snapshot qilish (student ID listini ham saqlaymiz)
     group_data = model_to_dict(group)
     group_data = json_serializable_convert(group_data)
-    group_data["archived_student_ids"] = [s.id for s in students_to_fully_archive]
+    # original Student.id lari (arxivlashdan oldin saqlangan)
+    group_data["archived_student_ids"] = student_ids_to_archive
+    # ArchivedStudent.id lari — tiklashda to'g'ri qidirish uchun
+    group_data["archived_student_record_ids"] = archived_student_records
     group_data["multi_group_student_ids"] = [s.id for s in students_to_unenroll_only]
     group_data["orphan_payments"] = payments_data
 
@@ -252,12 +262,23 @@ def restore_student_from_archive(archived_student_id, restored_by):
     
     # Branch va Group ni topish (agar mavjud bo'lsa)
     branch = None
-    if metadata.get('branch'):
-        branch = Branch.objects.filter(id=metadata['branch']).first()
+    branch_id = metadata.get('branch_id') or metadata.get('branch')
+    if branch_id:
+        branch = Branch.objects.filter(id=branch_id).first()
     
     group = None
-    if metadata.get('group'):
-        group = Group.objects.filter(id=metadata['group']).first()
+    group_id = metadata.get('group_id') or metadata.get('group')
+    if group_id:
+        group = Group.objects.filter(id=group_id).first()
+        
+    # Agar ID orqali topilmasa yoki saqlanmagan bo'lsa, nomi orqali qidiramiz (Yangi logika)
+    if not group and archived.last_group_name and archived.last_group_name != "Guruhsiz":
+        # Avval joriy filial (branch) dagi shunday nomli faol guruhni izlaymiz
+        if branch:
+            group = Group.objects.filter(name__iexact=archived.last_group_name, branch=branch, is_archived=False).first()
+        # Topilmasa umuman hamma filiallardan izlab ko'ramiz
+        if not group:
+            group = Group.objects.filter(name__iexact=archived.last_group_name, is_archived=False).first()
     
     # Studentni qayta yaratish
     student = Student.objects.create(
@@ -271,6 +292,10 @@ def restore_student_from_archive(archived_student_id, restored_by):
         address=metadata.get('address', ''),
         notes=metadata.get('notes', ''),
         color=metadata.get('color', '#ffffff'),
+        status=metadata.get('status', 'regular'),
+        telegram_id=metadata.get('telegram_id'),
+        parent_telegram_id=metadata.get('parent_telegram_id'),
+        custom_fee=metadata.get('custom_fee'),
     )
 
     # Many-to-Many bog'liqlikni ham tiklaymiz
@@ -410,16 +435,27 @@ def restore_group_from_archive(archived_group_id, restored_by):
         logger.info(
             f"[GroupRestore] {len(archived_student_ids)} ta arxivlangan student tiklanmoqda..."
         )
-        for orig_student_id in archived_student_ids:
+        # Yangi format: arxivlash paytida ArchivedStudent.id lari saqlangan
+        archived_record_ids = metadata.get('archived_student_record_ids', [])
+        
+        for i, orig_student_id in enumerate(archived_student_ids):
             try:
-                # ArchivedStudent jadvalida original_id bo'yicha qidirish
-                archived_student = ArchivedStudent.objects.filter(
-                    original_id=orig_student_id
-                ).order_by('-archived_at').first()
+                # 1-usul: to'g'ridan-to'g'ri ArchivedStudent.id bo'yicha (yangi format)
+                archived_student = None
+                if archived_record_ids and i < len(archived_record_ids):
+                    archived_student = ArchivedStudent.objects.filter(
+                        id=archived_record_ids[i]
+                    ).first()
+                
+                # 2-usul: original_id bo'yicha (eski format, backward compatibility)
+                if not archived_student and orig_student_id:
+                    archived_student = ArchivedStudent.objects.filter(
+                        original_id=orig_student_id
+                    ).order_by('-archived_at').first()
 
                 if not archived_student:
                     logger.warning(
-                        f"[GroupRestore] Student original_id={orig_student_id} arxivda topilmadi — o'tkazib yuborildi."
+                        f"[GroupRestore] Student (orig_id={orig_student_id}) arxivda topilmadi — o'tkazib yuborildi."
                     )
                     skipped_count += 1
                     continue
@@ -451,6 +487,7 @@ def restore_group_from_archive(archived_group_id, restored_by):
                     status=student_meta.get('status', 'regular'),
                     telegram_id=student_meta.get('telegram_id'),
                     parent_telegram_id=student_meta.get('parent_telegram_id'),
+                    custom_fee=student_meta.get('custom_fee'),
                 )
 
                 # GroupEnrollment yaratish (M2M)
@@ -459,9 +496,8 @@ def restore_group_from_archive(archived_group_id, restored_by):
                     group=group
                 )
 
-                # Arxiv yozuvini belgilaymiz (o'chirmaymiz, tarix uchun saqlaymiz)
-                # Agar keyinchalik o'chirmoqchi bo'lsangiz:
-                # archived_student.delete()
+                # Arxiv yozuvini o'chiramiz (aralashib ketmasligi uchun)
+                archived_student.delete()
 
                 restored_count += 1
                 logger.info(
@@ -479,6 +515,31 @@ def restore_group_from_archive(archived_group_id, restored_by):
             "[GroupRestore] metadata['archived_student_ids'] topilmadi — "
             "eski format arxiv, studentlar alohida tiklanishi kerak."
         )
+
+    # -------------------------------------------------------------------
+    # YANI QO'SHILGAN QISM: O'chirilmagan, lekin arxivlanganda guruhdan 
+    # chiqarilgan o'quvchilarni yana guruhga bog'lab qo'yamiz.
+    # -------------------------------------------------------------------
+    multi_group_student_ids = metadata.get('multi_group_student_ids', [])
+    if multi_group_student_ids:
+        from groups.models import Student, GroupEnrollment
+        logger.info(
+            f"[GroupRestore] {len(multi_group_student_ids)} ta o'chirilmagan (boshqa guruhlarda qolgan) student tiklanmoqda..."
+        )
+        for s_id in multi_group_student_ids:
+            try:
+                student = Student.objects.filter(id=s_id).first()
+                if student:
+                    GroupEnrollment.objects.get_or_create(student=student, group=group)
+                    restored_count += 1
+                    logger.info(f"[GroupRestore] Multi-group Student '{student.full_name}' guruhga yana qo'shildi.")
+                else:
+                    skipped_count += 1
+                    logger.warning(f"[GroupRestore] Multi-group Student (ID={s_id}) bazadan topilmadi (balki to'liq o'chirib yuborilgandir).")
+            except Exception as exc:
+                error_msg = f"Multi-group Student ID={s_id} tiklashda xato: {exc}"
+                logger.error(f"[GroupRestore] {error_msg}")
+                errors.append(error_msg)
 
     logger.info(
         f"[GroupRestore] Natija: guruh='{group.name}', "

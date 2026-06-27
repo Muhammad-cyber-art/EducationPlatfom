@@ -13,10 +13,10 @@ const JoinGroupModal = ({ isOpen, onClose, student, currentBranchId, api, onSucc
   // Guruhlarni yuklab olish
   useEffect(() => {
     const branchToUse = currentBranchId || student?.branch_id || student?.branch?.id;
-    if (isOpen && branchToUse) {
+    if (isOpen) {
       setFetchingGroups(true);
-      // nested_groups barcha guruhlarni (filial bo'yicha) qaytaradi
-      api.get(`/groups/nested_groups/?branch_id=${branchToUse}&page_size=500`)
+      const url = branchToUse ? `/groups/nested_groups/?branch_id=${branchToUse}&page_size=500` : `/groups/nested_groups/?page_size=500`;
+      api.get(url)
         .then(res => {
           const allGroups = safeArray(res.data?.results || res.data);
           const studentGroupIds = safeArray(student?.groups).map(g => g.id);

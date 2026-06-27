@@ -94,8 +94,13 @@ const ArchiveTable = ({
   <td className="px-8 py-5 text-[10px] font-bold text-[var(--text-secondary)] hidden md:table-cell capitalize tracking-widest">
   {type ==='students' ? (item.last_group_name ||"GURUHSZ") : type === 'lids' ? (item.subject || "FAN TANLANMAGAN") : type ==='staff' ? item.role : (item.subject ||"UMUMIY")}
   </td>
-  <td className="px-8 py-5 text-[9px] font-black text-[var(--text-muted)] hidden lg:table-cell capitalize tracking-widest">
-  {formatDate(item.archived_at)}
+  <td className="px-8 py-5 hidden lg:table-cell">
+    <p className="text-[9px] font-black text-[var(--text-muted)] capitalize tracking-widest">{formatDate(item.archived_at)}</p>
+    {item.archived_by_name && (
+        <p className="text-[8px] font-bold text-[var(--gold)]/70 capitalize tracking-widest mt-1">
+          Kim tomonidan: {item.archived_by_name}
+        </p>
+    )}
   </td>
   <td className="px-8 py-5 text-right space-x-3">
   <button onClick={() => onRestore(item.id)} className="px-4 py-2 rounded-xl bg-emerald-500/10 text-emerald-500 text-[9px] font-black capitalize tracking-widest hover:bg-emerald-500 hover:text-black transition-all border border-emerald-500/20">

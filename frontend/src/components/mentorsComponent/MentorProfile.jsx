@@ -27,6 +27,8 @@ export default function MentorProfilePage({ viewMode ="all" }) {
  canEditMentor,
  handleUpdate,
  handleDelete,
+ handleRemoveFromBranch,
+ handleRemoveBranchAccess,
  permMutation,
  navigate,
  queryClient,
@@ -122,6 +124,10 @@ export default function MentorProfilePage({ viewMode ="all" }) {
  user_info={user_info}
  staffBranches={staffBranches}
  navigate={navigate}
+ isSuperAdmin={isSuperAdmin}
+ canEditMentor={canEditMentor}
+ handleRemoveFromBranch={handleRemoveFromBranch}
+ handleRemoveBranchAccess={handleRemoveBranchAccess}
  />
  )
  )}

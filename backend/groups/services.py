@@ -132,7 +132,10 @@ def transfer_student_to_group(student, new_group_id, request_user, reason, from_
         if old_enrollment:
             old_enrollment.is_active = False
             old_enrollment.save()
-        GroupEnrollment.objects.get_or_create(student=student, group=new_group, defaults={'is_active': True})
+        new_enrollment, _ = GroupEnrollment.objects.get_or_create(student=student, group=new_group)
+        if not new_enrollment.is_active:
+            new_enrollment.is_active = True
+            new_enrollment.save()
 
         # 2. To'lovni ko'chirish
         old_payment = Payment.objects.filter(
@@ -153,15 +156,18 @@ def transfer_student_to_group(student, new_group_id, request_user, reason, from_
                 old_payment.save()
             else:
                 # Yangi guruh uchun to'lov mavjud bo'lsa
-                if old_payment.is_paid and not existing_new.is_paid:
+                if old_payment.paid_amount > 0:
+                    existing_new.paid_amount += old_payment.paid_amount
+                    if old_payment.paid_at and (not existing_new.paid_at or old_payment.paid_at > existing_new.paid_at):
+                        existing_new.paid_at = old_payment.paid_at
+                        existing_new.marked_by = old_payment.marked_by
+                
+                if existing_new.paid_amount >= new_group_fee:
                     existing_new.is_paid = True
-                    existing_new.amount = old_payment.amount
-                    existing_new.paid_amount = old_payment.paid_amount
-                    existing_new.paid_at = old_payment.paid_at
-                    existing_new.marked_by = old_payment.marked_by
-                elif not existing_new.is_paid:
-                    # Agar to'lanmagan bo'lsa, narxni yangilab qo'yamiz
                     existing_new.amount = new_group_fee
+                else:
+                    existing_new.amount = new_group_fee
+                    existing_new.is_paid = False
                 
                 existing_new.save()
                 old_payment.delete()
@@ -181,6 +187,10 @@ def transfer_student_to_group(student, new_group_id, request_user, reason, from_
 
         # 4. HomeworkSubmission va MockTestResult: Ular Homework/MockTest bilan bog'langan, ular esa o'z guruhlari bilan qoladi
         #    (chunki ular o'tgan darslar uchun, guruh o'zgarganda esa bu tarixiy ma'lumotlar saqlanishi kerak)
+        
+        # 5. FinanceTransaction'larni yangi guruhga o'tkazish
+        from finance.models import FinanceTransaction
+        FinanceTransaction.objects.filter(student=student, group=old_group).update(group=new_group)
         
         # 6. Transfer log
         GroupTransfer.objects.create(
