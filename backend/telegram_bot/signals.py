@@ -22,9 +22,14 @@ def sync_student_telegram_id(sender, instance, created, **kwargs):
         if clean_phone.isdigit() and len(clean_phone) >= 9:
             last_9 = clean_phone[-9:]
             
-            # Telegram IDga ega bo'lgan boshqa faol o'quvchilarni tekshiramiz
+            # BUG FIX #4: Faqat faol va arxivlanmagan o'quvchilar orasidan qidirish.
+            # Avval is_active va is_archived filterlari yo'q edi — o'chirilgan o'quvchilardan
+            # ham telegram_id nusxalanishi mumkin edi.
             candidates = Student.objects.exclude(id=instance.id).filter(
-                Q(telegram_id__isnull=False, telegram_id__gt='') | 
+                is_active=True,
+                is_archived=False,
+            ).filter(
+                Q(telegram_id__isnull=False, telegram_id__gt='') |
                 Q(parent_telegram_id__isnull=False, parent_telegram_id__gt='')
             )
             
@@ -64,9 +69,13 @@ def sync_student_telegram_id(sender, instance, created, **kwargs):
         if clean_p.isdigit() and len(clean_p) >= 9:
             last_9_p = clean_p[-9:]
             
-            # Telegram IDga ega bo'lgan boshqa faol o'quvchilarni tekshiramiz
+            # BUG FIX #4: Faqat faol va arxivlanmagan o'quvchilar orasidan qidirish.
+            # Ota-ona raqami bo'yicha ham xuddi shu muammo mavjud edi.
             candidates = Student.objects.exclude(id=instance.id).filter(
-                Q(telegram_id__isnull=False, telegram_id__gt='') | 
+                is_active=True,
+                is_archived=False,
+            ).filter(
+                Q(telegram_id__isnull=False, telegram_id__gt='') |
                 Q(parent_telegram_id__isnull=False, parent_telegram_id__gt='')
             )
             
@@ -225,29 +234,38 @@ def notify_mock_test(sender, instance, created, **kwargs):
 @receiver(post_save, sender=Homework)
 def notify_new_homework_assigned(sender, instance, created, **kwargs):
     """Guruh uchun yangi uy ishi yaratilganda yuboriladigan xabarnoma"""
-    
+
     # Faqat yangi vazifa berilgandagina yuboramiz (tahrirlanganda yubormaslik uchun)
     if not created:
         return
-        
+
     group = instance.group
-    students = group.students.all()
-    
+
+    # BUG FIX #1 & #2: Faqat guruhda HOZIR AKTIV va arxivlanmagan o'quvchilarni olish.
+    # Avval group.students.all() ishlatilgan edi — bu GroupEnrollment.is_active=False bo'lgan
+    # (guruhdan chiqqan) va is_archived=True bo'lgan o'quvchilarga ham xabar yuborardi.
+    students = group.students.filter(
+        enrollments__group=group,
+        enrollments__is_active=True,
+        is_active=True,
+        is_archived=False,
+    ).distinct()
+
     desc_part = f"\nQo'shimcha: {instance.description}" if instance.description else ""
-    
+
     text = (
         f"<b>Yangi uy vazifasi berildi 🔔</b>\n\n"
         f"Guruh: {group.name}\n"
         f"Mavzu: {instance.title}{desc_part}\n\n"
         f"Iltimos, farzandingiz ushbu vazifani vaqtida bajarishini nazorat qiling."
     )
-    
+
     # Bir tarmoqda nechta foydalanuvchi bo'lmasin, hammalarining chat_id'sini set() ga yig'amiz
     target_chat_ids = set()
     for student in students:
         chat_ids = get_student_telegram_ids(student)
         target_chat_ids.update(chat_ids)
-        
+
     for cid in target_chat_ids:
         send_telegram_message_async(cid, text)
 @receiver(post_save, sender=HomeworkSubmission)

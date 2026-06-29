@@ -23,7 +23,8 @@ class BroadcastMessageView(APIView):
             return Response({"error": "Xabar matni kiritilmadi"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Base Queryset for students
-        students_qs = Student.objects.all()
+        # BUG FIX #2: Arxivlangan va o'chirilgan o'quvchilarni chiqarib tashlaymiz.
+        students_qs = Student.objects.filter(is_active=True, is_archived=False)
 
         # 1. Global (Barcha filiallar) - Faqat Super Admin uchun
         if send_to_all_branches:
@@ -48,7 +49,15 @@ class BroadcastMessageView(APIView):
             if not has_permission:
                 return Response({"error": "Siz ushbu guruhga xabar yuborish huquqiga ega emassiz"}, status=status.HTTP_403_FORBIDDEN)
             
-            students_qs = group.students.all()
+            # BUG FIX #1 & #2: Faqat guruhda HOZIR AKTIV va arxivlanmagan o'quvchilarni olish.
+            # group.students.all() edi — GroupEnrollment.is_active=False bo'lgan (guruhdan
+            # chiqqan) va is_archived=True bo'lgan o'quvchilarga ham xabar yuborardi.
+            students_qs = group.students.filter(
+                enrollments__group=group,
+                enrollments__is_active=True,
+                is_active=True,
+                is_archived=False,
+            ).distinct()
 
         # 3. Filial bo'yicha
         elif branch_id:
@@ -124,13 +133,20 @@ class BotStatisticsView(APIView):
         branch_id = request.query_params.get('branch_id')
         group_id = request.query_params.get('group_id')
         
-        qs = Student.objects.all()
-        
+        # BUG FIX #2: Faqat faol va arxivlanmagan o'quvchilarni sanash.
+        qs = Student.objects.filter(is_active=True, is_archived=False)
+
         if branch_id:
             qs = qs.filter(branch_id=branch_id)
         if group_id:
             group_obj = get_object_or_404(Group, id=group_id)
-            qs = group_obj.students.all()
+            # BUG FIX #1: Faqat aktiv enrollment bo'lgan o'quvchilar.
+            qs = group_obj.students.filter(
+                enrollments__group=group_obj,
+                enrollments__is_active=True,
+                is_active=True,
+                is_archived=False,
+            ).distinct()
             
         # O'quvchilarni sanash (telegram_id bo'sh bo'lmaganlar)
         students_bot = qs.exclude(Q(telegram_id__isnull=True) | Q(telegram_id='')).count()
@@ -157,7 +173,8 @@ class ExportUnregisteredStudentsView(APIView):
         if user.role not in ['super_admin', 'admin']:
             return Response({"error": "Sizda bu huquqga ega emassiz"}, status=status.HTTP_403_FORBIDDEN)
             
-        qs = Student.objects.all()
+        # BUG FIX #2: Faqat faol va arxivlanmagan o'quvchilarni eksport qilish.
+        qs = Student.objects.filter(is_active=True, is_archived=False)
         
         # Filter by branch
         if user.role == 'admin':
@@ -188,7 +205,13 @@ class ExportUnregisteredStudentsView(APIView):
                 if group.branch_id in allowed_branches: has_permission = True
             if not has_permission:
                 return Response({"error": "Siz ushbu guruhga ruxsat yo'q"}, status=status.HTTP_403_FORBIDDEN)
-            qs = group.students.all()
+            # BUG FIX #1: Faqat aktiv enrollment bo'lgan o'quvchilar.
+            qs = group.students.filter(
+                enrollments__group=group,
+                enrollments__is_active=True,
+                is_active=True,
+                is_archived=False,
+            ).distinct()
             
         # Filter for unregistered (no telegram_id and no parent_telegram_id
         unregistered = qs.filter(
@@ -215,8 +238,16 @@ class ExportUnregisteredStudentsView(APIView):
             
         # Fill data
         for student in unregistered:
-            group_name = student.group.name if student.group else "Guruhsiz"
-            branch_name = student.branch.name if student.branch else "Filialless"
+            # BUG FIX #3: Legacy student.group (FK) o'rniga M2M orqali aktiv guruhlarni olish.
+            # student.group — eski, ishlatilmaydigan FK. Haqiqiy guruhlar student.groups (M2M) da.
+            active_group_names = list(
+                student.groups.filter(
+                    enrollments__student=student,
+                    enrollments__is_active=True,
+                ).values_list('name', flat=True).distinct()
+            )
+            group_name = ", ".join(active_group_names) if active_group_names else "Guruhsiz"
+            branch_name = student.branch.name if student.branch else "Nomalum"
             ws.append([
                 student.id,
                 student.full_name,
