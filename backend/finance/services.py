@@ -178,14 +178,30 @@ def _safe_attendance_stats_for_branch(branch, today):
 
         # Davomat qaydlarini olamiz
         base_attendance_qs = Attendance.objects.filter(group__branch=branch, date=today)
+
+        # FIX: Agar bugun uchun hech qanday davomat yozuvi mavjud bo'lmasa
+        # (Celery task ishlamagan yoki kechikkan), "hamma kelmadi" deb hisoblab bo'lmaydi.
+        # Bu holat ayniqsa yangi kun soat 00:00-00:05 orasida ro'y beradi.
+        if not base_attendance_qs.exists():
+            return {"absent": 0, "total": len(total_students_ids)}
+
         present_ids = set(
             base_attendance_qs.filter(is_present=True)
             .values_list("student_id", flat=True)
             .distinct()
         )
-
+        # AbsentTodayStudentsView bilan bir xil mantiq:
+        # Faqat is_present=False bo'lgan va hech bo'lmasa bitta guruhda
+        # ham is_present=True bo'lmagan o'quvchilarni "kelmadi" deb hisoblaymiz.
+        absent_ids = set(
+            base_attendance_qs.filter(is_present=False)
+            .exclude(student_id__in=present_ids)
+            .values_list("student_id", flat=True)
+            .distinct()
+        )
+        # Faqat bugun darsi bor va aniq belgilangan o'quvchilar hisobga olinadi
+        absent_count = len(total_students_ids & absent_ids)
         present_count = len(total_students_ids & present_ids)
-        absent_count = len(total_students_ids) - present_count
 
         return {
             "absent": absent_count,
@@ -253,14 +269,29 @@ def _safe_attendance_stats_for_user(user, today):
         if user.role == "admin":
             base_attendance_qs = base_attendance_qs.filter(group__branch=user.branch)
 
+        # FIX: Agar bugun uchun hech qanday davomat yozuvi mavjud bo'lmasa
+        # (Celery task ishlamagan yoki kechikkan), "hamma kelmadi" deb hisoblab bo'lmaydi.
+        # Bu holat ayniqsa yangi kun soat 00:00-00:05 orasida ro'y beradi.
+        if not base_attendance_qs.exists():
+            return {"absent": 0, "total": len(total_students_ids)}
+
         present_ids = set(
             base_attendance_qs.filter(is_present=True)
             .values_list("student_id", flat=True)
             .distinct()
         )
-
+        # AbsentTodayStudentsView bilan bir xil mantiq:
+        # Faqat is_present=False bo'lgan va hech bo'lmasa bitta guruhda
+        # ham is_present=True bo'lmagan o'quvchilarni "kelmadi" deb hisoblaymiz.
+        absent_ids = set(
+            base_attendance_qs.filter(is_present=False)
+            .exclude(student_id__in=present_ids)
+            .values_list("student_id", flat=True)
+            .distinct()
+        )
+        # Faqat bugun darsi bor va aniq belgilangan o'quvchilar hisobga olinadi
+        absent_count = len(total_students_ids & absent_ids)
         present_count = len(total_students_ids & present_ids)
-        absent_count = len(total_students_ids) - present_count
 
         return {
             "absent": absent_count,
