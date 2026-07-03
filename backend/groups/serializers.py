@@ -176,7 +176,10 @@ class StudentSerializer(serializers.ModelSerializer):
     group = serializers.PrimaryKeyRelatedField(
         queryset=Group.objects.all(), allow_null=True
     )
-    groups = GroupSimpleSerializer(many=True, read_only=True)
+    # BUG FIX: groups = GroupSimpleSerializer(many=True, read_only=True) barcha
+    # GroupEnrollment yozuvlarini (is_active=False larni ham) ko'rsatardi.
+    # Endi faqat is_active=True bo'lgan guruhlar qaytariladi.
+    groups = serializers.SerializerMethodField()
     # Yangi qo'shiladigan maydonlar
     current_payment_status = serializers.SerializerMethodField()
     current_payment_id = serializers.SerializerMethodField()
@@ -209,6 +212,16 @@ class StudentSerializer(serializers.ModelSerializer):
             "include_in_mentor_salary",
         )
         read_only_fields = ("joined_at",)
+
+    def get_groups(self, obj) -> list:
+        """Faqat is_active=True bo'lgan enrollmentlardagi guruhlarni qaytaradi.
+        Bu o'quvchi ko'chirilgandan keyin eski guruhini ko'rsatib qolmasligini ta'minlaydi."""
+        from .models import GroupEnrollment
+        active_group_ids = GroupEnrollment.objects.filter(
+            student=obj, is_active=True
+        ).values_list('group_id', flat=True)
+        active_groups = Group.objects.filter(id__in=active_group_ids)
+        return GroupSimpleSerializer(active_groups, many=True, context=self.context).data
 
     def get_current_payment_status(self, obj) -> bool:
         """O'quvchining shu oydagi to'lov holati (True/False)"""
@@ -527,7 +540,10 @@ class GroupNestedSerializer(serializers.ModelSerializer):
 
 class StudentNestedSerializer(serializers.ModelSerializer):
     group = GroupNestedSerializer(read_only=True)
-    groups = GroupNestedSerializer(many=True, read_only=True)
+    # BUG FIX: groups = GroupNestedSerializer(many=True, read_only=True) barcha
+    # GroupEnrollment yozuvlarini (is_active=False larni ham) ko'rsatardi.
+    # Endi faqat is_active=True bo'lgan guruhlar qaytariladi.
+    groups = serializers.SerializerMethodField()
     branch_id = serializers.IntegerField(source="group.branch.id", read_only=True)
 
     class Meta:
@@ -554,6 +570,16 @@ class StudentNestedSerializer(serializers.ModelSerializer):
             "include_in_mentor_salary",
         )
         read_only_fields = ("joined_at",)
+
+    def get_groups(self, obj) -> list:
+        """Faqat is_active=True bo'lgan enrollmentlardagi guruhlarni qaytaradi.
+        Bu o'quvchi ko'chirilgandan keyin eski guruhini ko'rsatib qolmasligini ta'minlaydi."""
+        from .models import GroupEnrollment
+        active_group_ids = GroupEnrollment.objects.filter(
+            student=obj, is_active=True
+        ).values_list('group_id', flat=True)
+        active_groups = Group.objects.filter(id__in=active_group_ids)
+        return GroupNestedSerializer(active_groups, many=True, context=self.context).data
 
 
 from django.db.models import Q

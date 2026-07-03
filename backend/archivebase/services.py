@@ -203,7 +203,12 @@ def move_group_to_archive(group, archived_by, reason: str = "") -> ArchivedGroup
         GroupEnrollment.objects.filter(student=student, group=group).delete()
         # Agar legacy FK ham shu guruhga ko'rsatib turgan bo'lsa — boshqa guruhga o'tkazamiz
         if student.group_id == group.id:
-            next_group = student.groups.exclude(id=group.id).first()
+            # BUG FIX: student.groups — barcha (is_active=False ham) enrollmentlarni qaytaradi.
+            # Faqat FAOL enrollmentlardagi guruhni keyingi guruh sifatida olamiz.
+            next_group = Group.objects.filter(
+                enrollments__student=student,
+                enrollments__is_active=True
+            ).exclude(id=group.id).first()
             student.group = next_group
             student.branch = next_group.branch if next_group else student.branch
             student.save(update_fields=['group', 'branch'])
@@ -301,7 +306,13 @@ def restore_student_from_archive(archived_student_id, restored_by):
     # Many-to-Many bog'liqlikni ham tiklaymiz
     if group:
         from groups.models import GroupEnrollment
-        GroupEnrollment.objects.get_or_create(student=student, group=group)
+        # BUG #6 FIX: Agar is_active=False bo'lgan eski enrollment mavjud bo'lsa, uni yoqamiz.
+        enrollment, created = GroupEnrollment.objects.get_or_create(
+            student=student, group=group, defaults={"is_active": True}
+        )
+        if not created and not enrollment.is_active:
+            enrollment.is_active = True
+            enrollment.save(update_fields=['is_active'])
     
     return student
 
@@ -342,7 +353,7 @@ def restore_staff_from_archive(archived_staff_id, restored_by):
     )
     
     # Parolni o'rnatish (default)
-    user.set_password('changeme123')
+    # BUG #7 FIX: set_password ikki marta chaqirilgan edi — keraksiz takrorlash.
     user.set_password('changeme123')
     user.save()
 
@@ -491,10 +502,15 @@ def restore_group_from_archive(archived_group_id, restored_by):
                 )
 
                 # GroupEnrollment yaratish (M2M)
-                GroupEnrollment.objects.get_or_create(
+                # BUG #6 FIX: Agar eski is_active=False enrollment mavjud bo'lsa, uni yoqamiz.
+                enr, enr_created = GroupEnrollment.objects.get_or_create(
                     student=student,
-                    group=group
+                    group=group,
+                    defaults={"is_active": True}
                 )
+                if not enr_created and not enr.is_active:
+                    enr.is_active = True
+                    enr.save(update_fields=['is_active'])
 
                 # Arxiv yozuvini o'chiramiz (aralashib ketmasligi uchun)
                 archived_student.delete()

@@ -639,3 +639,316 @@ def calculate_group_revenue_and_mentor_share(
         "paid_students": paid_students,
         "unpaid_students": unpaid_students,
     }
+
+
+def calculate_transfer_salary_adjustment(
+    profile,
+    mentor_group_ids,
+    month_date,
+    payment_map,
+    lesson_dates_cache=None,
+    commission_basis="paid",
+):
+    """
+    O'quvchi oy o'rtasida ko'chirilganda mentor oyligiga tuzatish hisoblaydi.
+
+    Mavjud calculate_group_revenue_and_mentor_share logikasi O'ZGARTIRILMAYDI.
+    Bu funksiya faqat bir POST-PROCESSING qatlami bo'lib:
+
+    - Transfer OUT bo'lgan guruh mentori (A→B): eski guruhda hisob 0, tuzatish QO'SHILADI.
+    - Transfer IN bo'lgan guruh mentori (A→B): barcha davomat yangi guruhda saqlanadi,
+      shuning uchun oylik ORTIQCHA hisoblanadi. Tuzatish AYIRILADI.
+
+    Status bo'yicha hisoblash:
+    ┌──────────────────┬──────────────────────────────────────────────────────────┐
+    │ discount         │ Kelgan darslar soniga qarab taqsimlash (davomat asosida) │
+    │ negotiated       │ custom_fee × (kelgan_darslar / jami_darslar) × foiz      │
+    │ regular/low_inc  │ to'lov × (eski_dars_soni / jami_dars_soni) × foiz        │
+    └──────────────────┴──────────────────────────────────────────────────────────┘
+
+    jami_dars_soni = eski_guruh_dars_soni_oldin + yangi_guruh_dars_soni_keyin
+
+    Qaytaradi: Decimal (musbat yoki manfiy) — total_salary ga qo'shiladi.
+    """
+    from django.db.models import Q
+    from groups.models import GroupTransfer
+    from homework_attends.models import Attendance
+    from finance.models import Payment, MentorGroupSalaryConfig
+
+    if profile.salary_type == "fixed":
+        return Decimal("0")
+
+    month_date = normalize_month(month_date)
+    if lesson_dates_cache is None:
+        lesson_dates_cache = {}
+
+    # Bu oy ichida mentor guruhlarini qamrab olgan barcha transferlar
+    # Set ga o'tkazamiz — in/not-in O(1) bo'ladi
+    mentor_group_ids_set = set(mentor_group_ids)
+    transfers = list(
+        GroupTransfer.objects.filter(
+            transfer_date__year=month_date.year,
+            transfer_date__month=month_date.month,
+        ).filter(
+            Q(from_group_id__in=mentor_group_ids_set) | Q(to_group_id__in=mentor_group_ids_set)
+        ).select_related("student", "from_group", "to_group")
+    )
+
+    if not transfers:
+        return Decimal("0")
+
+    # To'lov yangi guruhda saqlangan — bu guruh mentor guruhlarida bo'lmasligi mumkin.
+    # Shu holat uchun qo'shimcha payment_map tuzamiz.
+    outside_to_ids = [
+        t.to_group_id
+        for t in transfers
+        if t.from_group_id in mentor_group_ids_set and t.to_group_id not in mentor_group_ids_set
+    ]
+    extra_payments = {}
+    if outside_to_ids:
+        for p in Payment.objects.filter(
+            group_id__in=outside_to_ids,
+            month__year=month_date.year,
+            month__month=month_date.month,
+        ).select_related("student"):
+            extra_payments[(p.student_id, p.group_id)] = p
+
+    # Kengaytirilgan to'lov xaritasi (mentor + transfer yo'nalish guruhlar)
+    full_payment_map = {**payment_map, **extra_payments}
+
+    # Guruh darajasidagi maosh konfiguratsiyalarini cache ga olamiz
+    salary_configs = {
+        (sc.mentor_id, sc.group_id): sc
+        for sc in MentorGroupSalaryConfig.objects.filter(
+            mentor=profile.user, group_id__in=mentor_group_ids_set
+        )
+    }
+
+    def _commission(group_id):
+        """Bu guruh uchun (is_pct, pct, is_count, per_student) ni qaytaradi."""
+        sc = salary_configs.get((profile.user.id, group_id))
+        if sc:
+            if sc.salary_type == "percentage":
+                return True, sc.commission_percentage / Decimal("100"), False, Decimal("0")
+            if sc.salary_type == "student_count":
+                return False, Decimal("0"), True, sc.per_student_amount
+        # Guruh konfiguratsiyasi yo'q → profil darajasi ishlatiladi
+        if profile.salary_type == "percentage":
+            return True, profile.commission_percentage / Decimal("100"), False, Decimal("0")
+        if profile.salary_type == "student_count":
+            return False, Decimal("0"), True, profile.per_student_amount
+        return False, Decimal("0"), False, Decimal("0")
+
+    def _lesson_dates(group):
+        """Guruh dars kunlarini cache dan olib qaytaradi."""
+        if group.id not in lesson_dates_cache:
+            lesson_dates_cache[group.id] = group.get_lesson_dates(month_date.year, month_date.month)
+        return lesson_dates_cache[group.id]
+
+    net_adjustment = Decimal("0")
+
+    for transfer in transfers:
+        student = transfer.student
+        from_group = transfer.from_group
+        to_group = transfer.to_group
+        t_date = transfer.transfer_date
+
+        # teacher_negotiated o'quvchilar uchun mentor oylik hisosi yo'q
+        if student.status == "teacher_negotiated":
+            continue
+
+        from_dates = _lesson_dates(from_group)
+        to_dates = _lesson_dates(to_group)
+
+        # Transfer sanasigacha eski guruh dars kunlari
+        from_before = [d for d in from_dates if d < t_date]
+        # Transfer sanasidan boshlab yangi guruh dars kunlari
+        to_after = [d for d in to_dates if d >= t_date]
+
+        # Jami "dars birliklari" — proportsiya uchun maxraj
+        total_units = len(from_before) + len(to_after)
+        if total_units == 0:
+            continue
+
+        # To'lov endi yangi guruhda saqlangan
+        p = full_payment_map.get((student.id, to_group.id))
+        paid_amount = Decimal(str(p.paid_amount or 0)) if p else Decimal("0")
+        is_fully_paid = p.is_paid if p else False
+        payment_amount = Decimal(str(p.amount or 0)) if p else Decimal("0")
+        custom_fee = (
+            Decimal(str(student.custom_fee))
+            if student.custom_fee is not None
+            else Decimal("0")
+        )
+
+        # ═══════════════════════════════════════════════════════════════════
+        # A) O'quvchi MENTOR GURUHIDAN KETDI (transfer OUT)
+        #    Oddiy hisob: payment yangi guruhda → mentor 0 olgan
+        #    Tuzatish: transfer sanasigacha bo'lgan to'g'ri ulushni QO'SHAMIZ
+        # ═══════════════════════════════════════════════════════════════════
+        if from_group.id in mentor_group_ids_set and from_before:
+            is_pct, pct, is_cnt, per_st = _commission(from_group.id)
+            if not is_pct and not is_cnt:
+                pass  # fixed — above checked
+            else:
+                pre_count = len(from_before)
+                total_from = max(len(from_dates), 1)
+                total_to = max(len(to_dates), 1)
+                # negotiated uchun: barcha birliqlar yig'indisi (from_before + to_after)
+                # — ikkala mentor ulushi yig'indig'i 100% bo'lishi uchun
+                total_units_from = max(total_units, 1)
+
+                if student.status == "discount":
+                    # Davomat yangi guruh nomida saqlangan, lekin sanalar eski guruh kunlari.
+                    # fee_base: GroupTransfer snapshot yoki custom_fee yoki from_group narxi
+                    present_before = Attendance.objects.filter(
+                        student=student,
+                        date__in=from_before,
+                        is_present=True,
+                        marked_by__isnull=False,
+                    ).count()
+                    if custom_fee > 0:
+                        fee_base = custom_fee
+                    elif transfer.old_group_fee > 0:
+                        fee_base = Decimal(str(transfer.old_group_fee))
+                    else:
+                        fee_base = Decimal(str(from_group.monthly_price))
+                    # Kunlik narx: to'lov guruhining jami dars kunlariga bo'linadi
+                    daily = fee_base / Decimal(str(total_to))
+                    earned = daily * Decimal(str(present_before))
+                    if is_pct:
+                        net_adjustment += earned * pct
+                    elif is_cnt:
+                        net_adjustment += (per_st / Decimal(str(total_to))) * Decimal(str(present_before))
+
+                elif student.status == "negotiated":
+                    # Kelishilgan narx × kelgan darslar / JAMI BIRLIKLAR
+                    # (total_units_from = from_before + to_after) — ikki mentor ulushi 100%
+                    present_before = Attendance.objects.filter(
+                        student=student,
+                        date__in=from_before,
+                        is_present=True,
+                        marked_by__isnull=False,
+                    ).count()
+                    fee_base = custom_fee if custom_fee > 0 else Decimal("0")
+                    per_lesson = fee_base / Decimal(str(total_units_from))
+                    earned = per_lesson * Decimal(str(present_before))
+                    is_paid_ok = paid_amount > 0 or is_fully_paid
+                    if is_pct:
+                        if commission_basis == "paid":
+                            if is_paid_ok:
+                                net_adjustment += earned * pct
+                        else:
+                            net_adjustment += earned * pct
+                    elif is_cnt:
+                        mentor_fee = (per_st / Decimal(str(total_units_from))) * Decimal(str(present_before))
+                        if commission_basis == "paid":
+                            if is_paid_ok:
+                                net_adjustment += mentor_fee
+                        else:
+                            net_adjustment += mentor_fee
+
+                else:
+                    # regular / low_income → dars kunlari proportsiyasi
+                    proportion = Decimal(str(pre_count)) / Decimal(str(total_units))
+                    if is_pct:
+                        if commission_basis == "paid":
+                            if paid_amount > 0 or is_fully_paid:
+                                actual = payment_amount if is_fully_paid else paid_amount
+                                net_adjustment += actual * proportion * pct
+                        else:
+                            contract = Decimal(str(from_group.monthly_price))
+                            net_adjustment += contract * proportion * pct
+                    elif is_cnt:
+                        if commission_basis == "paid":
+                            if paid_amount > 0 or is_fully_paid:
+                                net_adjustment += per_st * proportion
+                        else:
+                            net_adjustment += per_st * proportion
+
+        # ═══════════════════════════════════════════════════════════════════
+        # B) O'quvchi MENTOR GURUHIGA KELDI (transfer IN)
+        #    Oddiy hisob: barcha davomat yangi guruhda → mentor TO'LIQ olgan
+        #    Tuzatish: transfer sanasigacha bo'lgan ortiqcha ulushni AYIRAMIZ
+        # ═══════════════════════════════════════════════════════════════════
+        if to_group.id in mentor_group_ids_set:
+            is_pct, pct, is_cnt, per_st = _commission(to_group.id)
+            if not is_pct and not is_cnt:
+                pass
+            else:
+                total_to = max(len(to_dates), 1)
+                # negotiated uchun: Case A bilan bir xil denominator (total_units)
+                total_units_to = max(total_units, 1)
+
+                if student.status == "discount":
+                    # Yangi guruh nomida saqlangan lekin transfer sanasidan OLDINGI davomat
+                    present_before_new = Attendance.objects.filter(
+                        student=student,
+                        group=to_group,
+                        date__lt=t_date,
+                        is_present=True,
+                        marked_by__isnull=False,
+                    ).count()
+                    if present_before_new > 0:
+                        if custom_fee > 0:
+                            fee_base = custom_fee
+                        elif transfer.new_group_fee > 0:
+                            fee_base = Decimal(str(transfer.new_group_fee))
+                        else:
+                            fee_base = Decimal(str(to_group.monthly_price))
+                        daily = fee_base / Decimal(str(total_to))
+                        over = daily * Decimal(str(present_before_new))
+                        if is_pct:
+                            net_adjustment -= over * pct
+                        elif is_cnt:
+                            net_adjustment -= (per_st / Decimal(str(total_to))) * Decimal(str(present_before_new))
+
+                elif student.status == "negotiated":
+                    present_before_new = Attendance.objects.filter(
+                        student=student,
+                        group=to_group,
+                        date__lt=t_date,
+                        is_present=True,
+                        marked_by__isnull=False,
+                    ).count()
+                    if present_before_new > 0:
+                        fee_base = custom_fee if custom_fee > 0 else Decimal("0")
+                        # Case A bilan bir xil denominator — total_units_to
+                        per_lesson = fee_base / Decimal(str(total_units_to))
+                        over = per_lesson * Decimal(str(present_before_new))
+                        is_paid_ok = paid_amount > 0 or is_fully_paid
+                        if is_pct:
+                            if commission_basis == "paid":
+                                if is_paid_ok:
+                                    net_adjustment -= over * pct
+                            else:
+                                net_adjustment -= over * pct
+                        elif is_cnt:
+                            over_fee = (per_st / Decimal(str(total_units_to))) * Decimal(str(present_before_new))
+                            if commission_basis == "paid":
+                                if is_paid_ok:
+                                    net_adjustment -= over_fee
+                            else:
+                                net_adjustment -= over_fee
+
+                else:
+                    # regular / low_income
+                    # Ortiqcha proportsiya = eski guruh dars kunlari / jami dars birliklari
+                    pre_count_units = len(from_before)
+                    over_proportion = Decimal(str(pre_count_units)) / Decimal(str(total_units))
+                    if is_pct:
+                        if commission_basis == "paid":
+                            if paid_amount > 0 or is_fully_paid:
+                                actual = payment_amount if is_fully_paid else paid_amount
+                                net_adjustment -= actual * over_proportion * pct
+                        else:
+                            contract = Decimal(str(to_group.monthly_price))
+                            net_adjustment -= contract * over_proportion * pct
+                    elif is_cnt:
+                        if commission_basis == "paid":
+                            if paid_amount > 0 or is_fully_paid:
+                                net_adjustment -= per_st * over_proportion
+                        else:
+                            net_adjustment -= per_st * over_proportion
+
+    return floor_amount(net_adjustment)

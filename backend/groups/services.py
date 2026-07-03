@@ -52,7 +52,18 @@ def enroll_student_to_group(group, student_id, create_payment=True):
                     p_obj.amount = final_amount
                     p_obj.save()
             return enrollment, True
-        return enrollment, False
+        else:
+            # Agar enrollment avvaldan bor bo'lsa, u is_active=False bo'lishi mumkin
+            if not enrollment.is_active:
+                enrollment.is_active = True
+                enrollment.save()
+                
+                # Agar o'quvchining asosiy guruhi bo'lmasa, uni shu guruhga ulaymiz
+                if not student.group:
+                    student.group = group
+                    student.save()
+                    
+            return enrollment, False
 
 def unenroll_student_from_group(group, student_id, request_user):
     """O'quvchini guruhdan chiqarish logikasi"""
@@ -87,8 +98,10 @@ def unenroll_student_from_group(group, student_id, request_user):
                 parent_telegram_id=student.parent_telegram_id
             )
             
-            # Legacy fieldlarni va branchni qolgan guruhlardan biriga yangilaymiz
-            next_enrollment = GroupEnrollment.objects.filter(student=student).first()
+            # BUG #1 FIX: Faqat is_active=True bo'lgan enrollment olinadi.
+            # Avval is_active filtrisiz edi — hozirgina is_active=False qilingan
+            # enrollment qaytarib olinardi va student.group noto'g'ri bo'lib qolardi.
+            next_enrollment = GroupEnrollment.objects.filter(student=student, is_active=True).first()
             if next_enrollment:
                 student.group = next_enrollment.group
                 # Branchni ham qolgan guruhga moslaymiz
@@ -122,6 +135,11 @@ def transfer_student_to_group(student, new_group_id, request_user, reason, from_
                 return gr.monthly_price
             if st.status in ['low_income', 'negotiated']:
                 return st.custom_fee if st.custom_fee is not None else Decimal('0')
+            # BUG FIX: 'discount' o'quvchilar uchun to'lov davomatga qarab hisoblanadi,
+            # bu yerda esa snapshot narxi sifatida guruh narxini olamiz.
+            # Asl hisob transfer tugagach qayta amalga oshiriladi (pastda).
+            if st.status == 'discount':
+                return gr.monthly_price
             return gr.monthly_price
 
         old_group_fee = floor_amount(get_effective_fee(student, old_group))
@@ -151,8 +169,18 @@ def transfer_student_to_group(student, new_group_id, request_user, reason, from_
         if old_payment:
             if not existing_new:
                 old_payment.group = new_group
-                if not old_payment.is_paid:
-                    old_payment.amount = new_group_fee
+                old_payment.amount = new_group_fee
+                
+                if old_payment.paid_amount >= new_group_fee:
+                    old_payment.is_paid = True
+                    old_payment.is_partial = False
+                elif old_payment.paid_amount > 0:
+                    old_payment.is_paid = False
+                    old_payment.is_partial = True
+                else:
+                    old_payment.is_paid = False
+                    old_payment.is_partial = False
+                    
                 old_payment.save()
             else:
                 # Yangi guruh uchun to'lov mavjud bo'lsa
@@ -162,12 +190,17 @@ def transfer_student_to_group(student, new_group_id, request_user, reason, from_
                         existing_new.paid_at = old_payment.paid_at
                         existing_new.marked_by = old_payment.marked_by
                 
+                existing_new.amount = new_group_fee
+                
                 if existing_new.paid_amount >= new_group_fee:
                     existing_new.is_paid = True
-                    existing_new.amount = new_group_fee
-                else:
-                    existing_new.amount = new_group_fee
+                    existing_new.is_partial = False
+                elif existing_new.paid_amount > 0:
                     existing_new.is_paid = False
+                    existing_new.is_partial = True
+                else:
+                    existing_new.is_paid = False
+                    existing_new.is_partial = False
                 
                 existing_new.save()
                 old_payment.delete()
@@ -182,15 +215,48 @@ def transfer_student_to_group(student, new_group_id, request_user, reason, from_
                 p_obj.amount = new_group_fee
                 p_obj.save()
 
-        # 3. Davomat (Attendance) records'ni yangilash (o'quvchining eski guruhdagi barcha davomatlari yangi guruhga o'tadi)
-        Attendance.objects.filter(student=student, group=old_group).update(group=new_group)
+        # 3. Davomat (Attendance) records'ni yangilash:
+        # BUG #3 FIX: Faqat JORIY OY davomati ko'chiriladi.
+        # Avval barcha davomat filter(student, old_group) bilan ko'chirilardi —
+        # o'tgan oylar davomati ham yangi guruhga o'tar, tarixiy hisobotlar buzilardi.
+        Attendance.objects.filter(
+            student=student,
+            group=old_group,
+            date__year=current_month_start.year,
+            date__month=current_month_start.month,
+        ).update(group=new_group)
+
+        # 3a. 'discount' (davomatga asosli) o'quvchi uchun to'lovni qayta hisoblash.
+        # Davomat yangi guruhga o'tkazilgandan KEYIN chaqiriladi, chunki
+        # calculate_attendance_based_student_payment yangi guruh davomatiga qaraydi.
+        if student.status == 'discount':
+            from finance.utils import calculate_attendance_based_student_payment
+            recalculated_amount = calculate_attendance_based_student_payment(
+                student, new_group, current_month_start
+            )
+            # Ko'chirilgan (yoki yangi yaratilgan) to'lovni yangilash
+            updated_payment = Payment.objects.filter(
+                student=student, group=new_group, month=current_month_start
+            ).first()
+            if updated_payment and not updated_payment.is_paid:
+                updated_payment.amount = recalculated_amount
+                updated_payment.save()
+            logger.debug(
+                f"[Transfer] discount student {student.full_name} "
+                f"uchun to'lov qayta hisoblandi: {recalculated_amount}"
+            )
 
         # 4. HomeworkSubmission va MockTestResult: Ular Homework/MockTest bilan bog'langan, ular esa o'z guruhlari bilan qoladi
         #    (chunki ular o'tgan darslar uchun, guruh o'zgarganda esa bu tarixiy ma'lumotlar saqlanishi kerak)
         
         # 5. FinanceTransaction'larni yangi guruhga o'tkazish
         from finance.models import FinanceTransaction
-        FinanceTransaction.objects.filter(student=student, group=old_group).update(group=new_group)
+        FinanceTransaction.objects.filter(
+            student=student, 
+            group=old_group,
+            date__year=current_month_start.year,
+            date__month=current_month_start.month
+        ).update(group=new_group)
         
         # 6. Transfer log
         GroupTransfer.objects.create(
@@ -207,7 +273,17 @@ def transfer_student_to_group(student, new_group_id, request_user, reason, from_
         # 7. Student model yangilash (agar student.group shu eski guruh bo'lsa yoki umuman bo'lmasa)
         if student.group == old_group or not student.group:
             student.group = new_group
-            student.branch = new_group.branch
+            
+            # Agar o'quvchining eski filialida boshqa faol guruhlari qolmagan bo'lsagina profil filiali o'zgaradi
+            has_other_groups_in_old_branch = GroupEnrollment.objects.filter(
+                student=student,
+                group__branch=old_group.branch,
+                is_active=True
+            ).exclude(group=old_group).exists()
+            
+            if not has_other_groups_in_old_branch:
+                student.branch = new_group.branch
+                
             student.save()
         
     return True

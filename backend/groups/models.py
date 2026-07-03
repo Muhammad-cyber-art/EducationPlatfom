@@ -272,9 +272,15 @@ class Student(models.Model):
         # ✅ Task 1: M2M va Enrollment synchronization
         # Agar ForeignKey 'group' o'rnatilgan bo'lsa, Enrollment ham mavjudligiga ishonch hosil qilamiz
         if self.group:
-            GroupEnrollment.objects.get_or_create(
+            # BUG #5 FIX: get_or_create faqat yangi yaratilganda defaults ni qo'llaydi.
+            # Agar is_active=False bo'lgan eski enrollment mavjud bo'lsa — u yoqilmagan qolardi.
+            # Endi aniq ravishda is_active=True ga o'tkaziladi.
+            obj, created = GroupEnrollment.objects.get_or_create(
                 student=self, group=self.group, defaults={"is_active": True}
             )
+            if not created and not obj.is_active:
+                obj.is_active = True
+                obj.save(update_fields=['is_active'])
 
     def get_absences_count(self, year, month, group=None):
         """O'quvchining berilgan oydagi qoldirgan darslari sonini qaytaradi.

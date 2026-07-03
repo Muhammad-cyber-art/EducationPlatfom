@@ -588,7 +588,12 @@ class GroupViewSet(viewsets.ModelViewSet):
 
 class StudentViewSet(viewsets.ModelViewSet):
     """O'quvchilarni boshqarish ViewSet"""
-    queryset = Student.objects.select_related('group', 'branch').all()
+    # BUG #2 FIX: is_active=True va is_archived=False filtrlari qo'shildi.
+    # Avval .all() ishlatilgani uchun arxivlangan va o'chirilgan o'quvchilar ham
+    # qidiruvda va ro'yxatda chiqar edi.
+    queryset = Student.objects.select_related('group', 'branch').filter(
+        is_active=True, is_archived=False
+    )
     serializer_class = StudentSerializer
     pagination_class = StandardResultsSetPagination
     permission_classes = [IsStudentGroupOwnerOrSuperAdmin]
@@ -606,17 +611,25 @@ class StudentViewSet(viewsets.ModelViewSet):
             return qs
             
         if user.role == 'admin':
-            # AGAR qidiruv bo'layotgan bo'lsa (dublikatlarni topish uchun) yoki shunchaki ma'lumot ko'rilayotgan bo'lsa (retrieve)
-            if self.request.query_params.get('search') or self.action == 'retrieve':
+            # BUG #4 FIX: Qidiruv paytida ham filial cheklovi saqlanadi.
+            # Avval search bo'lsa filial filtridan o'tib, admin butun bazani ko'ra olardi.
+            # Faqat retrieve (ID bo'yicha ko'rish) uchun cheklov olib tashlanadi —
+            # bu dublikat topish funksiyasi uchun zarur.
+            if self.action == 'retrieve':
                 return qs
 
             allowed_branches = [user.branch.id] if user.branch else []
             if hasattr(user, 'branch_accesses'):
                 allowed_branches.extend(user.branch_accesses.values_list('branch_id', flat=True))
             
+            # BUG FIX: Q(groups__branch_id__in=...) — barcha GroupEnrollment larni
+            # (is_active=False ham) ko'rib chiqadi. Faqat FAOL enrollmentlardagi filiallarni
+            # tekshirish uchun enrollments__ reverse relation ishlatamiz.
+            from .models import GroupEnrollment as GE
+            
             return qs.filter(
                 Q(branch_id__in=allowed_branches) | 
-                Q(groups__branch_id__in=allowed_branches)
+                Q(enrollments__is_active=True, enrollments__group__branch_id__in=allowed_branches)
             ).distinct()
             
         if user.role == 'mentor':
@@ -632,15 +645,18 @@ class StudentViewSet(viewsets.ModelViewSet):
                 if hasattr(user, 'branch_accesses'):
                     allowed_branches.extend(user.branch_accesses.values_list('branch_id', flat=True))
                 
+                # BUG FIX: is_active=True bo'lgan enrollmentlar orqali filtr
                 return qs.filter(
                     Q(branch_id__in=allowed_branches) | 
-                    Q(groups__branch_id__in=allowed_branches)
+                    Q(enrollments__is_active=True, enrollments__group__branch_id__in=allowed_branches)
                 ).distinct()
 
+            # BUG FIX: groups__mentor va groups__additional_mentors — is_active filtrisiz.
+            # Mentor faqat FAOL guruhlaridagi o'quvchilarni ko'rishi kerak.
             return qs.filter(
                 Q(group__mentor=user) | 
-                Q(groups__mentor=user) | 
-                Q(groups__additional_mentors__mentor=user)
+                Q(enrollments__is_active=True, enrollments__group__mentor=user) | 
+                Q(enrollments__is_active=True, enrollments__group__additional_mentors__mentor=user)
             ).distinct()
             
         return Student.objects.none()
@@ -768,7 +784,11 @@ class MentorViewSet(viewsets.ModelViewSet):
 
 class StudentNestedView(viewsets.ReadOnlyModelViewSet):
     """Studentlar haqida batafsil ma'lumot (ReadOnly)"""
-    queryset = Student.objects.select_related('group', 'branch').prefetch_related('groups').order_by('full_name')
+    # BUG #2 FIX (StudentNestedView): is_active=True, is_archived=False filtrlari qo'shildi.
+    # prefetch_related 'groups' o'rniga 'enrollments' ishlatildi (is_active filter qo'llash uchun)
+    queryset = Student.objects.select_related('group', 'branch').filter(
+        is_active=True, is_archived=False
+    ).order_by('full_name')
     serializer_class = StudentNestedSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
@@ -785,17 +805,19 @@ class StudentNestedView(viewsets.ReadOnlyModelViewSet):
             return qs
             
         if user.role == 'admin':
-            # Dublikatlarni qidirishda filial cheklovini olib tashlaymiz
-            if self.request.query_params.get('search') or self.action == 'retrieve':
+            # BUG #4 FIX (StudentNestedView): Qidiruv paytida ham filial cheklovi saqlanadi.
+            # Faqat retrieve (ID bo'yicha ko'rish) uchun cheklov olib tashlanadi.
+            if self.action == 'retrieve':
                 return qs
 
             allowed_branches = [user.branch_id] if user.branch_id else []
             if hasattr(user, 'branch_accesses'):
                 allowed_branches.extend(user.branch_accesses.values_list('branch_id', flat=True))
             
+            # BUG FIX: is_active=True bo'lgan enrollmentlar orqali filtr
             qs = qs.filter(
                 Q(branch_id__in=allowed_branches) | 
-                Q(groups__branch_id__in=allowed_branches)
+                Q(enrollments__is_active=True, enrollments__group__branch_id__in=allowed_branches)
             ).distinct()
             
             if branch_id:
@@ -815,9 +837,10 @@ class StudentNestedView(viewsets.ReadOnlyModelViewSet):
                 if hasattr(user, 'branch_accesses'):
                     allowed_branches.extend(user.branch_accesses.values_list('branch_id', flat=True))
                 
+                # BUG FIX: is_active=True bo'lgan enrollmentlar orqali filtr
                 mentor_qs = qs.filter(
                     Q(branch_id__in=allowed_branches) | 
-                    Q(groups__branch_id__in=allowed_branches)
+                    Q(enrollments__is_active=True, enrollments__group__branch_id__in=allowed_branches)
                 ).distinct()
                 
                 if branch_id:
@@ -825,10 +848,11 @@ class StudentNestedView(viewsets.ReadOnlyModelViewSet):
                 return mentor_qs
 
             # Faqat o'ziga tegishli o'quvchilarni qaytaradi
+            # BUG FIX: groups__mentor — is_active filtrisiz. Faqat faol guruhlar.
             mentor_qs = qs.filter(
                 Q(group__mentor=user) | 
-                Q(groups__mentor=user) |
-                Q(groups__additional_mentors__mentor=user)
+                Q(enrollments__is_active=True, enrollments__group__mentor=user) |
+                Q(enrollments__is_active=True, enrollments__group__additional_mentors__mentor=user)
             ).distinct()
             if branch_id:
                 mentor_qs = mentor_qs.filter(branch_id=branch_id)

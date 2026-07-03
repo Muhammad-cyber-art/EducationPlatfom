@@ -795,6 +795,24 @@ class StaffProfile(models.Model):
             # Hozir: to'g'ri field ishlatilmoqda
             total_expected_share += group_result["mentor_share_expected"]
 
+        # Transfer tuzatish: oy o'rtasida ko'chirilgan o'quvchilar uchun mentor ulushini
+        # to'g'ri taqsimlash (mavjud hisob logikasiga tegmaydi).
+        try:
+            from finance.utils import calculate_transfer_salary_adjustment
+            transfer_adj = calculate_transfer_salary_adjustment(
+                profile=self,
+                mentor_group_ids=mentor_group_ids,
+                month_date=month,
+                payment_map=payment_map,
+                lesson_dates_cache=lesson_dates_cache,
+                commission_basis="expected",
+            )
+            total_expected_share += transfer_adj
+        except Exception as _te:
+            import traceback
+            traceback.print_exc()
+            # Transfer tuzatish bajarilmasa ham asosiy hisob davom etadi
+
         return floor_amount(total_expected_share, precision=None)
 
     def calculate_salary_for_month(self, month, commission_basis="paid"):
@@ -923,6 +941,27 @@ class StaffProfile(models.Model):
                 total_salary += group_result["mentor_share_paid"]
             else:
                 total_salary += group_result["mentor_share_expected"]
+
+        # Transfer tuzatish: oy o'rtasida ko'chirilgan o'quvchilar uchun mentor ulushini
+        # to'g'ri taqsimlash. Mavjud calculate_group_revenue_and_mentor_share O'ZGARMAYDI.
+        # Bu post-processing qatlami:
+        #   A) Eski guruh mentori → 0 olgan, to'g'ri ulush QO'SHILADI
+        #   B) Yangi guruh mentori → ortiqcha olgan, ortiqcha AYIRILADI
+        try:
+            from finance.utils import calculate_transfer_salary_adjustment
+            transfer_adj = calculate_transfer_salary_adjustment(
+                profile=self,
+                mentor_group_ids=mentor_group_ids,
+                month_date=month,
+                payment_map=payment_map,
+                lesson_dates_cache=lesson_dates_cache,
+                commission_basis=commission_basis,
+            )
+            total_salary += transfer_adj
+        except Exception as _te:
+            import traceback
+            traceback.print_exc()
+            # Transfer tuzatish bajarilmasa ham asosiy hisob davom etadi
 
         result = floor_amount(total_salary, precision=None)
         self._salary_memo[cache_key] = result
