@@ -93,7 +93,7 @@ export const SubmissionList = ({ students_status, updateStatus }) => (
  <td className="px-10 py-5">
  <div className="flex items-center gap-4">
  <div className="w-10 h-10 rounded-xl bg-[var(--bg-void)] border border-[var(--border-glass)] flex items-center justify-center text-[9px] font-bold text-[var(--gold)] capitalize">
- {sub.student_name.split('').map(n => n[0]).join('').slice(0, 2)}
+ {(sub.student_name || '??').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
  </div>
  <p className="text-xs font-bold capitalize truncate">{sub.student_name}</p>
  </div>
@@ -117,7 +117,7 @@ export const SubmissionList = ({ students_status, updateStatus }) => (
  <div key={sub.id} className="p-4 bg-[var(--bg-void)]/30 border border-[var(--border-glass)] rounded-2xl flex flex-col gap-4">
  <div className="flex items-center gap-3">
  <div className="w-8 h-8 rounded-lg bg-[var(--gold-dim)] flex items-center justify-center text-[8px] font-bold text-[var(--gold)] capitalize">
- {sub.student_name.split('').map(n => n[0]).join('').slice(0, 2)}
+ {(sub.student_name || '??').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
  </div>
  <p className="text-[10px] font-bold capitalize truncate">{sub.student_name}</p>
  </div>

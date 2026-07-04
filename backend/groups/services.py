@@ -77,6 +77,24 @@ def unenroll_student_from_group(group, student_id, request_user):
         # Enrollmentni delete emas, faqat is_active=False qilamiz (tarix saqlanadi)
         enrollment.is_active = False
         enrollment.save()
+
+        # BUG FIX: O'quvchi guruhdan chiqarilganda, shu guruhga tegishli
+        # uy vazifa va mock-test yozuvlarini tozalaymiz.
+        # Faqat NOT_SUBMITTED holatidagilar o'chiriladi — bajarilgan yozuvlar
+        # tarixiy ma'lumot sifatida saqlanadi.
+        # Bu Telegram botning guruhdan chiqqan o'quvchilarga xabar yuborishini to'xtatadi.
+        from homework_attends.models import HomeworkSubmission, MockTestResult
+        HomeworkSubmission.objects.filter(
+            student=student,
+            homework__group=group,
+            status=HomeworkSubmission.NOT_SUBMITTED
+        ).delete()
+        # MockTestResult uchun: natija kiritilmagan (bo'sh score) yozuvlarni o'chiramiz
+        MockTestResult.objects.filter(
+            student=student,
+            test__group=group,
+            score=''
+        ).delete()
         
         # QuerySet keshlanib qolmasligi uchun bevosita DB dan tekshiramiz
         has_other_groups = GroupEnrollment.objects.filter(student=student, is_active=True).exists()

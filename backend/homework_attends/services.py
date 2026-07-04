@@ -263,10 +263,28 @@ def get_monthly_attendance_data(group, month, year):
     return date_list, students, att_data
 
 def create_homework_with_submissions(serializer, user, group):
-    """Uyga vazifa yaratish va barcha studentlar uchun submission ochish"""
+    """Uyga vazifa yaratish va FAQAT FAOL o'quvchilar uchun submission ochish.
+    
+    BUG FIX: Avval group.students.all() ishlatilgan edi — bu nofaol (unenrolled)
+    yoki arxivlangan o'quvchilarni ham qo'shib yuborardi. Endi faqat
+    GroupEnrollment.is_active=True bo'lgan (guruhda faol) o'quvchilar uchun
+    submission yaratilyapti.
+    """
+    from groups.models import GroupEnrollment
     with transaction.atomic():
         homework = serializer.save(mentor=user, group=group)
-        students = group.students.all()
+        
+        # Faqat guruhda FAOL bo'lgan, arxivlanmagan va aktiv o'quvchilar
+        active_student_ids = GroupEnrollment.objects.filter(
+            group=group,
+            is_active=True
+        ).values_list('student_id', flat=True)
+        
+        students = group.students.filter(
+            id__in=active_student_ids,
+            is_archived=False,
+            is_active=True
+        )
         
         submissions = [
             HomeworkSubmission(
@@ -276,7 +294,7 @@ def create_homework_with_submissions(serializer, user, group):
             )
             for student in students
         ]
-        HomeworkSubmission.objects.bulk_create(submissions)
+        HomeworkSubmission.objects.bulk_create(submissions, ignore_conflicts=True)
         return homework
 
 def archive_homework(instance, user):

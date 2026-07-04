@@ -4,8 +4,16 @@ from drf_spectacular.utils import extend_schema_field
 from .models import Homework, HomeworkSubmission ,Attendance, MockTest, MockTestResult
 # 1. O'quvchilar ro'yxati uchun (Detail sahifada ko'rinadi)
 class HomeworkSubmissionSerializer(serializers.ModelSerializer):
-    student_name = serializers.CharField(source='student.full_name', read_only=True)
-    
+    student_name = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_student_name(self, obj):
+        """Student o'chirilgan yoki null bo'lsa snapshot ismini qaytaradi."""
+        if obj.student:
+            return obj.student.full_name
+        # SET_NULL holatida model ichidagi snapshot maydoni ishlatiladi
+        return obj.student_full_name or "Noma'lum o'quvchi"
+
     class Meta:
         model = HomeworkSubmission
         fields = ('id', 'student_name', 'status', 'submitted_at')
@@ -46,8 +54,24 @@ class HomeworkListSerializer(serializers.ModelSerializer):
 # 4. Vazifa ustiga bosilganda chiqadigan sahifa uchun (To'liq variant)
 class HomeworkDetailSerializer(serializers.ModelSerializer):
     group_name = serializers.CharField(source='group.name', read_only=True)
-    # Mana shu yerda o'quvchilar statusi bitta paketda kelyapti
-    students_status = HomeworkSubmissionSerializer(source='submissions', many=True, read_only=True)
+    # BUG FIX: Faqat guruhda FAOL bo'lgan o'quvchilar ko'rsatiladi.
+    # Avval barcha submission'lar (unenrolled o'quvchilar ham) qaytarilar edi —
+    # bu frontend'da null student_name crash'ga olib kelar edi.
+    students_status = serializers.SerializerMethodField()
+
+    @extend_schema_field(HomeworkSubmissionSerializer(many=True))
+    def get_students_status(self, obj):
+        from groups.models import GroupEnrollment
+        active_student_ids = set(
+            GroupEnrollment.objects.filter(
+                group=obj.group,
+                is_active=True
+            ).values_list('student_id', flat=True)
+        )
+        submissions = obj.submissions.filter(
+            student_id__in=active_student_ids
+        ).select_related('student')
+        return HomeworkSubmissionSerializer(submissions, many=True).data
 
     class Meta:
         model = Homework
