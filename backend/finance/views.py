@@ -696,51 +696,96 @@ class AbsentTodayStudentsView(APIView):
     serializer_class = AbsentStudentSerializer
 
     def get(self, request, branch_id):
-        user = request.user
-        # Permission check
-        if user.role == 'admin':
-            allowed_branches = [user.branch_id] if user.branch_id else []
-            if hasattr(user, 'branch_accesses'):
-                allowed_branches.extend(user.branch_accesses.values_list('branch_id', flat=True))
-            if int(branch_id) not in allowed_branches:
-                return Response({"error": "Ruxsat yo'q"}, status=403)
-        
-        today = timezone.localdate()
-        search = request.query_params.get('search', '').strip()
-        export_mode = request.query_params.get('export', 'json')
+        try:
+            user = request.user
+            # Permission check
+            if user.role == 'admin':
+                allowed_branches = [user.branch_id] if user.branch_id else []
+                if hasattr(user, 'branch_accesses'):
+                    allowed_branches.extend(
+                        user.branch_accesses.values_list('branch_id', flat=True)
+                    )
+                # None bo'lishi mumkin bo'lgan qiymatlarni int'ga o'girish xavfsiz
+                safe_branches = [int(b) for b in allowed_branches if b is not None]
+                if int(branch_id) not in safe_branches:
+                    return Response({"error": "Ruxsat yo'q"}, status=403)
 
-        # "Absent" ro'yxati student kesimida: agar student bugun hech bo'lmasa bitta guruhda kelgan bo'lsa,
-        # u kelmaganlar ro'yxatiga tushmasligi kerak (student bir nechta guruhda bo'lishi mumkin).
-        base_qs = Attendance.objects.filter(group__branch_id=branch_id, date=today)
-        present_ids = base_qs.filter(is_present=True).values_list('student_id', flat=True).distinct()
+            today = timezone.localdate()
+            search = request.query_params.get('search', '').strip()
+            export_mode = request.query_params.get('export', 'json')
 
-        queryset = base_qs.filter(is_present=False).exclude(
-            student_id__in=present_ids
-        ).select_related('student', 'group')
+            # "Absent" ro'yxati student kesimida: agar student bugun hech bo'lmasa bitta guruhda
+            # kelgan bo'lsa, u kelmaganlar ro'yxatiga tushmasligi kerak.
+            base_qs = Attendance.objects.filter(group__branch_id=branch_id, date=today)
+            present_ids = base_qs.filter(
+                is_present=True
+            ).values_list('student_id', flat=True).distinct()
 
-        if search:
-            queryset = queryset.filter(
-                Q(student__full_name__icontains=search) |
-                Q(student__phone__icontains=search) |
-                Q(group__name__icontains=search)
+            queryset = base_qs.filter(is_present=False).exclude(
+                student_id__in=present_ids
+            ).select_related('student', 'group')
+
+            if search:
+                # Snapshot fieldlarda ham qidirish (student o'chirilgan bo'lsa ham ishlaydi)
+                queryset = queryset.filter(
+                    Q(student__full_name__icontains=search) |
+                    Q(student__phone__icontains=search) |
+                    Q(group__name__icontains=search) |
+                    Q(student_full_name__icontains=search) |
+                    Q(group_name__icontains=search)
+                )
+
+            if export_mode == 'excel':
+                branch = Branch.objects.get(id=branch_id)
+                return export_absent_students_to_excel(queryset, branch.name)
+
+            paginator = HeavyResultsSetPagination()
+            paginated_queryset = paginator.paginate_queryset(queryset, request, view=self)
+
+            seen_students = set()
+            results = []
+            for att in paginated_queryset:
+                # student_id None bo'lsa (o'chirilgan/orphan yozuv) — o'tkazib yuboramiz
+                student_id = att.student_id
+                if student_id is None:
+                    continue
+
+                # Bir o'quvchini bir marta ko'rsatamiz (bir nechta guruhda absent bo'lsa)
+                if student_id in seen_students:
+                    continue
+                seen_students.add(student_id)
+
+                # Avval real FK object'dan olishga urinib ko'ramiz,
+                # bo'lmasa snapshot field'dan (student/group o'chirilgan bo'lsa)
+                if att.student is not None:
+                    name = att.student.full_name
+                    phone = att.student.phone or ""
+                else:
+                    name = att.student_full_name or ""
+                    phone = ""
+
+                if att.group is not None:
+                    group_name = att.group.name
+                else:
+                    group_name = att.group_name or ""
+
+                results.append({
+                    "id": student_id,
+                    "name": name,
+                    "phone": phone,
+                    "group": group_name,
+                })
+
+            return paginator.get_paginated_response(results)
+
+        except Exception:
+            logger.exception(
+                "AbsentTodayStudentsView xatosi. branch_id=%s", branch_id
             )
-
-        if export_mode == 'excel':
-            branch = Branch.objects.get(id=branch_id)
-            return export_absent_students_to_excel(queryset, branch.name)
-
-        paginator = HeavyResultsSetPagination()
-        paginated_queryset = paginator.paginate_queryset(queryset, request, view=self)
-        
-        results = [
-            {
-                "id": att.student.id,
-                "name": att.student.full_name,
-                "phone": att.student.phone,
-                "group": att.group.name
-            } for att in paginated_queryset
-        ]
-        return paginator.get_paginated_response(results)
+            return Response(
+                {"error": "Server xatosi yuz berdi. Iltimos, keyinroq urinib ko'ring."},
+                status=500
+            )
 
 
 class MonthlyBranchTrendsView(APIView):
