@@ -25,7 +25,7 @@ const StudentPayments = () => {
  <div className="fixed bottom-[-10%] left-[-5%] w-[500px] h-[500px] bg-blue-500/5 blur-[120px] rounded-full pointer-events-none z-0"></div>
 
  {/* Top bar (Sarlavha qismi) */}
- <div className="sticky top-0 z-50 bg-[var(--bg-panel)]/40 backdrop-blur-2xl border-b border-[var(--border-glass)] px-6 md:px-10 py-4 flex items-center justify-between shadow-xl">
+ <div className="sticky top-0 z-50 bg-[var(--bg-void)] border-b border-[var(--border-glass)] px-6 md:px-10 py-4 flex items-center justify-between shadow-xl">
  <div className="flex items-center gap-4">
  <div className="w-10 h-10 rounded-xl bg-[var(--bg-void)] border border-[var(--border-glass)] flex items-center justify-center text-[var(--gold)] shadow-inner">
  <DollarSign size={20} />

@@ -1,10 +1,132 @@
 import { useNavigate } from "react-router-dom";
 import api from "../../tokenUpdater/updater";
 import toast from "react-hot-toast";
-import { Smartphone, Check, X as XIcon, User, Send, ShieldCheck, HelpCircle, ArrowRightLeft, Trash2 } from "lucide-react";
+import { Smartphone, Check, X as XIcon, User, Send, ShieldCheck, ArrowRightLeft, Trash2, MoreVertical } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import StudentTransferModal from "./GroupDetails/StudentTransferModal";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
+
+// 3 nuqta dropdown menu komponenti
+function StudentActionMenu({ item, onColor, onTransfer, onDelete, menuOpenId, setMenuOpenId }) {
+  const menuRef = useRef(null);
+  const colorInputRef = useRef(null);
+  const desktopColorInputRef = useRef(null);
+  const isOpen = menuOpenId === item.id;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClick = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuOpenId(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [isOpen, setMenuOpenId]);
+
+  return (
+    <div className="flex items-center justify-center gap-2">
+      {/* 1. Kompyuter va Planshet uchun ochiq tugmalar */}
+      <div className="hidden md:flex items-center gap-2">
+        <div className="relative" title="Rang tanlash">
+          <input
+            ref={desktopColorInputRef}
+            type="color"
+            defaultValue={item.color && item.color !== '#ffffff' ? item.color : '#000000'}
+            className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
+            onChange={(e) => {
+              onColor(item.id, e.target.value);
+            }}
+          />
+          <div
+            className="w-9 h-9 bg-[var(--bg-void)] text-[var(--text-secondary)] rounded-xl border border-[var(--border-glass)] flex items-center justify-center hover:text-[var(--gold)] hover:border-[var(--gold)]/50 transition-all cursor-pointer"
+            onClick={(e) => { e.stopPropagation(); desktopColorInputRef.current?.click(); }}
+          >
+            <div
+              className="w-5 h-5 rounded-full border-2 border-[var(--border-glass)] shadow-md"
+              style={{ backgroundColor: item.color && item.color !== '#ffffff' ? item.color : '#555' }}
+            />
+          </div>
+        </div>
+
+        <button
+          onClick={(e) => { e.stopPropagation(); onTransfer(item); }}
+          className="w-9 h-9 bg-[var(--gold-dim)] text-[var(--gold)] rounded-xl border border-[var(--gold)]/20 flex items-center justify-center hover:scale-105 active:scale-95 transition-all"
+          title="Guruhga ko'chirish"
+        >
+          <ArrowRightLeft size={14} />
+        </button>
+
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(item); }}
+          className="w-9 h-9 bg-red-500/10 text-red-500 rounded-xl border border-red-500/20 flex items-center justify-center hover:scale-105 active:scale-95 transition-all"
+          title="O'chirish / Arxiv"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+
+      {/* 2. Mobil qurilmalar uchun 3 nuqta (Dropdown) */}
+      <div className="relative md:hidden" ref={menuRef}>
+        <button
+          onClick={(e) => { e.stopPropagation(); setMenuOpenId(isOpen ? null : item.id); }}
+          className="w-9 h-9 rounded-xl bg-[var(--bg-void)] border border-[var(--border-glass)] flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--gold)] hover:border-[var(--gold)]/30 transition-all active:scale-90"
+          title="Amallar"
+        >
+          <MoreVertical size={15} />
+        </button>
+
+        {isOpen && (
+          <div
+            className="absolute right-0 top-full mt-1.5 w-52 bg-[var(--bg-void)] border border-[var(--border-glass)] rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top-right"
+            style={{ zIndex: 99999 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Rang berish */}
+            <div
+              className="relative flex items-center gap-3 px-4 py-3 hover:bg-[var(--gold)]/5 transition-colors cursor-pointer border-b border-[var(--border-glass)]/40"
+              onClick={() => colorInputRef.current?.click()}
+            >
+              <div
+                className="w-5 h-5 rounded-full border-2 border-[var(--border-glass)] shrink-0 shadow-md"
+                style={{ backgroundColor: item.color && item.color !== '#ffffff' ? item.color : '#555' }}
+              />
+              <span className="text-[10px] font-black text-[var(--text-primary)] capitalize tracking-wider">Rang berish</span>
+              <input
+                ref={colorInputRef}
+                type="color"
+                defaultValue={item.color && item.color !== '#ffffff' ? item.color : '#000000'}
+                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                onChange={(e) => {
+                  onColor(item.id, e.target.value);
+                  setMenuOpenId(null);
+                }}
+              />
+            </div>
+
+            {/* Ko'chirish */}
+            <button
+              onClick={() => { onTransfer(item); setMenuOpenId(null); }}
+              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[var(--gold)]/5 transition-colors text-left border-b border-[var(--border-glass)]/40"
+            >
+              <ArrowRightLeft size={14} className="text-[var(--gold)] shrink-0" />
+              <span className="text-[10px] font-black text-[var(--text-primary)] capitalize tracking-wider">Guruhga ko'chirish</span>
+            </button>
+
+            {/* O'chirish */}
+            <button
+              onClick={() => { onDelete(item); setMenuOpenId(null); }}
+              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-red-500/10 transition-colors text-left"
+            >
+              <Trash2 size={14} className="text-red-500 shrink-0" />
+              <span className="text-[10px] font-black text-red-500 capitalize tracking-wider">O'chirish / Arxiv</span>
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function GroupsStudent({
   students,
@@ -25,6 +147,7 @@ export default function GroupsStudent({
   const queryClient = useQueryClient();
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [studentToTransfer, setStudentToTransfer] = useState(null);
+  const [menuOpenId, setMenuOpenId] = useState(null);
 
   const handleOpenTransfer = (student) => {
     setStudentToTransfer(student);
@@ -37,7 +160,32 @@ export default function GroupsStudent({
     queryClient.invalidateQueries({ queryKey: ['group-detail', Number(groupId)] });
     if (onAttendanceChange) onAttendanceChange();
   };
+
+  const handleDeleteStudent = async (student) => {
+    if (!confirm(`"${student.full_name}" ni guruhdan olib tashlamoqchimisiz?`)) return;
+    try {
+      await api.delete(`/groups/students/${student.id}/`);
+      queryClient.invalidateQueries({ queryKey: ['group-detail', String(groupId)] });
+      queryClient.invalidateQueries({ queryKey: ['group-detail', Number(groupId)] });
+      toast.success("O'quvchi guruhdan olib tashlandi");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "O'chirishda xatolik yuz berdi");
+    }
+  };
+
   const isConfirmMode = Boolean(onLocalAttendanceChange);
+
+  const handleColorChange = async (studentId, newColor) => {
+    try {
+      await api.patch(`/groups/students/${studentId}/`, { color: newColor });
+      queryClient.invalidateQueries({ queryKey: ['group-detail', String(groupId)] });
+      queryClient.invalidateQueries({ queryKey: ['group-detail', Number(groupId)] });
+      queryClient.invalidateQueries({ queryKey: ['group-students'] });
+      toast.success("Rang saqlandi", { id: 'color-success' });
+    } catch (err) {
+      toast.error("Rangni saqlashda xatolik");
+    }
+  };
 
   const handleToggle = async (attendanceId, currentStatus, studentId) => {
     if (!groupId) return;
@@ -141,21 +289,24 @@ export default function GroupsStudent({
             <tr
               key={item.id || index}
               className="group hover:bg-[var(--bg-void)]/40 transition-all border-b border-[var(--border-glass)]/20"
+              style={item.color && item.color !== '#ffffff' ? { 
+                borderLeft: `6px solid ${item.color}`
+              } : {}}
             >
               <td className="px-4 py-3 text-center relative group/mark">
                 <div
                   onClick={(e) => { e.stopPropagation(); onToggleMark(item.id); }}
-                  className="flex items-center justify-center cursor-pointer"
+                  className="flex items-center justify-center cursor-pointer w-full h-full min-h-[2rem] relative"
                 >
-                  <span className="font-mono opacity-40 text-[9px] group-hover/mark:opacity-100 transition-opacity">
+                  <span className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-mono opacity-40 text-[9px] transition-all duration-300 ${markedStudents[item.id] || Object.keys(markedStudents || {}).length > 0 ? 'opacity-0 scale-50' : 'opacity-100 scale-100 group-hover/mark:opacity-0 group-hover/mark:scale-50'}`}>
                     {index + 1 < 10 ? `0${index + 1}` : index + 1}
                   </span>
 
-                  {/* VS Code Style Red Dot (Breakpoint) */}
-                  <div className={`absolute left-2 w-2 h-2 rounded-full transition-all duration-300 ${markedStudents[item.id]
-                    ? 'bg-red-500 scale-100 opacity-100 shadow-[0_0_8px_rgba(239,68,68,0.8)]'
-                    : 'bg-red-500/20 scale-0 opacity-0 group-hover/mark:scale-75 group-hover/mark:opacity-40'
-                    }`} />
+                  <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 transition-all duration-300 flex items-center justify-center ${markedStudents[item.id] || Object.keys(markedStudents || {}).length > 0 ? 'opacity-100 scale-100' : 'opacity-0 scale-50 group-hover/mark:opacity-100 group-hover/mark:scale-100'}`}>
+                    <div className={`w-4 h-4 rounded flex items-center justify-center transition-all ${markedStudents[item.id] ? 'bg-[var(--gold)] border-[var(--gold)] text-black shadow-[0_0_8px_rgba(184,134,11,0.5)]' : 'border-[var(--border-glass)] border bg-[var(--bg-void)] text-transparent hover:border-[var(--gold)]/50'}`}>
+                      {markedStudents[item.id] && <Check size={12} strokeWidth={3} />}
+                    </div>
+                  </div>
                 </div>
               </td>
               <td className="px-4 py-3">
@@ -225,33 +376,44 @@ export default function GroupsStudent({
                   </div>
                 )}
               </td>
+              {/* 3 nuqta: amallar */}
               <td className="px-4 py-3 text-center">
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleOpenTransfer(item); }}
-                  className="p-2 bg-[var(--gold-dim)] text-[var(--gold)] rounded-lg border border-[var(--gold)]/20 hover:scale-110 active:scale-95 transition-all outline-none"
-                  title="Guruhdan guruhga ko'chirish"
-                >
-                  <ArrowRightLeft size={14} />
-                </button>
+                <StudentActionMenu
+                  item={item}
+                  onColor={handleColorChange}
+                  onTransfer={handleOpenTransfer}
+                  onDelete={handleDeleteStudent}
+                  menuOpenId={menuOpenId}
+                  setMenuOpenId={setMenuOpenId}
+                />
               </td>
             </tr>
           );
         }
 
         return (
-          <div key={item.id || index} className="lux-card !p-2.5 mb-2 group hover:border-[var(--gold)]/40 transition-all shadow-md border-[var(--border-glass)]/30 relative overflow-hidden">
-            {/* Mobile Mark Indicator */}
-            <div
-              onClick={(e) => { e.stopPropagation(); onToggleMark(item.id); }}
-              className={`absolute top-0 left-0 w-1 h-full transition-all duration-300 cursor-pointer ${markedStudents[item.id] ? 'bg-red-500 shadow-[2px_0_10px_rgba(239,68,68,0.4)]' : 'bg-transparent hover:bg-red-500/10'
-                }`}
-            />
+          <div key={item.id || index}
+               className={`lux-card !p-2.5 mb-2 group transition-all shadow-md relative overflow-visible ${markedStudents[item.id] ? 'border-[var(--gold)] bg-[var(--gold)]/5' : 'border-[var(--border-glass)]/30 hover:border-[var(--gold)]/40'}`}
+               style={{
+                 zIndex: menuOpenId === item.id ? 9999 : 1,
+                 borderLeft: item.color && item.color !== '#ffffff' ? `6px solid ${item.color}` : undefined
+               }}
+          >
             <div className="flex items-center justify-between gap-3">
-              <div
-                onClick={() => navigate(`students/${item.id}?branch=${currentBranchId}`)}
-                className="flex items-center gap-3 cursor-pointer flex-1 min-w-0"
-              >
-                <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                <div 
+                  onClick={(e) => { e.stopPropagation(); onToggleMark(item.id); }}
+                  className="cursor-pointer p-2 -ml-2 flex items-center justify-center"
+                >
+                  <div className={`w-4 h-4 rounded flex items-center justify-center transition-all ${markedStudents[item.id] ? 'bg-[var(--gold)] border-transparent text-black shadow-[0_0_8px_rgba(184,134,11,0.5)]' : 'border-[var(--text-muted)]/40 border bg-[var(--bg-void)] text-transparent hover:border-[var(--gold)]/50'}`}>
+                    {markedStudents[item.id] && <Check size={12} strokeWidth={3} />}
+                  </div>
+                </div>
+
+                <div
+                  onClick={() => navigate(`students/${item.id}?branch=${currentBranchId}`)}
+                  className="flex-1 min-w-0 cursor-pointer"
+                >
                   <h4 className="text-[13px] font-black text-[var(--text-primary)] capitalize tracking-tight leading-tight mb-1">{item.full_name}</h4>
                   <div className="flex items-center gap-2">
                     <span className="text-[9px] text-[var(--text-muted)] font-black capitalize tracking-wider font-mono opacity-60">{item.phone?.slice(-9) || "---"}</span>
@@ -295,13 +457,15 @@ export default function GroupsStudent({
                   </div>
                 )}
 
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleOpenTransfer(item); }}
-                  className="w-10 h-10 bg-[var(--gold-dim)] text-[var(--gold)] rounded-xl border border-[var(--gold)]/20 flex items-center justify-center hover:scale-105 transition-all"
-                  title="Guruhdan guruhga ko'chirish"
-                >
-                  <ArrowRightLeft size={16} />
-                </button>
+                {/* 3 nuqta */}
+                <StudentActionMenu
+                  item={item}
+                  onColor={handleColorChange}
+                  onTransfer={handleOpenTransfer}
+                  onDelete={handleDeleteStudent}
+                  menuOpenId={menuOpenId}
+                  setMenuOpenId={setMenuOpenId}
+                />
               </div>
             </div>
           </div>
@@ -314,6 +478,7 @@ export default function GroupsStudent({
           onClose={() => setTransferModalOpen(false)}
           student={studentToTransfer}
           currentGroupId={groupId}
+          currentBranchId={currentBranchId}
           onTransferSuccess={handleTransferSuccess}
         />
       )}

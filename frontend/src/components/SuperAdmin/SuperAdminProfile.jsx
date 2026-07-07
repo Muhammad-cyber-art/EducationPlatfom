@@ -26,7 +26,7 @@ const SuperAdminProfile = () => {
  <div className="w-full flex-1 min-h-screen bg-[var(--bg-void)] text-[var(--text-primary)] font-sans pb-20 md:pb-8 animate-lux-fade">
 
  {/* --- HEADER --- */}
- <div className="bg-[var(--bg-panel)]/80 backdrop-blur-md border-b border-[var(--border-glass)] px-3 md:px-8 py-2.5 md:py-4 flex items-center justify-between sticky top-0 z-50">
+ <div className="bg-[var(--bg-void)] border-b border-[var(--border-glass)] px-3 md:px-8 py-2.5 md:py-4 flex items-center justify-between sticky top-0 z-50">
  <div className="flex items-center gap-3">
  <GoBackButton />
  <h1 className="text-base md:text-xl font-bold text-[var(--text-primary)] tracking-tight">Profil</h1>

@@ -1,5 +1,6 @@
-import React, { useState } from "react";
-import { Users, Check, RotateCw, Search, Lock, Plus, Info, CheckCircle2, Trash2, X, UserMinus, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { Users, Check, RotateCw, Search, Lock, Plus, Info, CheckCircle2, Trash2, X, UserMinus, Loader2, ChevronLeft, ChevronRight, MoreVertical } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import api from "../../../tokenUpdater/updater";
 import toast from "react-hot-toast";
@@ -44,6 +45,8 @@ const AttendanceSection = ({
 }) => {
   const [isSpecialLessonModalOpen, setIsSpecialLessonModalOpen] = useState(false);
   const [loadingAction, setLoadingAction] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const mobileMenuRef = useRef(null);
 
   // Use groupinfo's built-in special and canceled dates
   const specialDates = groupinfo.special_lesson_dates || [];
@@ -52,6 +55,19 @@ const AttendanceSection = ({
   const isSpecialDay = specialDates.includes(selectedDate);
   const isCanceledDay = canceledDates.includes(selectedDate);
   const isLessonDay = lessonDates.includes(selectedDate);
+
+  // Close mobile menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target)) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [mobileMenuRef]);
 
   const markedCount = Object.keys(markedStudents || {}).length;
 
@@ -114,20 +130,23 @@ const AttendanceSection = ({
   };
 
   return (
-    <div className="lux-card-static !p-0 overflow-hidden pb-10 shadow-xl border-[var(--border-glass)] relative">
+    <div className="lux-card-static !p-0 pb-10 shadow-xl relative">
       {/* BULK ACTION BAR - Floating Premium UI */}
-      {markedCount > 0 && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[1000] animate-in fade-in zoom-in slide-in-from-bottom-10 duration-500 w-[95%] max-w-[800px] sm:w-auto">
-          <div className="bg-[#0a0a0a]/95 backdrop-blur-md border border-[var(--gold)]/40 rounded-2xl p-2 sm:p-4 shadow-[0_25px_60px_rgba(0,0,0,0.8)] flex flex-col sm:flex-row items-center gap-3 sm:gap-6">
+      {markedCount > 0 && typeof document !== 'undefined' && createPortal(
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[9999] animate-in fade-in zoom-in slide-in-from-bottom-10 duration-500 w-[95%] max-w-[800px] sm:w-auto">
+          <div 
+            className="bg-[var(--bg-panel)] border-2 border-[var(--gold)] rounded-2xl p-2 sm:p-4 flex flex-col sm:flex-row items-center gap-3 sm:gap-6"
+            style={{ boxShadow: '0 25px 50px var(--shadow-color), var(--gold-glow)' }}
+          >
             
             {/* Left Info Section */}
-            <div className="flex items-center gap-4 px-4 py-2 sm:border-r sm:border-white/10 sm:pr-6">
-              <div className="w-10 h-10 rounded-xl bg-[var(--gold)] flex items-center justify-center text-black font-black text-lg shadow-[0_0_15px_rgba(184,134,11,0.3)]">
+            <div className="flex items-center gap-4 px-4 py-2 sm:border-r border-[var(--border-glass)] sm:pr-6">
+              <div className="w-10 h-10 rounded-xl bg-[var(--gold)] flex items-center justify-center text-[#ffffff] font-black text-lg shadow-[0_0_15px_rgba(184,134,11,0.3)]">
                 {markedCount}
               </div>
               <div className="text-left">
                 <p className="text-[10px] font-black text-[var(--gold)] uppercase tracking-widest leading-none mb-1">Tanlangan</p>
-                <p className="text-[12px] font-bold text-white whitespace-nowrap">O'quvchilar ro'yxati</p>
+                <p className="text-[12px] font-bold text-[var(--text-primary)] whitespace-nowrap">O'quvchilar ro'yxati</p>
               </div>
             </div>
 
@@ -135,7 +154,7 @@ const AttendanceSection = ({
             <div className="flex items-center gap-2 w-full sm:w-auto px-2 pb-2 sm:pb-0">
               <button
                 onClick={() => handleBulkAction('unenroll')}
-                className="flex-1 sm:flex-none h-11 px-5 rounded-xl bg-white/5 text-white border border-white/10 font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-white/10 transition-all active:scale-95 group"
+                className="flex-1 sm:flex-none h-11 px-5 rounded-xl bg-[var(--bg-void)] text-[var(--text-primary)] border border-[var(--border-glass)] font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:border-[var(--gold)]/50 transition-all active:scale-95 group"
               >
                 <UserMinus size={14} className="text-amber-500" /> 
                 <span className="hidden xs:inline">Guruhdan Chiqarish</span>
@@ -144,7 +163,7 @@ const AttendanceSection = ({
 
               <button
                 onClick={() => handleBulkAction('archive')}
-                className="flex-1 sm:flex-none h-11 px-5 rounded-xl bg-red-600/10 text-red-500 border border-red-500/20 font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-red-600 hover:text-white transition-all shadow-lg active:scale-95 group"
+                className="flex-1 sm:flex-none h-11 px-5 rounded-xl bg-red-500/10 text-red-500 border border-red-500/20 font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-red-500 hover:text-white transition-all shadow-lg active:scale-95 group"
               >
                 <Trash2 size={14} className="group-hover:rotate-12 transition-transform" /> 
                 <span className="hidden xs:inline">Tizimdan O'chirish</span>
@@ -152,18 +171,19 @@ const AttendanceSection = ({
               </button>
 
               {/* Close Button Integrated */}
-              <div className="w-[1px] h-8 bg-white/10 mx-1 hidden sm:block"></div>
+              <div className="w-[1px] h-8 bg-[var(--border-glass)] mx-1 hidden sm:block"></div>
               
               <button
                 onClick={() => uiDispatch({ type: "CLEAR_MARKS" })}
-                className="w-11 h-11 shrink-0 rounded-xl bg-white/5 text-white/40 border border-white/10 flex items-center justify-center hover:bg-white/10 hover:text-white transition-all active:scale-95"
+                className="w-11 h-11 shrink-0 rounded-xl bg-[var(--bg-void)] text-[var(--text-secondary)] border border-[var(--border-glass)] flex items-center justify-center hover:text-[var(--text-primary)] hover:border-[var(--gold)]/50 transition-all active:scale-95"
                 title="Yopish"
               >
                 <X size={18} />
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Special Day Banner */}
@@ -212,7 +232,7 @@ const AttendanceSection = ({
         </div>
       )}
 
-      <div className="p-2 sm:p-3 flex items-center justify-between gap-4 border-b border-[var(--border-glass)]">
+      <div className="p-2 sm:p-3 flex items-center justify-between gap-4 ">
         <div className="flex items-center gap-3 sm:gap-4">
           <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-[var(--bg-void)] border border-[var(--border-glass)] flex items-center justify-center text-[var(--gold)] shadow-inner">
             <Users size={14} className="sm:size-[18px]" />
@@ -233,61 +253,145 @@ const AttendanceSection = ({
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          {canTakeAttendance && (
-            <button
-              onClick={() => setIsSpecialLessonModalOpen(true)}
-              className="flex items-center justify-center min-w-[40px] sm:w-auto sm:px-4 h-10 sm:h-11 border border-[var(--gold)]/30 text-[var(--gold)] rounded-xl font-black text-[10px] uppercase tracking-wider transition-all hover:bg-[var(--gold)]/10 active:scale-95 shadow-lg bg-[var(--bg-panel)]"
-              title="Dars qo'shish"
-            >
-              <Plus size={18} /> <span className="hidden sm:inline ml-2">Dars qo'shish</span>
-            </button>
-          )}
+          {/* Desktop buttons - show all */}
+          <div className="hidden sm:flex items-center gap-2 sm:gap-3">
+            {canTakeAttendance && (
+              <button
+                onClick={() => setIsSpecialLessonModalOpen(true)}
+                className="flex items-center justify-center px-4 h-11 border border-[var(--gold)]/30 text-[var(--gold)] rounded-xl font-black text-[10px] uppercase tracking-wider transition-all hover:bg-[var(--gold)]/10 active:scale-95 shadow-lg bg-[var(--bg-panel)]"
+                title="Dars qo'shish"
+              >
+                <Plus size={18} /> <span className="ml-2">Dars qo'shish</span>
+              </button>
+            )}
 
-          {canTakeAttendance && !isCanceledDay && (
-            <button
-              onClick={handleCancelLesson}
-              disabled={loadingAction}
-              className="flex items-center justify-center min-w-[40px] sm:w-auto sm:px-4 h-10 sm:h-11 border border-rose-500/30 text-rose-500 rounded-xl font-black text-[10px] uppercase tracking-wider transition-all hover:bg-rose-500/10 active:scale-95 shadow-lg bg-[var(--bg-panel)] disabled:opacity-50"
-              title="Darsni bekor qilish"
-            >
-              {loadingAction ? <Loader2 size={18} className="animate-spin" /> : <X size={18} />} <span className="hidden sm:inline ml-2">Darsni bekor qilish</span>
-            </button>
-          )}
+            {canTakeAttendance && !isCanceledDay && (
+              <button
+                onClick={handleCancelLesson}
+                disabled={loadingAction}
+                className="flex items-center justify-center px-4 h-11 border border-rose-500/30 text-rose-500 rounded-xl font-black text-[10px] uppercase tracking-wider transition-all hover:bg-rose-500/10 active:scale-95 shadow-lg bg-[var(--bg-panel)] disabled:opacity-50"
+                title="Darsni bekor qilish"
+              >
+                {loadingAction ? <Loader2 size={18} className="animate-spin" /> : <X size={18} />} <span className="ml-2">Darsni bekor qilish</span>
+              </button>
+            )}
 
-          {canTakeAttendance && isCanceledDay && (
+            {canTakeAttendance && isCanceledDay && (
+              <button
+                onClick={handleReactivateLesson}
+                disabled={loadingAction}
+                className="flex items-center justify-center px-4 h-11 border border-emerald-500/30 text-emerald-500 rounded-xl font-black text-[10px] uppercase tracking-wider transition-all hover:bg-emerald-500/10 active:scale-95 shadow-lg bg-[var(--bg-panel)] disabled:opacity-50"
+                title="Darsni qayta faollashtirish"
+              >
+                {loadingAction ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />} <span className="ml-2">Qayta faollashtirish</span>
+              </button>
+            )}
+
             <button
-              onClick={handleReactivateLesson}
-              disabled={loadingAction}
-              className="flex items-center justify-center min-w-[40px] sm:w-auto sm:px-4 h-10 sm:h-11 border border-emerald-500/30 text-emerald-500 rounded-xl font-black text-[10px] uppercase tracking-wider transition-all hover:bg-emerald-500/10 active:scale-95 shadow-lg bg-[var(--bg-panel)] disabled:opacity-50"
-              title="Darsni qayta faollashtirish"
+              onClick={() => {
+                queryClient.refetchQueries(['group-detail', group_id]);
+                queryClient.refetchQueries(['group-students', group_id]);
+                refetchAttends();
+                queryClient.refetchQueries(['homeworks', group_id]);
+                queryClient.refetchQueries(['mock-tests', group_id]);
+              }}
+              className="flex items-center justify-center w-11 h-11 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--gold)] hover:border-[var(--gold)]/30 transition-all shadow-lg active:scale-95"
+              title="Yangilash"
             >
-              {loadingAction ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />} <span className="hidden sm:inline ml-2">Qayta faollashtirish</span>
+              <RotateCw size={18} />
             </button>
-          )}
+          </div>
           
+          {/* Mobile buttons - show confirm and 3 dots */}
+          <div className="flex sm:hidden items-center gap-2">
+            {canEditAttendance && (
+              <button
+                onClick={() => handleConfirmAttendance(isLessonDay)}
+                className="flex items-center justify-center px-4 h-10 bg-[var(--gold)] text-black rounded-xl font-black text-[10px] uppercase tracking-widest transition-all hover:opacity-90 active:scale-95 shadow-[var(--gold-glow)]"
+                title="Tayyor"
+              >
+                <Check size={18} strokeWidth={3} /> <span className="ml-2">Tayyor</span>
+              </button>
+            )}
+            
+            {/* 3-dot menu for mobile */}
+            <div className="relative" ref={mobileMenuRef}>
+              <button
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className="flex items-center justify-center w-10 h-10 rounded-xl bg-[var(--bg-panel)]  text-[var(--text-secondary)] hover:text-[var(--gold)] hover:border-[var(--gold)]/30 transition-all shadow-lg active:scale-95"
+                title="Boshqa amallar"
+              >
+                <MoreVertical size={18} />
+              </button>
+              
+              {isMobileMenuOpen && (
+                <div className="absolute right-0 top-full mt-2 w-56 bg-[var(--bg-panel)]  rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top-right z-50">
+                  {canTakeAttendance && (
+                    <button
+                      onClick={() => {
+                        setIsSpecialLessonModalOpen(true);
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[var(--gold)]/5 text-[var(--text-primary)] text-[10px] font-black capitalize tracking-widest transition-all /40"
+                    >
+                      <Plus size={14} className="text-[var(--gold)]" /> Dars qo'shish
+                    </button>
+                  )}
+                  
+                  {canTakeAttendance && !isCanceledDay && (
+                    <button
+                      onClick={() => {
+                        handleCancelLesson();
+                        setIsMobileMenuOpen(false);
+                      }}
+                      disabled={loadingAction}
+                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-rose-500/10 text-rose-500 text-[10px] font-black capitalize tracking-widest transition-all border-b border-[var(--border-glass)]/40 disabled:opacity-50"
+                    >
+                      {loadingAction ? <Loader2 size={14} className="animate-spin" /> : <X size={14} className="text-rose-500" />} Darsni bekor qilish
+                    </button>
+                  )}
+                  
+                  {canTakeAttendance && isCanceledDay && (
+                    <button
+                      onClick={() => {
+                        handleReactivateLesson();
+                        setIsMobileMenuOpen(false);
+                      }}
+                      disabled={loadingAction}
+                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-emerald-500/10 text-emerald-500 text-[10px] font-black capitalize tracking-widest transition-all border-b border-[var(--border-glass)]/40 disabled:opacity-50"
+                    >
+                      {loadingAction ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} className="text-emerald-500" />} Qayta faollashtirish
+                    </button>
+                  )}
+                  
+                  <button
+                    onClick={() => {
+                      queryClient.refetchQueries(['group-detail', group_id]);
+                      queryClient.refetchQueries(['group-students', group_id]);
+                      refetchAttends();
+                      queryClient.refetchQueries(['homeworks', group_id]);
+                      queryClient.refetchQueries(['mock-tests', group_id]);
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[var(--gold)]/5 text-[var(--text-primary)] text-[10px] font-black capitalize tracking-widest transition-all"
+                  >
+                    <RotateCw size={14} className="text-[var(--gold)]" /> Yangilash
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+          
+          {/* Desktop confirm button (separate so it's always visible on desktop) */}
           {canEditAttendance && (
             <button
               onClick={() => handleConfirmAttendance(isLessonDay)}
-              className="flex items-center justify-center min-w-[44px] sm:w-auto sm:px-6 h-10 sm:h-11 bg-[var(--gold)] text-black rounded-xl font-black text-[10px] uppercase tracking-widest transition-all hover:opacity-90 active:scale-95 shadow-[var(--gold-glow)]"
+              className="hidden sm:flex items-center justify-center px-6 h-11 bg-[var(--gold)] text-black rounded-xl font-black text-[10px] uppercase tracking-widest transition-all hover:opacity-90 active:scale-95 shadow-[var(--gold-glow)]"
               title="Tayyor"
             >
-              <Check size={20} strokeWidth={3} /> <span className="hidden sm:inline ml-2">Tayyor</span>
+              <Check size={20} strokeWidth={3} /> <span className="ml-2">Tayyor</span>
             </button>
           )}
-
-          <button
-            onClick={() => {
-              queryClient.refetchQueries(['group-detail', group_id]);
-              queryClient.refetchQueries(['group-students', group_id]);
-              refetchAttends();
-              queryClient.refetchQueries(['homeworks', group_id]);
-              queryClient.refetchQueries(['mock-tests', group_id]);
-            }}
-            className="flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--gold)] hover:border-[var(--gold)]/30 transition-all shadow-lg active:scale-95"
-            title="Yangilash"
-          >
-            <RotateCw size={18} />
-          </button>
         </div>
       </div>
 
@@ -405,18 +509,20 @@ const AttendanceSection = ({
           <thead>
             <tr className="border-b border-[var(--border-glass)] text-[var(--text-muted)] text-[9px] font-black capitalize tracking-[0.4em]">
               <th className="px-8 py-6 w-16 text-center">
-                <input 
-                  type="checkbox" 
-                  className="w-4 h-4 rounded border-[var(--border-glass)] bg-transparent checked:bg-[var(--gold)] transition-all cursor-pointer"
-                  checked={markedCount === filteredStudents.length && filteredStudents.length > 0}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      uiDispatch({ type: "SELECT_ALL_MARKS", payload: filteredStudents });
-                    } else {
+                <div 
+                  onClick={() => {
+                    if (markedCount === filteredStudents.length && filteredStudents.length > 0) {
                       uiDispatch({ type: "CLEAR_MARKS" });
+                    } else {
+                      uiDispatch({ type: "SELECT_ALL_MARKS", payload: filteredStudents });
                     }
                   }}
-                />
+                  className="cursor-pointer flex items-center justify-center w-full h-full"
+                >
+                  <div className={`w-4 h-4 rounded flex items-center justify-center transition-all ${markedCount === filteredStudents.length && filteredStudents.length > 0 ? 'bg-[var(--gold)] border-[var(--gold)] text-black shadow-[0_0_8px_rgba(184,134,11,0.5)]' : 'border-[var(--border-glass)] border bg-transparent text-transparent hover:border-[var(--gold)]/50'}`}>
+                    {markedCount === filteredStudents.length && filteredStudents.length > 0 && <Check size={12} strokeWidth={3} />}
+                  </div>
+                </div>
               </th>
               <th className="px-8 py-6">O'quvchi</th>
               <th className="px-8 py-6 text-center">To'lov holati</th>

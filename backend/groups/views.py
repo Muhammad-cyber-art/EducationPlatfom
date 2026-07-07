@@ -972,19 +972,30 @@ class GroupSimpleViewSet(viewsets.ReadOnlyModelViewSet):
         user = self.request.user
         qs = self.queryset.filter(is_archived=False)
         branch_id = self.request.query_params.get('branch_id')
-        
-        if branch_id and branch_id not in ['undefined', 'null', '']:
-            qs = qs.filter(branch_id=branch_id)
-            
-        if user.role == 'super_admin': return qs
+
+        if user.role == 'super_admin':
+            # Super admin: branch_id berilgan bo'lsa, faqat shu filial guruhlarini qaytarish
+            if branch_id and branch_id not in ['undefined', 'null', '']:
+                qs = qs.filter(branch_id=branch_id)
+            return qs
+
         if user.role == 'admin':
             allowed = [user.branch.id] if user.branch else []
             allowed.extend(user.branch_accesses.values_list('branch_id', flat=True))
-            return qs.filter(branch_id__in=allowed)
-            
+            qs = qs.filter(branch_id__in=allowed)
+            # Admin ham qo'shimcha branch_id parametri bilan filter qilishi mumkin
+            if branch_id and branch_id not in ['undefined', 'null', '']:
+                qs = qs.filter(branch_id=branch_id)
+            return qs
+
         if user.role == 'mentor':
-            return qs.filter(Q(mentor=user) | Q(additional_mentors__mentor=user)).distinct()
-            
+            # Mentor: faqat o'ziga tegishli guruhlar (asosiy yoki qo'shimcha mentor)
+            qs = qs.filter(Q(mentor=user) | Q(additional_mentors__mentor=user)).distinct()
+            # branch_id berilgan bo'lsa, faqat shu filialning guruhlarini qaytarish
+            if branch_id and branch_id not in ['undefined', 'null', '']:
+                qs = qs.filter(branch_id=branch_id)
+            return qs
+
         return qs.none()
 
 class MentorListViewSet(viewsets.ReadOnlyModelViewSet):

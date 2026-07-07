@@ -14,7 +14,7 @@ const AdminHeader = ({
  LogOut
 }) => {
  return (
- <div className="sticky top-0 z-40 bg-[var(--bg-void)]/80 backdrop-blur-xl border-b border-[var(--border-glass)] px-4 py-3 md:px-8 transition-all">
+ <div className="sticky top-0 z-40 bg-[var(--bg-void)] border-b border-[var(--border-glass)] px-4 py-3 md:px-8 transition-all">
  <div className="max-w-6xl mx-auto flex items-center justify-between">
  <div className="flex items-center gap-4">
  <GoBackButton />

@@ -206,10 +206,10 @@ const AbsentStudentsModal = ({ isOpen, onClose, branchId }) => {
                           Kelmagan
                         </span>
                       </div>
-                      <p className="text-xs text-[var(--text-muted)] font-medium truncate flex items-center gap-1.5" title={student.group}>
-                        <div className="w-1.5 h-1.5 rounded-full bg-[var(--border-glass)] group-hover:bg-rose-500/50 transition-colors" />
+                      <span className="text-xs text-[var(--text-muted)] font-medium truncate flex items-center gap-1.5" title={student.group}>
+                        <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-[var(--border-glass)] group-hover:bg-rose-500/50 transition-colors" />
                         {student.group}
-                      </p>
+                      </span>
                     </div>
 
                     {/* Phone Call Action */}

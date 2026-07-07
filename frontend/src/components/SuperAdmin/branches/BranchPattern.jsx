@@ -67,7 +67,7 @@ const BranchPattern = () => {
  <main className="flex-1 flex flex-col min-w-0">
 
  {/* TOP BAR: Branch Switcher & Actions */}
- <div className="sticky top-0 z-40 bg-[var(--bg-panel)]/95 backdrop-blur-xl border-b border-[var(--border-glass)]">
+ <div className="sticky top-0 z-40 bg-[var(--bg-void)] border-b border-[var(--border-glass)]">
  <div className="flex items-center justify-between px-4 md:px-6">
 
  {/* Horizontal Branch List */}

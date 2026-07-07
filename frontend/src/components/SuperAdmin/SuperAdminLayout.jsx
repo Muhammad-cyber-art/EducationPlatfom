@@ -6,7 +6,7 @@ export default function SuperAdminLayout() {
  return (
  <div className="w-full h-screen bg-[var(--bg-void)] flex flex-row overflow-hidden animate-lux-fade">
  {/* Sidebar - Visible on Desktop */}
- <div className="hidden md:block w-72 h-full shrink-0 border-r border-[var(--border-glass)] shadow-[20px_0_40px_rgba(0,0,0,0.2)] relative z-20">
+ <div className="hidden md:block w-52 h-full shrink-0 border-r border-[var(--border-glass)] shadow-[20px_0_40px_rgba(0,0,0,0.2)] relative z-20">
  <SuperAdminSidebar />
  </div>
 

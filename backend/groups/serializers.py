@@ -64,6 +64,7 @@ class MentorListSerializer(serializers.ModelSerializer):
 class GroupSimpleSerializer(serializers.ModelSerializer):
     students_count = serializers.SerializerMethodField()
     branch = BranchSerializer(read_only=True)
+    branch_id = serializers.IntegerField(source='branch.id', read_only=True)  # Frontend filter uchun
     today_attendance_confirmed = serializers.SerializerMethodField()
     present_count = serializers.SerializerMethodField()
     absent_count = serializers.SerializerMethodField()
@@ -87,6 +88,7 @@ class GroupSimpleSerializer(serializers.ModelSerializer):
             "dars_vaqti",
             "students_count",
             "branch",
+            "branch_id",
             "today_attendance_confirmed",
             "present_count",
             "absent_count",
