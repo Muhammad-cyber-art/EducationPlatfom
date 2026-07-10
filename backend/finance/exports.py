@@ -3,7 +3,7 @@ from openpyxl.styles import Font, Alignment, PatternFill
 from django.http import HttpResponse
 from django.utils import timezone
 
-def export_absent_students_to_excel(queryset, branch_name):
+def export_absent_students_to_excel(data_list, branch_name):
     """
     Bugun kelmagan o'quvchilar ro'yxatini Excel formatida qaytaradi.
     """
@@ -32,11 +32,11 @@ def export_absent_students_to_excel(queryset, branch_name):
     ws.column_dimensions['D'].width = 20
 
     # Data
-    for row_num, att in enumerate(queryset, 2):
+    for row_num, item in enumerate(data_list, 2):
         ws.cell(row=row_num, column=1).value = row_num - 1
-        ws.cell(row=row_num, column=2).value = att.student.full_name if att.student else "Noma'lum"
-        ws.cell(row=row_num, column=3).value = att.group.name if att.group else "Noma'lum"
-        ws.cell(row=row_num, column=4).value = att.student.phone if att.student else ""
+        ws.cell(row=row_num, column=2).value = item.get("name", "Noma'lum")
+        ws.cell(row=row_num, column=3).value = item.get("group", "Noma'lum")
+        ws.cell(row=row_num, column=4).value = item.get("phone", "")
 
     from urllib.parse import quote
     raw_filename = f"kelmaganlar_{branch_name}_{today}.xlsx"

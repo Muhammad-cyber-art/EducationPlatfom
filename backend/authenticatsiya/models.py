@@ -59,6 +59,7 @@ class UserModel(AbstractUser):
 
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     subject = models.CharField(max_length=50, blank=True, null=True)
+    telegram_chat_id = models.CharField(max_length=50, blank=True, null=True, verbose_name="Telegram Chat ID (Admin Bot)")
     
     def is_super_admin(self):
         return self.role == 'super_admin'

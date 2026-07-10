@@ -47,6 +47,19 @@ const AttendanceSection = ({
   const [loadingAction, setLoadingAction] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const mobileMenuRef = useRef(null);
+  const menuButtonRef = useRef(null);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
+
+  // Track menu button position when menu opens
+  useEffect(() => {
+    if (isMobileMenuOpen && menuButtonRef.current) {
+      const rect = menuButtonRef.current.getBoundingClientRect();
+      setMenuPosition({
+        top: rect.bottom + 8,
+        left: rect.left + rect.width - 224 // 224 is w-56 (224px)
+      });
+    }
+  }, [isMobileMenuOpen]);
 
   // Use groupinfo's built-in special and canceled dates
   const specialDates = groupinfo.special_lesson_dates || [];
@@ -59,7 +72,8 @@ const AttendanceSection = ({
   // Close mobile menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target)) {
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target) &&
+          menuButtonRef.current && !menuButtonRef.current.contains(event.target)) {
         setIsMobileMenuOpen(false);
       }
     };
@@ -67,7 +81,7 @@ const AttendanceSection = ({
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [mobileMenuRef]);
+  }, [mobileMenuRef, menuButtonRef]);
 
   const markedCount = Object.keys(markedStudents || {}).length;
 
@@ -315,71 +329,14 @@ const AttendanceSection = ({
             )}
             
             {/* 3-dot menu for mobile */}
-            <div className="relative" ref={mobileMenuRef}>
-              <button
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="flex items-center justify-center w-10 h-10 rounded-xl bg-[var(--bg-panel)]  text-[var(--text-secondary)] hover:text-[var(--gold)] hover:border-[var(--gold)]/30 transition-all shadow-lg active:scale-95"
-                title="Boshqa amallar"
-              >
-                <MoreVertical size={18} />
-              </button>
-              
-              {isMobileMenuOpen && (
-                <div className="absolute right-0 top-full mt-2 w-56 bg-[var(--bg-panel)]  rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top-right z-50">
-                  {canTakeAttendance && (
-                    <button
-                      onClick={() => {
-                        setIsSpecialLessonModalOpen(true);
-                        setIsMobileMenuOpen(false);
-                      }}
-                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[var(--gold)]/5 text-[var(--text-primary)] text-[10px] font-black capitalize tracking-widest transition-all /40"
-                    >
-                      <Plus size={14} className="text-[var(--gold)]" /> Dars qo'shish
-                    </button>
-                  )}
-                  
-                  {canTakeAttendance && !isCanceledDay && (
-                    <button
-                      onClick={() => {
-                        handleCancelLesson();
-                        setIsMobileMenuOpen(false);
-                      }}
-                      disabled={loadingAction}
-                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-rose-500/10 text-rose-500 text-[10px] font-black capitalize tracking-widest transition-all border-b border-[var(--border-glass)]/40 disabled:opacity-50"
-                    >
-                      {loadingAction ? <Loader2 size={14} className="animate-spin" /> : <X size={14} className="text-rose-500" />} Darsni bekor qilish
-                    </button>
-                  )}
-                  
-                  {canTakeAttendance && isCanceledDay && (
-                    <button
-                      onClick={() => {
-                        handleReactivateLesson();
-                        setIsMobileMenuOpen(false);
-                      }}
-                      disabled={loadingAction}
-                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-emerald-500/10 text-emerald-500 text-[10px] font-black capitalize tracking-widest transition-all border-b border-[var(--border-glass)]/40 disabled:opacity-50"
-                    >
-                      {loadingAction ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} className="text-emerald-500" />} Qayta faollashtirish
-                    </button>
-                  )}
-                  
-                  <button
-                    onClick={() => {
-                      queryClient.refetchQueries(['group-detail', group_id]);
-                      queryClient.refetchQueries(['group-students', group_id]);
-                      refetchAttends();
-                      queryClient.refetchQueries(['homeworks', group_id]);
-                      queryClient.refetchQueries(['mock-tests', group_id]);
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[var(--gold)]/5 text-[var(--text-primary)] text-[10px] font-black capitalize tracking-widest transition-all"
-                  >
-                    <RotateCw size={14} className="text-[var(--gold)]" /> Yangilash
-                  </button>
-                </div>
-              )}
-            </div>
+            <button
+              ref={menuButtonRef}
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="flex items-center justify-center w-10 h-10 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--gold)] hover:border-[var(--gold)]/30 transition-all shadow-lg active:scale-95"
+              title="Boshqa amallar"
+            >
+              <MoreVertical size={18} />
+            </button>
           </div>
           
           {/* Desktop confirm button (separate so it's always visible on desktop) */}
@@ -394,6 +351,71 @@ const AttendanceSection = ({
           )}
         </div>
       </div>
+
+      {/* Mobile Menu Portal */}
+      {isMobileMenuOpen && typeof document !== 'undefined' && createPortal(
+        <div 
+          ref={mobileMenuRef}
+          className="fixed w-56 bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top-right z-[9999] p-0"
+          style={{ 
+            top: `${menuPosition.top}px`, 
+            left: `${menuPosition.left}px` 
+          }}
+        >
+          {canTakeAttendance && (
+            <button
+              onClick={() => {
+                setIsSpecialLessonModalOpen(true);
+                setIsMobileMenuOpen(false);
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[var(--gold)]/5 text-[var(--text-primary)] text-[10px] font-black capitalize tracking-widest transition-all border-b border-[var(--border-glass)]/40"
+            >
+              <Plus size={14} className="text-[var(--gold)]" /> Dars qo'shish
+            </button>
+          )}
+          
+          {canTakeAttendance && !isCanceledDay && (
+            <button
+              onClick={() => {
+                handleCancelLesson();
+                setIsMobileMenuOpen(false);
+              }}
+              disabled={loadingAction}
+              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-rose-500/10 text-rose-500 text-[10px] font-black capitalize tracking-widest transition-all border-b border-[var(--border-glass)]/40 disabled:opacity-50"
+            >
+              {loadingAction ? <Loader2 size={14} className="animate-spin" /> : <X size={14} className="text-rose-500" />} Darsni bekor qilish
+            </button>
+          )}
+          
+          {canTakeAttendance && isCanceledDay && (
+            <button
+              onClick={() => {
+                handleReactivateLesson();
+                setIsMobileMenuOpen(false);
+              }}
+              disabled={loadingAction}
+              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-emerald-500/10 text-emerald-500 text-[10px] font-black capitalize tracking-widest transition-all border-b border-[var(--border-glass)]/40 disabled:opacity-50"
+            >
+              {loadingAction ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} className="text-emerald-500" />} Qayta faollashtirish
+            </button>
+          )}
+          
+          <button
+            onClick={() => {
+              queryClient.refetchQueries(['group-detail', group_id]);
+              queryClient.refetchQueries(['group-students', group_id]);
+              refetchAttends();
+              queryClient.refetchQueries(['homeworks', group_id]);
+              queryClient.refetchQueries(['mock-tests', group_id]);
+              setIsMobileMenuOpen(false);
+            }}
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[var(--gold)]/5 text-[var(--text-primary)] text-[10px] font-black capitalize tracking-widest transition-all"
+          >
+            <RotateCw size={14} className="text-[var(--gold)]" /> Yangilash
+          </button>
+        </div>,
+        document.body
+      )}
 
       {/* SEARCH PROTOCOL */}
       <div className="px-4 sm:px-6 py-2 border-b border-[var(--border-glass)]/10 bg-[var(--bg-void)]/20 shadow-inner">

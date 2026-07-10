@@ -718,7 +718,8 @@ class AbsentTodayStudentsView(APIView):
             # kelgan bo'lsa, u kelmaganlar ro'yxatiga tushmasligi kerak.
             base_qs = Attendance.objects.filter(group__branch_id=branch_id, date=today)
             present_ids = base_qs.filter(
-                is_present=True
+                is_present=True,
+                student__isnull=False
             ).values_list('student_id', flat=True).distinct()
 
             queryset = base_qs.filter(is_present=False).exclude(
@@ -735,28 +736,19 @@ class AbsentTodayStudentsView(APIView):
                     Q(group_name__icontains=search)
                 )
 
-            if export_mode == 'excel':
-                branch = Branch.objects.get(id=branch_id)
-                return export_absent_students_to_excel(queryset, branch.name)
-
-            paginator = HeavyResultsSetPagination()
-            paginated_queryset = paginator.paginate_queryset(queryset, request, view=self)
-
+            # 1. Takrorlanmasligi uchun avval barchasini Python'da filterlaymiz
+            # Bu yerda recordlar soni kunlik hisobda bo'lgani uchun tez ishlaydi
             seen_students = set()
-            results = []
-            for att in paginated_queryset:
-                # student_id None bo'lsa (o'chirilgan/orphan yozuv) — o'tkazib yuboramiz
+            unique_results = []
+            for att in queryset:
                 student_id = att.student_id
                 if student_id is None:
                     continue
 
-                # Bir o'quvchini bir marta ko'rsatamiz (bir nechta guruhda absent bo'lsa)
                 if student_id in seen_students:
                     continue
                 seen_students.add(student_id)
 
-                # Avval real FK object'dan olishga urinib ko'ramiz,
-                # bo'lmasa snapshot field'dan (student/group o'chirilgan bo'lsa)
                 if att.student is not None:
                     name = att.student.full_name
                     phone = att.student.phone or ""
@@ -769,14 +761,23 @@ class AbsentTodayStudentsView(APIView):
                 else:
                     group_name = att.group_name or ""
 
-                results.append({
+                unique_results.append({
                     "id": student_id,
                     "name": name,
                     "phone": phone,
                     "group": group_name,
                 })
 
-            return paginator.get_paginated_response(results)
+            if export_mode == 'excel':
+                branch = Branch.objects.get(id=branch_id)
+                # Export ga ham filterlangan (takrorlanmagan) listni beramiz
+                return export_absent_students_to_excel(unique_results, branch.name)
+
+            paginator = HeavyResultsSetPagination()
+            # unique_results oddiy python list bo'lsa ham DRF Paginator bemalol ishlaydi
+            paginated_results = paginator.paginate_queryset(unique_results, request, view=self)
+
+            return paginator.get_paginated_response(paginated_results)
 
         except Exception:
             logger.exception(

@@ -232,16 +232,6 @@
  -webkit-backdrop-filter: none !important;
 }
 
-/* Fix all modal overlays and semi-transparent backgrounds */
-[class*="bg-black/"],
-[class*="bg-slate-900/"],
-[class*="bg-[var(--bg-panel)]/"] {
- background-color: var(--bg-void) !important;
-}
-
-[class*="bg-[var(--bg-void)]/"] {
- background-color: var(--bg-void) !important;
-}
 
 body {
  margin: 0;
@@ -277,7 +267,8 @@ body {
  flex: 1;
  display: flex;
  flex-direction: column;
- overflow: hidden;
+ overflow-x: hidden;
+ overflow-y: visible;
  position: relative;
 }
 

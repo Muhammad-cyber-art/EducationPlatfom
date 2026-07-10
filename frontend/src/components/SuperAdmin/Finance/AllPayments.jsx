@@ -344,7 +344,7 @@ const AllPayments = () => {
               </div>
               <div className="h-[220px] md:h-[260px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={trendData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                  <LineChart data={trendData} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border-glass)" vertical={false} />
                     <XAxis
                       dataKey="month"
@@ -357,7 +357,13 @@ const AllPayments = () => {
                       axisLine={false}
                       tickLine={false}
                       tick={{ fill: 'var(--text-muted)', fontSize: 9, fontWeight: 800 }}
-                      width={40}
+                      tickFormatter={(value) => {
+                        if (value >= 1000000000) return (value / 1000000000).toFixed(1) + 'B';
+                        if (value >= 1000000) return (value / 1000000).toFixed(1) + 'M';
+                        if (value >= 1000) return (value / 1000).toFixed(0) + 'k';
+                        return value;
+                      }}
+                      width={45}
                     />
                     <Tooltip
                       cursor={{ fill: 'rgba(255,255,255,0.02)' }}

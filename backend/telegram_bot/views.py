@@ -23,8 +23,9 @@ class BroadcastMessageView(APIView):
             return Response({"error": "Xabar matni kiritilmadi"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Base Queryset for students
-        # BUG FIX #2: Arxivlangan va o'chirilgan o'quvchilarni chiqarib tashlaymiz.
-        students_qs = Student.objects.filter(is_active=True, is_archived=False)
+        # Broadcast xabarlari uchun arxivlangan/o'chirilgan o'quvchilarga ham boradi (lidlar sifatida)
+        # Faqat is_active=False bo'lganlarni chiqarib tashlaymiz (soft delete)
+        students_qs = Student.objects.filter(is_active=True)
 
         # 1. Global (Barcha filiallar) - Faqat Super Admin uchun
         if send_to_all_branches:
@@ -49,14 +50,13 @@ class BroadcastMessageView(APIView):
             if not has_permission:
                 return Response({"error": "Siz ushbu guruhga xabar yuborish huquqiga ega emassiz"}, status=status.HTTP_403_FORBIDDEN)
             
-            # BUG FIX #1 & #2: Faqat guruhda HOZIR AKTIV va arxivlanmagan o'quvchilarni olish.
-            # group.students.all() edi — GroupEnrollment.is_active=False bo'lgan (guruhdan
-            # chiqqan) va is_archived=True bo'lgan o'quvchilarga ham xabar yuborardi.
+            # Broadcast uchun: Guruhda hozir aktiv enrollment bo'lgan barcha o'quvchilarga boradi
+            # (arxivlangan o'quvchilarga ham, chunki ular lidlar sifatida qoladi)
+            # Lekin guruhdan chiqqan o'quvchilarga (enrollments__is_active=False) bormasligi kerak
             students_qs = group.students.filter(
                 enrollments__group=group,
                 enrollments__is_active=True,
                 is_active=True,
-                is_archived=False,
             ).distinct()
 
         # 3. Filial bo'yicha
@@ -133,19 +133,19 @@ class BotStatisticsView(APIView):
         branch_id = request.query_params.get('branch_id')
         group_id = request.query_params.get('group_id')
         
-        # BUG FIX #2: Faqat faol va arxivlanmagan o'quvchilarni sanash.
-        qs = Student.objects.filter(is_active=True, is_archived=False)
+        # Broadcast statistikasi uchun ham arxivlangan o'quvchilarni sanash (lidlar sifatida)
+        qs = Student.objects.filter(is_active=True)
 
         if branch_id:
             qs = qs.filter(branch_id=branch_id)
         if group_id:
             group_obj = get_object_or_404(Group, id=group_id)
-            # BUG FIX #1: Faqat aktiv enrollment bo'lgan o'quvchilar.
+            # Broadcast statistikasi uchun ham arxivlangan o'quvchilarni sanash (lidlar sifatida)
+            # Lekin faqat aktiv enrollment bo'lganlarni
             qs = group_obj.students.filter(
                 enrollments__group=group_obj,
                 enrollments__is_active=True,
                 is_active=True,
-                is_archived=False,
             ).distinct()
             
         # O'quvchilarni sanash (telegram_id bo'sh bo'lmaganlar)
@@ -173,8 +173,8 @@ class ExportUnregisteredStudentsView(APIView):
         if user.role not in ['super_admin', 'admin']:
             return Response({"error": "Sizda bu huquqga ega emassiz"}, status=status.HTTP_403_FORBIDDEN)
             
-        # BUG FIX #2: Faqat faol va arxivlanmagan o'quvchilarni eksport qilish.
-        qs = Student.objects.filter(is_active=True, is_archived=False)
+        # Export uchun ham arxivlangan o'quvchilarni qo'shamiz (lidlar sifatida)
+        qs = Student.objects.filter(is_active=True)
         
         # Filter by branch
         if user.role == 'admin':
@@ -205,12 +205,12 @@ class ExportUnregisteredStudentsView(APIView):
                 if group.branch_id in allowed_branches: has_permission = True
             if not has_permission:
                 return Response({"error": "Siz ushbu guruhga ruxsat yo'q"}, status=status.HTTP_403_FORBIDDEN)
-            # BUG FIX #1: Faqat aktiv enrollment bo'lgan o'quvchilar.
+            # Export uchun ham arxivlangan o'quvchilarni qo'shamiz (lidlar sifatida)
+            # Lekin faqat aktiv enrollment bo'lganlarni
             qs = group.students.filter(
                 enrollments__group=group,
                 enrollments__is_active=True,
                 is_active=True,
-                is_archived=False,
             ).distinct()
             
         # Filter for unregistered (no telegram_id and no parent_telegram_id

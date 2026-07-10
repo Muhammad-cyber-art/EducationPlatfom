@@ -22,12 +22,11 @@ def sync_student_telegram_id(sender, instance, created, **kwargs):
         if clean_phone.isdigit() and len(clean_phone) >= 9:
             last_9 = clean_phone[-9:]
             
-            # BUG FIX #4: Faqat faol va arxivlanmagan o'quvchilar orasidan qidirish.
+            # BUG FIX #4: Faqat faol o'quvchilar orasidan qidirish (arxivlanganlar ham qo'shiladi - lidlar sifatida).
             # Avval is_active va is_archived filterlari yo'q edi — o'chirilgan o'quvchilardan
             # ham telegram_id nusxalanishi mumkin edi.
             candidates = Student.objects.exclude(id=instance.id).filter(
                 is_active=True,
-                is_archived=False,
             ).filter(
                 Q(telegram_id__isnull=False, telegram_id__gt='') |
                 Q(parent_telegram_id__isnull=False, parent_telegram_id__gt='')
@@ -69,11 +68,10 @@ def sync_student_telegram_id(sender, instance, created, **kwargs):
         if clean_p.isdigit() and len(clean_p) >= 9:
             last_9_p = clean_p[-9:]
             
-            # BUG FIX #4: Faqat faol va arxivlanmagan o'quvchilar orasidan qidirish.
+            # BUG FIX #4: Faqat faol o'quvchilar orasidan qidirish (arxivlanganlar ham qo'shiladi - lidlar sifatida).
             # Ota-ona raqami bo'yicha ham xuddi shu muammo mavjud edi.
             candidates = Student.objects.exclude(id=instance.id).filter(
                 is_active=True,
-                is_archived=False,
             ).filter(
                 Q(telegram_id__isnull=False, telegram_id__gt='') |
                 Q(parent_telegram_id__isnull=False, parent_telegram_id__gt='')
@@ -117,6 +115,14 @@ def sync_student_telegram_id(sender, instance, created, **kwargs):
 
 def send_attendance_notification(attendance, async_send=True):
     """Davomat xabarnomasi - Takrorlanishni oldini olish bilan"""
+    # Arxivlangan guruhga xabar yubormaslik
+    if attendance.group and attendance.group.is_archived:
+        return
+    
+    # Arxivlangan o'quvchiga xabar yubormaslik
+    if attendance.student and attendance.student.is_archived:
+        return
+    
     # Agar bu holat uchun xabar allaqachon yuborilgan bo'lsa, qaytamiz
     if attendance.last_sent_status == attendance.is_present:
         return
@@ -151,6 +157,10 @@ def send_attendance_notification(attendance, async_send=True):
 def notify_new_student(sender, instance, created, **kwargs):
     """Yangi o'quvchi ro'yxatdan o'tganda"""
     if created:
+        # Arxivlangan o'quvchi bo'lsa xabar yubormaslik
+        if instance.is_archived:
+            return
+        
         # Barcha guruhlarini olish
         active_groups = instance.groups.filter(enrollments__is_active=True).distinct()
         if not active_groups and instance.group:
@@ -177,6 +187,14 @@ def notify_new_student(sender, instance, created, **kwargs):
 def notify_payment(sender, instance, created, **kwargs):
     """To'lov tasdiqlanganda — faqat yangi to'lov yoki status o'zgarganda"""
     if not instance.is_paid:
+        return
+    
+    # Arxivlangan guruhga xabar yubormaslik
+    if instance.group and instance.group.is_archived:
+        return
+    
+    # Arxivlangan o'quvchiga xabar yubormaslik
+    if instance.student and instance.student.is_archived:
         return
     
     # Takroriy xabarnomani oldini olish: faqat yangi yaratilgan yoki is_paid yangi True bo'lganda
@@ -210,6 +228,14 @@ def notify_mock_test(sender, instance, created, **kwargs):
     if not instance.score or instance.score.strip() == '':
         return
     
+    # Arxivlangan guruhga xabar yubormaslik
+    if instance.test and instance.test.group and instance.test.group.is_archived:
+        return
+    
+    # Arxivlangan o'quvchiga xabar yubormaslik
+    if instance.student and instance.student.is_archived:
+        return
+    
     # Takroriy xabarnomani oldini olish: faqat yangi yaratilgan yoki score o'zgarganda
     if not created:
         update_fields = kwargs.get('update_fields')
@@ -241,9 +267,12 @@ def notify_new_homework_assigned(sender, instance, created, **kwargs):
 
     group = instance.group
 
-    # BUG FIX #1 & #2: Faqat guruhda HOZIR AKTIV va arxivlanmagan o'quvchilarni olish.
-    # Avval group.students.all() ishlatilgan edi — bu GroupEnrollment.is_active=False bo'lgan
-    # (guruhdan chiqqan) va is_archived=True bo'lgan o'quvchilarga ham xabar yuborardi.
+    # Arxivlangan guruhga xabar yubormaslik
+    if group.is_archived:
+        return
+
+    # Faqat guruhda HOZIR AKTIV enrollment bo'lgan o'quvchilarni olish.
+    # Arxivlangan o'quvchilarga (is_archived=True) bormasligi kerak.
     students = group.students.filter(
         enrollments__group=group,
         enrollments__is_active=True,
@@ -274,6 +303,14 @@ def notify_homework_submission(sender, instance, created, **kwargs):
     
     # Hali topshirmagan holatda daxshatli ko'p sms ketib qolishini oldini olamiz (faqat birinchi yaratilganda)
     if created and instance.status == 'not_submitted':
+        return
+    
+    # Arxivlangan guruhga xabar yubormaslik
+    if instance.homework and instance.homework.group and instance.homework.group.is_archived:
+        return
+    
+    # Arxivlangan o'quvchiga xabar yubormaslik
+    if instance.student and instance.student.is_archived:
         return
         
     student = instance.student
