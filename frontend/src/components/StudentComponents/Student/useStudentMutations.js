@@ -169,6 +169,19 @@ export const useStudentMutations = (student_id, dispatch, navigate) => {
     },
   });
 
+  const disconnectBotMutation = useMutation({
+    mutationFn: async () => await api.post(`groups/students/${student_id}/disconnect-bot/`),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries(["student"]);
+      toast.success(res.data.message || "Botdan muvaffaqiyatli uzildi.");
+    },
+    onError: (err) => {
+      toast.error(
+        err.response?.data?.error || "Botdan uzishda xatolik yuz berdi",
+      );
+    },
+  });
+
   return {
     editMutation,
     paymentMutation,
@@ -177,5 +190,6 @@ export const useStudentMutations = (student_id, dispatch, navigate) => {
     unenrollMutation,
     archiveMutation,
     mergeMutation,
+    disconnectBotMutation,
   };
 };

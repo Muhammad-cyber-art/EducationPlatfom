@@ -13,6 +13,12 @@ app.config_from_object('django.conf:settings', namespace='CELERY')
 # Barcha installed app'lardagi tasks.py fayllarini avtomatik qidiradi
 app.autodiscover_tasks()
 
+# Celery Safety Protocols (as requested)
+app.conf.update(
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
+)
+
 # Celery Beat Schedule for Admin Bot Reporting
 app.conf.beat_schedule = {
     # Daily reports to admins - runs every day at 8:00 PM (20:00)
@@ -31,6 +37,20 @@ app.conf.beat_schedule = {
     'send-monthly-financial-to-super-admins': {
         'task': 'reports.send_monthly_financial_to_super_admins',
         'schedule': crontab(hour=21, minute=30, day_of_month='28-31'),  # 9:30 PM on 28-31 (will check if last day)
+    },
+    
+    # NEW PANDAS TASKS:
+    'pandas-daily-branch-report': {
+        'task': 'telegram_bot.tasks.trigger_daily_branch_reports_pandas',
+        'schedule': crontab(minute=0, hour=2),  # 2 AM
+    },
+    'pandas-monthly-attendance-report': {
+        'task': 'telegram_bot.tasks.trigger_monthly_attendance_reports_pandas',
+        'schedule': crontab(minute=0, hour=3, day_of_month='1'),  # 1st of month, 3 AM
+    },
+    'pandas-monthly-finance-report': {
+        'task': 'telegram_bot.tasks.trigger_monthly_finance_reports_pandas',
+        'schedule': crontab(minute=30, hour=3, day_of_month='1'),  # 1st of month, 3:30 AM
     },
 }
 

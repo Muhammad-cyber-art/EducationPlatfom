@@ -29,3 +29,4 @@ celery
 redis
 django-celery-beat
 gunicorn
+pandas

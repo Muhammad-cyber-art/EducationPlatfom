@@ -128,6 +128,7 @@ export default function StudentProfilePage() {
     unenrollMutation,
     archiveMutation,
     mergeMutation,
+    disconnectBotMutation,
   } = mutations;
 
   // Derived Data
@@ -291,6 +292,7 @@ export default function StudentProfilePage() {
           student_id,
           dispatch,
           handleImageChange,
+          disconnectBotMutation,
         }}
       />
 

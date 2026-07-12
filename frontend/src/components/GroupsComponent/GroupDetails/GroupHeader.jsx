@@ -1,4 +1,4 @@
-  import React, { useRef, useEffect, useState, useCallback } from "react";
+import React, { useRef, useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { UserPlus, Send, MoreVertical, Edit3, UserRoundPlus, Activity, Target, Trash2, Check, ArrowRightLeft } from "lucide-react";
 import GoBackButton from "../../sendback";
@@ -31,48 +31,48 @@ const GroupHeader = ({
   // Function to calculate menu position
   const calculateMenuPosition = useCallback(() => {
     // Determine which button is visible
-    const buttonRef = 
-      (desktopMenuButtonRef.current && desktopMenuButtonRef.current.offsetParent !== null) 
-        ? desktopMenuButtonRef 
+    const buttonRef =
+      (desktopMenuButtonRef.current && desktopMenuButtonRef.current.offsetParent !== null)
+        ? desktopMenuButtonRef
         : mobileMenuButtonRef;
-    
+
     if (!buttonRef.current) return;
-    
+
     const rect = buttonRef.current.getBoundingClientRect();
     const menuWidth = 224;
     const menuMargin = 8;
-    
+
     let left = rect.left + rect.width - menuWidth;
     let top = rect.bottom + menuMargin;
-    
+
     // Ensure menu doesn't go off the right edge
     if (left + menuWidth > window.innerWidth) {
       left = window.innerWidth - menuWidth - menuMargin;
     }
-    
+
     // Ensure menu doesn't go off the left edge
     if (left < menuMargin) {
       left = menuMargin;
     }
-    
+
     setMenuPosition({ top, left });
-    
+
     // Update position once content is rendered with actual height
     requestAnimationFrame(() => {
       if (menuContentRef.current) {
         const menuHeight = menuContentRef.current.offsetHeight;
         let updatedTop = rect.bottom + menuMargin;
-        
+
         // Ensure menu doesn't go off the bottom edge
         if (updatedTop + menuHeight > window.innerHeight) {
           updatedTop = rect.top - menuHeight - menuMargin;
         }
-        
+
         // Ensure top doesn't go off the top edge
         if (updatedTop < menuMargin) {
           updatedTop = menuMargin;
         }
-        
+
         setMenuPosition(prev => ({ ...prev, top: updatedTop }));
       }
     });
@@ -88,11 +88,11 @@ const GroupHeader = ({
   // Reposition menu on window resize
   useEffect(() => {
     if (!showMenu) return;
-    
+
     const handleResize = () => {
       calculateMenuPosition();
     };
-    
+
     window.addEventListener('resize', handleResize);
     return () => {
       window.removeEventListener('resize', handleResize);
@@ -105,7 +105,7 @@ const GroupHeader = ({
       const clickedOutsideMenu = menuContentRef.current && !menuContentRef.current.contains(event.target);
       const clickedOutsideDesktopButton = !desktopMenuButtonRef.current || !desktopMenuButtonRef.current.contains(event.target);
       const clickedOutsideMobileButton = !mobileMenuButtonRef.current || !mobileMenuButtonRef.current.contains(event.target);
-      
+
       if (clickedOutsideMenu && clickedOutsideDesktopButton && clickedOutsideMobileButton) {
         uiDispatch({ type: "SET_FIELD", field: "showMenu", value: false });
       }
@@ -118,7 +118,7 @@ const GroupHeader = ({
 
   return (
     <>
-      <div className="sticky -top-3 h-[50px] z-[50] bg-[var(--bg-void)] -mt-3 sm:-mt-6 -mx-3 sm:-mx-6 px-3 sm:px-6 pt-3 sm:pt-6 pb-4 sm:pb-6 flex flex-row items-center justify-between gap-2 sm:gap-4 mb-4 sm:mb-6 shadow-sm">
+      <div className="sticky  h-[50px] z-[50] bg-[var(--bg-void)] -mt-3 sm:-mt-6 -mx-3 sm:-mx-6 px-3 sm:px-6 pt-3 sm:pt-6 pb-4 sm:pb-6 flex flex-row items-center justify-between gap-2 sm:gap-4 mb-4 sm:mb-6 shadow-sm">
         <div className="flex items-center gap-4">
           <GoBackButton />
           <div className="flex flex-col">
@@ -127,11 +127,10 @@ const GroupHeader = ({
                 {isEditing ? (editData.name || "Yangi Guruh") : groupinfo.name}
               </h1>
               {!isEditing && (
-                <span className={`px-2 py-0.5 rounded-full border text-[7px] font-black uppercase tracking-widest shrink-0 ${
-                  groupinfo.group_type === 'advanced' 
-                  ? 'bg-[var(--gold)]/10 text-[var(--gold)] shadow-[0_0_10px_rgba(184,134,11,0.2)]' 
+                <span className={`px-2 py-0.5 rounded-full border text-[7px] font-black uppercase tracking-widest shrink-0 ${groupinfo.group_type === 'advanced'
+                  ? 'bg-[var(--gold)]/10 text-[var(--gold)] shadow-[0_0_10px_rgba(184,134,11,0.2)]'
                   : 'bg-white/5 border-white/10 text-white/40'
-                }`}>
+                  }`}>
                   {groupinfo.group_type === 'advanced' ? 'ADVANCED' : 'STANDART'}
                 </span>
               )}
@@ -219,12 +218,12 @@ const GroupHeader = ({
       {/* Menu Portal */}
 
       {showMenu && typeof document !== 'undefined' && createPortal(
-        <div 
+        <div
           ref={menuContentRef}
           className="fixed w-56 bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top-right z-[9999] p-2"
-          style={{ 
-            top: `${menuPosition.top}px`, 
-            left: `${menuPosition.left}px` 
+          style={{
+            top: `${menuPosition.top}px`,
+            left: `${menuPosition.left}px`
           }}
         >
           {/* Desktop menu (without Send) */}
@@ -319,9 +318,9 @@ const GroupHeader = ({
           </div>
         </div>,
         document.body
-    )}
+      )}
     </>
-)
+  )
 }
 
 export default GroupHeader;

@@ -18,10 +18,8 @@ async def auth_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     user_id = str(update.effective_user.id)
     
-    # Keshdan tekshirish
-    if 'bot_profile' in context.user_data:
-        return
-        
+    # Keshdan tekshirishni olib tashlaymiz (har safar bazadan eng yangi ma'lumotni olamiz).
+    # Chunki PicklePersistence ishlatilganda eski keshdagi model aloqalari (ORM relations) asinxron muhitda xatolik beradi (SynchronousOnlyOperation).
     # Bazadan tortib olish (select_related orqali kerakli bog'liqliklar bilan)
     profile = await sync_to_async(
         lambda: BotProfile.objects.select_related('user__branch', 'student').filter(telegram_id=user_id, is_active=True).first()
@@ -31,6 +29,7 @@ async def auth_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['bot_profile'] = profile
         context.user_data['role'] = profile.role
     else:
+        context.user_data.pop('bot_profile', None)
         context.user_data['role'] = 'guest'
 
 def require_roles(*allowed_roles):

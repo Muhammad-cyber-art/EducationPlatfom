@@ -289,6 +289,13 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+CELERY_TASK_DEFAULT_QUEUE = 'default'
+
+CELERY_TASK_ROUTES = {
+    'telegram_bot.reports_bot_logic.*': {'queue': 'heavy_reports'},
+    'reports.tasks.*': {'queue': 'heavy_reports'},
+    'finance.tasks.*': {'queue': 'heavy_reports'},
+}
 
 from celery.schedules import crontab
 

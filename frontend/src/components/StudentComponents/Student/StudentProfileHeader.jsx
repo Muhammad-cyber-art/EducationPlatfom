@@ -1,5 +1,5 @@
 import React from"react";
-import { User, Camera, ShieldCheck, Activity, Send, Phone, Clock } from"lucide-react";
+import { User, Camera, ShieldCheck, Activity, Send, Phone, Clock, Unplug } from"lucide-react";
 import { getPaymentStatus } from "./paymentStatus";
 
 const StudentProfileHeader = ({
@@ -10,7 +10,8 @@ const StudentProfileHeader = ({
  primaryPayment,
  student_id,
  dispatch,
- handleImageChange
+ handleImageChange,
+ disconnectBotMutation
 }) => {
  const payStatus = getPaymentStatus(primaryPayment);
  return (
@@ -78,9 +79,26 @@ const StudentProfileHeader = ({
  )}
 
  {studentData?.telegram_id && (
- <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#0088cc]/10 border border-[#0088cc]/20 text-[#0088cc] shadow-lg animate-pulse" title="Telegram Botga ulangan">
- <Send size={10} className="fill-current" />
- <span className="text-[8px] font-black capitalize tracking-widest">BOT ACTIVE</span>
+ <div className="flex items-center gap-2">
+  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#0088cc]/10 border border-[#0088cc]/20 text-[#0088cc] shadow-lg animate-pulse" title="Telegram Botga ulangan">
+  <Send size={10} className="fill-current" />
+  <span className="text-[8px] font-black capitalize tracking-widest">BOT ACTIVE</span>
+  </div>
+  <button
+    onClick={() => {
+      if (window.confirm("Rostdan ham o'quvchini Telegram botdan uzmoqchimisiz? U qayta start bosib kirishi kerak bo'ladi.")) {
+        disconnectBotMutation?.mutate();
+      }
+    }}
+    disabled={disconnectBotMutation?.isPending}
+    className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+    title="Botdan uzish"
+  >
+    <Unplug size={10} />
+    <span className="text-[8px] font-black capitalize tracking-widest">
+      {disconnectBotMutation?.isPending ? "UZILMOQDA..." : "UZISH"}
+    </span>
+  </button>
  </div>
  )}
  </div>

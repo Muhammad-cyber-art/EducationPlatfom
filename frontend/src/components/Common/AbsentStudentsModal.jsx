@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { UserX, Globe, Search, Loader2, Download, CheckCircle, PhoneCall } from 'lucide-react';
+import { UserX, X, Search, Loader2, Download, CheckCircle, PhoneCall } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../tokenUpdater/updater';
 import toast from 'react-hot-toast';
@@ -111,8 +111,8 @@ const AbsentStudentsModal = ({ isOpen, onClose, branchId }) => {
   if (!isOpen) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
-      <motion.div 
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-6 sm:p-6 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
+      <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -123,7 +123,7 @@ const AbsentStudentsModal = ({ isOpen, onClose, branchId }) => {
         <div className="p-4 sm:px-6 sm:py-5 border-b border-[var(--border-glass)] flex justify-between items-center bg-[var(--bg-panel)] relative overflow-hidden">
           {/* Decorative background gradient */}
           <div className="absolute top-0 right-0 w-64 h-64 bg-rose-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
-          
+
           <div className="flex items-center gap-3 relative z-10">
             <div className="p-2.5 bg-rose-500/10 rounded-xl border border-rose-500/20 text-rose-500">
               <UserX size={20} strokeWidth={2.5} />
@@ -133,7 +133,7 @@ const AbsentStudentsModal = ({ isOpen, onClose, branchId }) => {
               <p className="text-[10px] font-bold text-rose-500/80 uppercase tracking-widest mt-0.5">Nazorat • Bugun</p>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-2 relative z-10">
             <button
               onClick={handleDownloadExcel}
@@ -149,7 +149,7 @@ const AbsentStudentsModal = ({ isOpen, onClose, branchId }) => {
               onClick={onClose}
               className="p-2 text-[var(--text-muted)] hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all active:scale-95"
             >
-              <Globe size={18} className="rotate-45" />
+              <X size={18} />
             </button>
           </div>
         </div>
@@ -181,21 +181,21 @@ const AbsentStudentsModal = ({ isOpen, onClose, branchId }) => {
           onScroll={handleScroll}
         >
           {data.length > 0 ? (
-            <motion.div 
+            <motion.div
               variants={containerVariants}
               initial="hidden"
               animate="show"
               className="grid grid-cols-1 md:grid-cols-2 gap-3"
             >
               {data.map((student, idx) => (
-                <motion.div 
-                  key={`${student.id}-${idx}`} 
+                <motion.div
+                  key={`${student.id}-${idx}`}
                   variants={itemVariants}
                   className="p-4 bg-[var(--bg-panel)] hover:bg-rose-500/5 transition-all border border-[var(--border-glass)] hover:border-rose-500/30 rounded-2xl flex flex-col justify-between group relative overflow-hidden"
                 >
                   {/* Subtle left border accent indicating absence */}
                   <div className="absolute left-0 top-0 bottom-0 w-1 bg-rose-500/50 group-hover:bg-rose-500 transition-colors" />
-                  
+
                   <div className="flex items-start justify-between gap-2 pl-2">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
@@ -214,7 +214,7 @@ const AbsentStudentsModal = ({ isOpen, onClose, branchId }) => {
 
                     {/* Phone Call Action */}
                     {student.phone ? (
-                      <a 
+                      <a
                         href={`tel:${student.phone}`}
                         className="shrink-0 flex items-center justify-center w-10 h-10 rounded-xl bg-blue-500/10 text-blue-500 border border-blue-500/20 hover:bg-blue-500 hover:text-white transition-all hover:scale-105 active:scale-95 shadow-sm"
                         title="Qo'ng'iroq qilish"
@@ -227,19 +227,19 @@ const AbsentStudentsModal = ({ isOpen, onClose, branchId }) => {
                       </div>
                     )}
                   </div>
-                  
+
                   {student.phone && (
-                     <div className="mt-3 pl-2">
-                        <span className="text-[10px] font-mono text-[var(--text-secondary)] bg-[var(--bg-void)] px-2 py-1 rounded-lg border border-[var(--border-glass)]">
-                           {student.phone}
-                        </span>
-                     </div>
+                    <div className="mt-3 pl-2">
+                      <span className="text-[10px] font-mono text-[var(--text-secondary)] bg-[var(--bg-void)] px-2 py-1 rounded-lg border border-[var(--border-glass)]">
+                        {student.phone}
+                      </span>
+                    </div>
                   )}
                 </motion.div>
               ))}
             </motion.div>
           ) : !loading ? (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               className="h-full flex flex-col items-center justify-center text-center py-10"
@@ -249,8 +249,8 @@ const AbsentStudentsModal = ({ isOpen, onClose, branchId }) => {
               </div>
               <h3 className="text-lg font-black text-[var(--text-primary)] mb-1.5">Barchasi joyida!</h3>
               <p className="text-xs sm:text-sm text-[var(--text-muted)] font-medium max-w-[250px] mx-auto leading-relaxed">
-                {searchTerm 
-                  ? "Qidiruvingiz bo'yicha hech qanday kelmagan o'quvchi topilmadi." 
+                {searchTerm
+                  ? "Qidiruvingiz bo'yicha hech qanday kelmagan o'quvchi topilmadi."
                   : "Bugungi barcha darslarda davomat to'liq. Barcha o'quvchilar ishtirok etmoqda."}
               </p>
             </motion.div>

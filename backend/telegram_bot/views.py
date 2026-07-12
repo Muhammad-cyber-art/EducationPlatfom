@@ -18,6 +18,7 @@ class BroadcastMessageView(APIView):
         student_id = request.data.get('student_id')
         send_to_all_branches = request.data.get('send_to_all_branches', False)
         message = request.data.get('message')
+        group = None
 
         if not message:
             return Response({"error": "Xabar matni kiritilmadi"}, status=status.HTTP_400_BAD_REQUEST)
@@ -53,10 +54,10 @@ class BroadcastMessageView(APIView):
             # Broadcast uchun: Guruhda hozir aktiv enrollment bo'lgan barcha o'quvchilarga boradi
             # (arxivlangan o'quvchilarga ham, chunki ular lidlar sifatida qoladi)
             # Lekin guruhdan chiqqan o'quvchilarga (enrollments__is_active=False) bormasligi kerak
-            students_qs = group.students.filter(
+            students_qs = students_qs.filter(
+                groups=group,
                 enrollments__group=group,
                 enrollments__is_active=True,
-                is_active=True,
             ).distinct()
 
         # 3. Filial bo'yicha
@@ -97,30 +98,16 @@ class BroadcastMessageView(APIView):
             if group:
                 final_message = f"<b>{group.name}</b>\n\n{message}"
 
-        # Xabarlarni yuborish (Celery va Fallback Threading bilan)
+        # Xabarlarni yuborish (Faqat Celery orqali)
         try:
             from .tasks import send_broadcast_message_task
             send_broadcast_message_task.delay(list(target_chat_ids), final_message)
-        except Exception:
-            # Celery/Redis ishlamayotgan bo'lsa, xabarlarni bitta fondagi thread ichida navbat bilan yuboramiz
-            import threading
-            import time
-            from .utils import _send_message_sync
-
-            def fallback_broadcast(ids_list, msg_text):
-                # Duplikatlarni oldini olish uchun set-dan foydalanamiz
-                unique_ids = list(set(ids_list))
-                for cid in unique_ids:
-                    try:
-                        _send_message_sync(cid, msg_text)
-                        time.sleep(0.05)
-                    except:
-                        pass
-            
-            threading.Thread(target=fallback_broadcast, args=(list(target_chat_ids), final_message)).start()
+        except Exception as e:
+            # Celery/Redis ishlamayotgan bo'lsa xato qaytaramiz (Background thread ishlatish xavfli)
+            return Response({"error": f"Xabarlarni yuborishda xatolik yuz berdi (Celery yoki Redis ishlamayapti): {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         sent_count = len(target_chat_ids)
-        target_name = "Barcha o'quvchilar" if send_to_all_branches or (not group_id and not branch_id and not student_id) else (f"Tanlangan guruh: '{group.name}'" if 'group' in locals() and group else "Tanlangan o'quvchi / filial")
+        target_name = "Barcha o'quvchilar" if send_to_all_branches or (not group_id and not branch_id and not student_id) else (f"Tanlangan guruh: '{group.name}'" if group else "Tanlangan o'quvchi / filial")
         return Response({
             "status": "success", 
             "detail": f"Xabar {sent_count} ta unikal foydalanuvchiga yuborilmoqda ({target_name})."
@@ -207,10 +194,10 @@ class ExportUnregisteredStudentsView(APIView):
                 return Response({"error": "Siz ushbu guruhga ruxsat yo'q"}, status=status.HTTP_403_FORBIDDEN)
             # Export uchun ham arxivlangan o'quvchilarni qo'shamiz (lidlar sifatida)
             # Lekin faqat aktiv enrollment bo'lganlarni
-            qs = group.students.filter(
+            qs = qs.filter(
+                groups=group,
                 enrollments__group=group,
                 enrollments__is_active=True,
-                is_active=True,
             ).distinct()
             
         # Filter for unregistered (no telegram_id and no parent_telegram_id

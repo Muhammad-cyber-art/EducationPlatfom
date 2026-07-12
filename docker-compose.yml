@@ -42,7 +42,7 @@ services:
   celery_worker:
     build: ./backend
     restart: always
-    command: celery -A config worker -l info
+    command: celery -A config worker -Q default,heavy_reports -l info
     env_file:
       - .env
     depends_on:

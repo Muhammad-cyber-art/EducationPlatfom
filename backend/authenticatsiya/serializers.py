@@ -101,10 +101,15 @@ class RegisterSerializer(serializers.ModelSerializer):
         if password and password.strip():
             instance.set_password(password)
 
-        # 3. Boshqa maydonlarni yangilash
+        old_phone = instance.phone_number
+        
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         
+        if old_phone != instance.phone_number:
+            from telegram_bot.models import BotProfile
+            BotProfile.objects.filter(user=instance).delete()
+            
         instance.save()
         return instance
 

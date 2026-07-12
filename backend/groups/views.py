@@ -682,6 +682,19 @@ class StudentViewSet(viewsets.ModelViewSet):
         serializer = GroupTransferSerializer(transfers, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['post'], url_path='disconnect-bot')
+    def disconnect_bot(self, request, pk=None):
+        """O'quvchini Telegram botdan uzish"""
+        student = self.get_object()
+        
+        from telegram_bot.models import BotProfile
+        BotProfile.objects.filter(student=student).delete()
+        
+        student.telegram_id = None
+        student.save(update_fields=['telegram_id'])
+        
+        return Response({"status": "success", "message": "Botdan muvaffaqiyatli uzildi"}, status=200)
+
     @action(detail=False, methods=['post'], url_path='bulk-delete')
     def bulk_delete(self, request):
         student_ids = request.data.get('student_ids', [])

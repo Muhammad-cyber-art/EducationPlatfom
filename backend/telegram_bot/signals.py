@@ -5,7 +5,16 @@ from groups.models import Student
 from homework_attends.models import Attendance, MockTestResult, HomeworkSubmission, Homework
 from finance.models import Payment
 from .utils import send_telegram_message_async, get_student_telegram_ids
+from django.db import transaction
 
+
+def is_valid_for_notification(student, group=None):
+    """Guruh yoki o'quvchi arxivlangan bo'lsa xabar yubormaslikni tekshirish"""
+    if group and getattr(group, 'is_archived', False):
+        return False
+    if student and getattr(student, 'is_archived', False):
+        return False
+    return True
 
 @receiver(post_save, sender=Student)
 def sync_student_telegram_id(sender, instance, created, **kwargs):
@@ -115,12 +124,8 @@ def sync_student_telegram_id(sender, instance, created, **kwargs):
 
 def send_attendance_notification(attendance, async_send=True):
     """Davomat xabarnomasi - Takrorlanishni oldini olish bilan"""
-    # Arxivlangan guruhga xabar yubormaslik
-    if attendance.group and attendance.group.is_archived:
-        return
-    
-    # Arxivlangan o'quvchiga xabar yubormaslik
-    if attendance.student and attendance.student.is_archived:
+    # Arxivlangan guruh yoki o'quvchiga xabar yubormaslik
+    if not is_valid_for_notification(attendance.student, attendance.group):
         return
     
     # Agar bu holat uchun xabar allaqachon yuborilgan bo'lsa, qaytamiz
@@ -141,7 +146,7 @@ def send_attendance_notification(attendance, async_send=True):
     sent = False
     for cid in chat_ids:
         if async_send:
-            send_telegram_message_async(cid, text)
+            transaction.on_commit(lambda c=cid: send_telegram_message_async(c, text))
         else:
             from .utils import _send_message_sync
             _send_message_sync(cid, text)
@@ -158,7 +163,7 @@ def notify_new_student(sender, instance, created, **kwargs):
     """Yangi o'quvchi ro'yxatdan o'tganda"""
     if created:
         # Arxivlangan o'quvchi bo'lsa xabar yubormaslik
-        if instance.is_archived:
+        if not is_valid_for_notification(instance):
             return
         
         # Barcha guruhlarini olish
@@ -180,7 +185,7 @@ def notify_new_student(sender, instance, created, **kwargs):
         
         chat_ids = get_student_telegram_ids(instance)
         for cid in chat_ids:
-            send_telegram_message_async(cid, text)
+            transaction.on_commit(lambda c=cid: send_telegram_message_async(c, text))
 
 
 @receiver(post_save, sender=Payment)
@@ -189,12 +194,8 @@ def notify_payment(sender, instance, created, **kwargs):
     if not instance.is_paid:
         return
     
-    # Arxivlangan guruhga xabar yubormaslik
-    if instance.group and instance.group.is_archived:
-        return
-    
-    # Arxivlangan o'quvchiga xabar yubormaslik
-    if instance.student and instance.student.is_archived:
+    # Arxivlangan guruh yoki o'quvchiga xabar yubormaslik
+    if not is_valid_for_notification(instance.student, instance.group):
         return
     
     # Takroriy xabarnomani oldini olish: faqat yangi yaratilgan yoki is_paid yangi True bo'lganda
@@ -218,7 +219,7 @@ def notify_payment(sender, instance, created, **kwargs):
     
     chat_ids = get_student_telegram_ids(student)
     for cid in chat_ids:
-        send_telegram_message_async(cid, text)
+        transaction.on_commit(lambda c=cid: send_telegram_message_async(c, text))
 
 
 @receiver(post_save, sender=MockTestResult)
@@ -228,12 +229,9 @@ def notify_mock_test(sender, instance, created, **kwargs):
     if not instance.score or instance.score.strip() == '':
         return
     
-    # Arxivlangan guruhga xabar yubormaslik
-    if instance.test and instance.test.group and instance.test.group.is_archived:
-        return
-    
-    # Arxivlangan o'quvchiga xabar yubormaslik
-    if instance.student and instance.student.is_archived:
+    # Arxivlangan guruh yoki o'quvchiga xabar yubormaslik
+    group = instance.test.group if instance.test else None
+    if not is_valid_for_notification(instance.student, group):
         return
     
     # Takroriy xabarnomani oldini olish: faqat yangi yaratilgan yoki score o'zgarganda
@@ -254,7 +252,7 @@ def notify_mock_test(sender, instance, created, **kwargs):
     
     chat_ids = get_student_telegram_ids(student)
     for cid in chat_ids:
-        send_telegram_message_async(cid, text)
+        transaction.on_commit(lambda c=cid: send_telegram_message_async(c, text))
 
 
 @receiver(post_save, sender=Homework)
@@ -268,7 +266,7 @@ def notify_new_homework_assigned(sender, instance, created, **kwargs):
     group = instance.group
 
     # Arxivlangan guruhga xabar yubormaslik
-    if group.is_archived:
+    if not is_valid_for_notification(None, group):
         return
 
     # Faqat guruhda HOZIR AKTIV enrollment bo'lgan o'quvchilarni olish.
@@ -296,7 +294,7 @@ def notify_new_homework_assigned(sender, instance, created, **kwargs):
         target_chat_ids.update(chat_ids)
 
     for cid in target_chat_ids:
-        send_telegram_message_async(cid, text)
+        transaction.on_commit(lambda c=cid: send_telegram_message_async(c, text))
 @receiver(post_save, sender=HomeworkSubmission)
 def notify_homework_submission(sender, instance, created, **kwargs):
     """Uy ishi baholanganda (yoki topshirganda) xabar yuborish"""
@@ -305,12 +303,9 @@ def notify_homework_submission(sender, instance, created, **kwargs):
     if created and instance.status == 'not_submitted':
         return
     
-    # Arxivlangan guruhga xabar yubormaslik
-    if instance.homework and instance.homework.group and instance.homework.group.is_archived:
-        return
-    
-    # Arxivlangan o'quvchiga xabar yubormaslik
-    if instance.student and instance.student.is_archived:
+    # Arxivlangan guruh yoki o'quvchiga xabar yubormaslik
+    group = instance.homework.group if instance.homework else None
+    if not is_valid_for_notification(instance.student, group):
         return
         
     student = instance.student
@@ -334,5 +329,5 @@ def notify_homework_submission(sender, instance, created, **kwargs):
     
     chat_ids = get_student_telegram_ids(student)
     for cid in chat_ids:
-        send_telegram_message_async(cid, text)
+        transaction.on_commit(lambda c=cid: send_telegram_message_async(c, text))
 
