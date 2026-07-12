@@ -60,7 +60,6 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'corsheaders',
     'django_filters',
-    'openpyxl',
     'drf_spectacular',
     ]
 
