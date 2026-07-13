@@ -30,3 +30,4 @@ redis
 django-celery-beat
 gunicorn
 pandas
+numpy<2.0.0
