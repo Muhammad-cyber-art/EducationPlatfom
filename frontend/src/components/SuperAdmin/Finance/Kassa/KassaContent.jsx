@@ -57,7 +57,7 @@ const IncomeTable = ({ payments, loading, isSuperAdmin, onVerify, onDetail, onRe
             ) : payments.length === 0 ? (
                 <tr><td colSpan="6" className="p-32 text-center text-[var(--text-muted)] font-black uppercase tracking-widest">Hozircha hech qanday tushum topilmadi</td></tr>
             ) : payments.map((p) => {
-                const methodMeta = getMethodMeta(p.payment_method, p.payment_method_display);
+                const methodMeta = getMethodMeta(p.payment_details?.payment_method, p.payment_details?.payment_method_display);
                 return (
                 <tr key={p.id} className="hover:bg-white/[0.04] transition-all duration-300 group/row">
                     <td className="px-8 py-6">
@@ -67,7 +67,7 @@ const IncomeTable = ({ payments, loading, isSuperAdmin, onVerify, onDetail, onRe
                             </div>
                             <div>
                                 <p className="text-sm font-black text-white capitalize">{p.student_name}</p>
-                                <p className="text-[10px] text-[var(--text-muted)] font-black uppercase tracking-widest mt-1 opacity-70">{p.group_name}</p>
+                                <p className="text-[10px] text-[var(--text-muted)] font-black uppercase tracking-widest mt-1 opacity-70">{p.payment_details?.group_name || 'Guruhsiz'}</p>
                             </div>
                         </div>
                     </td>
@@ -78,32 +78,32 @@ const IncomeTable = ({ payments, loading, isSuperAdmin, onVerify, onDetail, onRe
                         </div>
                     </td>
                     <td className="px-8 py-6">
-                        <div className="text-base font-black text-white tabular-nums tracking-tight">{formatCurrency(p.paid_amount)}</div>
-                        {p.refund_amount > 0 && !p.refund_ignored && (
-                            <div className="mt-1 text-[9px] font-bold text-emerald-400">Refund: -{formatCurrency(p.refund_amount)}</div>
+                        <div className="text-base font-black text-white tabular-nums tracking-tight">{formatCurrency(p.amount)}</div>
+                        {p.payment_details?.refund_amount > 0 && !p.payment_details?.refund_ignored && (
+                            <div className="mt-1 text-[9px] font-bold text-emerald-400">Refund: -{formatCurrency(p.payment_details.refund_amount)}</div>
                         )}
-                        {p.refund_amount > 0 && p.refund_ignored && (
+                        {p.payment_details?.refund_amount > 0 && p.payment_details?.refund_ignored && (
                             <div className="mt-1 text-[9px] font-bold text-amber-400">Refund bekor</div>
                         )}
                     </td>
                     <td className="px-8 py-6">
                         <div className="flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center border ${p.is_verified ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-white/5 text-[var(--gold)] border-white/10'}`}>
-                                {p.is_verified ? <CheckCircle2 size={16} /> : <ShieldCheck size={16} />}
+                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center border ${p.payment_details?.is_verified ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-white/5 text-[var(--gold)] border-white/10'}`}>
+                                {p.payment_details?.is_verified ? <CheckCircle2 size={16} /> : <ShieldCheck size={16} />}
                             </div>
                             <span className="text-[11px] font-black uppercase text-[var(--text-secondary)]">{p.marked_by_name || "Tizim"}</span>
                         </div>
                     </td>
                     <td className="px-8 py-6">
-                        <div className="text-[11px] font-black text-white">{new Date(p.paid_at).toLocaleDateString('uz-UZ')}</div>
-                        <div className="text-[10px] text-[var(--text-muted)] font-black">{new Date(p.paid_at).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })}</div>
+                        <div className="text-[11px] font-black text-white">{new Date(p.created_at || p.date).toLocaleDateString('uz-UZ')}</div>
+                        <div className="text-[10px] text-[var(--text-muted)] font-black">{new Date(p.created_at || p.date).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })}</div>
                     </td>
                     <td className="px-8 py-6 text-right">
                         <div className="flex justify-end gap-3 opacity-0 group-hover/row:opacity-100 transition-all duration-300">
-                            {isSuperAdmin && !p.is_verified && (
-                                <button onClick={() => onVerify(p.id)} className="w-11 h-11 flex items-center justify-center bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-xl hover:bg-emerald-500 hover:text-white transition-all shadow-lg active:scale-90"><CheckCircle2 size={18} /></button>
+                            {isSuperAdmin && !p.payment_details?.is_verified && (
+                                <button onClick={() => onVerify(p.payment_details?.original_payment_id || p.id)} className="w-11 h-11 flex items-center justify-center bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-xl hover:bg-emerald-500 hover:text-white transition-all shadow-lg active:scale-90"><CheckCircle2 size={18} /></button>
                             )}
-                            {p.receipt_image && <button onClick={() => onReceipt(p.receipt_image)} className="w-11 h-11 flex items-center justify-center bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded-xl hover:bg-blue-500 hover:text-white transition-all shadow-lg active:scale-90"><ImageIcon size={18} /></button>}
+                            {p.payment_details?.receipt_image && <button onClick={() => onReceipt(p.payment_details.receipt_image)} className="w-11 h-11 flex items-center justify-center bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded-xl hover:bg-blue-500 hover:text-white transition-all shadow-lg active:scale-90"><ImageIcon size={18} /></button>}
                             <button onClick={() => onDetail(p)} className="w-11 h-11 flex items-center justify-center bg-[var(--gold-dim)] text-[var(--gold)] border border-[var(--gold)]/20 rounded-xl hover:bg-[var(--gold)] hover:text-black transition-all shadow-lg active:scale-90"><FileText size={18} /></button>
                         </div>
                     </td>
@@ -177,7 +177,7 @@ const ExpenseTable = ({ withdrawals, loading }) => (
 const MobileIncomeCard = ({ item, isSuperAdmin, onVerify, onDetail }) => (
     <>
         {(() => {
-            const methodMeta = getMethodMeta(item.payment_method, item.payment_method_display);
+            const methodMeta = getMethodMeta(item.payment_details?.payment_method, item.payment_details?.payment_method_display);
             return (
                 <>
         <div className="flex justify-between items-start mb-4">
@@ -187,7 +187,7 @@ const MobileIncomeCard = ({ item, isSuperAdmin, onVerify, onDetail }) => (
                 </div>
                 <div>
                     <h3 className="text-sm font-black text-white capitalize">{item.student_name}</h3>
-                    <p className="text-[9px] text-[var(--gold)] font-black uppercase tracking-widest">{item.group_name}</p>
+                    <p className="text-[9px] text-[var(--gold)] font-black uppercase tracking-widest">{item.payment_details?.group_name || 'Guruhsiz'}</p>
                 </div>
             </div>
             <div className={`px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest ${methodMeta.badgeClass}`}>
@@ -197,23 +197,23 @@ const MobileIncomeCard = ({ item, isSuperAdmin, onVerify, onDetail }) => (
         <div className="flex justify-between items-end">
             <div className="space-y-1">
                 <p className="text-[8px] text-[var(--text-muted)] font-black uppercase tracking-widest">To'lov summasi</p>
-                <p className="text-lg font-black text-white tabular-nums">{formatCurrency(item.paid_amount)}</p>
-                {item.refund_amount > 0 && !item.refund_ignored && (
-                    <p className="text-[9px] font-bold text-emerald-400">Refund: -{formatCurrency(item.refund_amount)}</p>
+                <p className="text-lg font-black text-white tabular-nums">{formatCurrency(item.amount)}</p>
+                {item.payment_details?.refund_amount > 0 && !item.payment_details?.refund_ignored && (
+                    <p className="text-[9px] font-bold text-emerald-400">Refund: -{formatCurrency(item.payment_details.refund_amount)}</p>
                 )}
-                {item.refund_amount > 0 && item.refund_ignored && (
+                {item.payment_details?.refund_amount > 0 && item.payment_details?.refund_ignored && (
                     <p className="text-[9px] font-bold text-amber-400">Refund bekor</p>
                 )}
             </div>
             <div className="flex gap-2">
-                {isSuperAdmin && !item.is_verified && (
-                    <button onClick={() => onVerify(item.id)} className="w-10 h-10 flex items-center justify-center bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-xl active:scale-90 transition-all"><CheckCircle2 size={16} /></button>
+                {isSuperAdmin && !item.payment_details?.is_verified && (
+                    <button onClick={() => onVerify(item.payment_details?.original_payment_id || item.id)} className="w-10 h-10 flex items-center justify-center bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-xl active:scale-90 transition-all"><CheckCircle2 size={16} /></button>
                 )}
                 <button onClick={() => onDetail(item)} className="w-10 h-10 flex items-center justify-center bg-[var(--gold-dim)] text-[var(--gold)] border border-[var(--gold)]/20 rounded-xl active:scale-90 transition-all"><FileText size={16} /></button>
             </div>
         </div>
         <div className="mt-4 pt-4 border-t border-white/5 flex justify-between items-center text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest">
-            <span>{new Date(item.paid_at).toLocaleDateString('uz-UZ')}</span>
+            <span>{new Date(item.created_at || item.date).toLocaleDateString('uz-UZ')}</span>
             <span className="flex items-center gap-1"><ShieldCheck size={10} /> {item.marked_by_name || "Tizim"}</span>
         </div>
                 </>

@@ -53,20 +53,20 @@ const Kassa = () => {
             }
 
             const params = {
-                is_paid: true,
-                payment_method: filters.method || undefined,
+                transaction_type: 'income',
+                category: 'student_fee',
                 search: filters.search || undefined,
-                student__branch: filters.branch || undefined
+                branch: filters.branch || undefined
             };
 
             if (filters.date) {
-                params.paid_at__date = filters.date;
+                params.date = filters.date;
             } else {
-                params.paid_at__date__gte = date_gte;
-                params.paid_at__date__lte = date_lte;
+                params.date__gte = date_gte;
+                params.date__lte = date_lte;
             }
 
-            const payRes = await api.get("/finance/student-payments/", { params });
+            const payRes = await api.get("/finance/transactions/", { params });
             setPayments(payRes.data.results || payRes.data);
 
             const transParams = {
@@ -162,7 +162,7 @@ const Kassa = () => {
     };
 
     const totalToday = payments.reduce((sum, p) => sum + Number(p.amount), 0);
-    const totalVerified = payments.filter(p => p.is_verified).reduce((sum, p) => sum + Number(p.amount), 0);
+    const totalVerified = payments.filter(p => p.payment_details?.is_verified).reduce((sum, p) => sum + Number(p.amount), 0);
     const totalWithdrawn = withdrawals.reduce((sum, w) => sum + Number(w.amount), 0);
 
     return (
@@ -355,43 +355,43 @@ const Kassa = () => {
                                                     </div>
                                                     <div>
                                                         <p className="text-sm font-black text-white capitalize">{p.student_name}</p>
-                                                        <p className="text-[10px] text-[var(--text-muted)] font-black uppercase tracking-widest mt-1 opacity-70">{p.group_name}</p>
+                                                        <p className="text-[10px] text-[var(--text-muted)] font-black uppercase tracking-widest mt-1 opacity-70">{p.payment_details?.group_name || 'Guruhsiz'}</p>
                                                     </div>
                                                 </div>
                                             </td>
                                             <td className="px-8 py-6">
-                                                <div className={`inline-flex items-center gap-3 px-4 py-2 rounded-2xl border text-[10px] font-black uppercase tracking-wider ${p.payment_method === 'cash' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-blue-500/10 border-blue-500/20 text-blue-500'}`}>
-                                                    {p.payment_method === 'cash' ? <Banknote size={14} /> : <Smartphone size={14} />}
-                                                    {p.payment_method === 'cash' ? 'Naqd (Cash)' : 'Click / Card'}
+                                                <div className={`inline-flex items-center gap-3 px-4 py-2 rounded-2xl border text-[10px] font-black uppercase tracking-wider ${p.payment_details?.payment_method === 'cash' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-blue-500/10 border-blue-500/20 text-blue-500'}`}>
+                                                    {p.payment_details?.payment_method === 'cash' ? <Banknote size={14} /> : <Smartphone size={14} />}
+                                                    {p.payment_details?.payment_method === 'cash' ? 'Naqd (Cash)' : 'Click / Card'}
                                                 </div>
                                             </td>
                                             <td className="px-8 py-6">
                                                 <div className="text-base font-black text-white tabular-nums tracking-tight">{formatCurrency(p.amount)}</div>
-                                                {p.refund_amount > 0 && !p.refund_ignored && (
-                                                    <div className="mt-1 text-[9px] font-bold text-emerald-400">Refund: -{formatCurrency(p.refund_amount)}</div>
+                                                {p.payment_details?.refund_amount > 0 && !p.payment_details?.refund_ignored && (
+                                                    <div className="mt-1 text-[9px] font-bold text-emerald-400">Refund: -{formatCurrency(p.payment_details.refund_amount)}</div>
                                                 )}
-                                                {p.refund_amount > 0 && p.refund_ignored && (
+                                                {p.payment_details?.refund_amount > 0 && p.payment_details?.refund_ignored && (
                                                     <div className="mt-1 text-[9px] font-bold text-amber-400">Refund bekor</div>
                                                 )}
                                             </td>
                                             <td className="px-8 py-6">
                                                 <div className="flex items-center gap-3">
-                                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center border ${p.is_verified ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-white/5 text-[var(--gold)] border-white/10'}`}>
-                                                        {p.is_verified ? <CheckCircle2 size={16} /> : <ShieldCheck size={16} />}
+                                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center border ${p.payment_details?.is_verified ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-white/5 text-[var(--gold)] border-white/10'}`}>
+                                                        {p.payment_details?.is_verified ? <CheckCircle2 size={16} /> : <ShieldCheck size={16} />}
                                                     </div>
-                                                    <span className="text-[11px] font-black uppercase text-[var(--text-secondary)]">{p.marked_by || "Tizim"}</span>
+                                                    <span className="text-[11px] font-black uppercase text-[var(--text-secondary)]">{p.marked_by_name || "Tizim"}</span>
                                                 </div>
                                             </td>
                                             <td className="px-8 py-6">
-                                                <div className="text-[11px] font-black text-white">{new Date(p.paid_at).toLocaleDateString('uz-UZ')}</div>
-                                                <div className="text-[10px] text-[var(--text-muted)] font-black">{new Date(p.paid_at).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })}</div>
+                                                <div className="text-[11px] font-black text-white">{new Date(p.date || p.created_at).toLocaleDateString('uz-UZ')}</div>
+                                                <div className="text-[10px] text-[var(--text-muted)] font-black">{new Date(p.created_at || p.date).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })}</div>
                                             </td>
                                             <td className="px-8 py-6 text-right">
                                                 <div className="flex justify-end gap-3 opacity-0 group-hover/row:opacity-100 transition-all duration-300">
-                                                    {get_user_info()?.role === 'super_admin' && !p.is_verified && (
-                                                        <button onClick={() => handleVerify(p.id)} className="w-11 h-11 flex items-center justify-center bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-xl hover:bg-emerald-500 hover:text-white transition-all shadow-lg active:scale-90"><CheckCircle2 size={18} /></button>
+                                                    {get_user_info()?.role === 'super_admin' && !p.payment_details?.is_verified && p.payment_details?.original_payment_id && (
+                                                        <button onClick={() => handleVerify(p.payment_details.original_payment_id)} className="w-11 h-11 flex items-center justify-center bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-xl hover:bg-emerald-500 hover:text-white transition-all shadow-lg active:scale-90"><CheckCircle2 size={18} /></button>
                                                     )}
-                                                    {p.receipt_image && <button onClick={() => window.open(p.receipt_image, '_blank')} className="w-11 h-11 flex items-center justify-center bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded-xl hover:bg-blue-500 hover:text-white transition-all shadow-lg active:scale-90"><ImageIcon size={18} /></button>}
+                                                    {p.payment_details?.receipt_image && <button onClick={() => window.open(p.payment_details.receipt_image, '_blank')} className="w-11 h-11 flex items-center justify-center bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded-xl hover:bg-blue-500 hover:text-white transition-all shadow-lg active:scale-90"><ImageIcon size={18} /></button>}
                                                     <button onClick={() => { setSelectedPayment(p); setShowDetailModal(true); }} className="w-11 h-11 flex items-center justify-center bg-[var(--gold-dim)] text-[var(--gold)] border border-[var(--gold)]/20 rounded-xl hover:bg-[var(--gold)] hover:text-black transition-all shadow-lg active:scale-90"><FileText size={18} /></button>
                                                 </div>
                                             </td>
@@ -479,34 +479,34 @@ const Kassa = () => {
                                             </div>
                                             <div>
                                                 <h3 className="text-sm font-black text-white capitalize">{item.student_name}</h3>
-                                                <p className="text-[9px] text-[var(--gold)] font-black uppercase tracking-widest">{item.group_name}</p>
+                                                <p className="text-[9px] text-[var(--gold)] font-black uppercase tracking-widest">{item.payment_details?.group_name || 'Guruhsiz'}</p>
                                             </div>
                                         </div>
-                                        <div className={`px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest ${item.payment_method === 'cash' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-blue-500/10 border-blue-500/20 text-blue-500'}`}>
-                                            {item.payment_method === 'cash' ? 'Naqd' : 'Click/Card'}
+                                        <div className={`px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest ${item.payment_details?.payment_method === 'cash' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-blue-500/10 border-blue-500/20 text-blue-500'}`}>
+                                            {item.payment_details?.payment_method === 'cash' ? 'Naqd' : 'Click/Card'}
                                         </div>
                                     </div>
                                     <div className="flex justify-between items-end">
                                         <div className="space-y-1">
                                             <p className="text-[8px] text-[var(--text-muted)] font-black uppercase tracking-widest">To'lov summasi</p>
                                             <p className="text-lg font-black text-white tabular-nums">{formatCurrency(item.amount)}</p>
-                                            {item.refund_amount > 0 && !item.refund_ignored && (
-                                                <p className="text-[9px] font-bold text-emerald-400">Refund: -{formatCurrency(item.refund_amount)}</p>
+                                            {item.payment_details?.refund_amount > 0 && !item.payment_details?.refund_ignored && (
+                                                <p className="text-[9px] font-bold text-emerald-400">Refund: -{formatCurrency(item.payment_details.refund_amount)}</p>
                                             )}
-                                            {item.refund_amount > 0 && item.refund_ignored && (
+                                            {item.payment_details?.refund_amount > 0 && item.payment_details?.refund_ignored && (
                                                 <p className="text-[9px] font-bold text-amber-400">Refund bekor</p>
                                             )}
                                         </div>
                                         <div className="flex gap-2">
-                                            {get_user_info()?.role === 'super_admin' && !item.is_verified && (
-                                                <button onClick={() => handleVerify(item.id)} className="w-10 h-10 flex items-center justify-center bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-xl active:scale-90 transition-all"><CheckCircle2 size={16} /></button>
+                                            {get_user_info()?.role === 'super_admin' && !item.payment_details?.is_verified && item.payment_details?.original_payment_id && (
+                                                <button onClick={() => handleVerify(item.payment_details.original_payment_id)} className="w-10 h-10 flex items-center justify-center bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-xl active:scale-90 transition-all"><CheckCircle2 size={16} /></button>
                                             )}
                                             <button onClick={() => { setSelectedPayment(item); setShowDetailModal(true); }} className="w-10 h-10 flex items-center justify-center bg-[var(--gold-dim)] text-[var(--gold)] border border-[var(--gold)]/20 rounded-xl active:scale-90 transition-all"><FileText size={16} /></button>
                                         </div>
                                     </div>
                                     <div className="mt-4 pt-4 border-t border-white/5 flex justify-between items-center text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest">
-                                        <span>{new Date(item.paid_at).toLocaleDateString('uz-UZ')}</span>
-                                        <span className="flex items-center gap-1"><ShieldCheck size={10} /> {item.marked_by || "Tizim"}</span>
+                                        <span>{new Date(item.date || item.created_at).toLocaleDateString('uz-UZ')}</span>
+                                        <span className="flex items-center gap-1"><ShieldCheck size={10} /> {item.marked_by_name || "Tizim"}</span>
                                     </div>
                                 </>
                             ) : (
@@ -686,27 +686,27 @@ const Kassa = () => {
                         <div className="p-8 space-y-6 text-white">
                             <div className="grid grid-cols-2 gap-6 font-bold text-sm">
                                 <div><p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">O'quvchi</p>{selectedPayment.student_name}</div>
-                                <div className="text-right"><p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">Guruh</p><span className="text-[var(--gold)]">{selectedPayment.group_name}</span></div>
+                                <div className="text-right"><p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">Guruh</p><span className="text-[var(--gold)]">{selectedPayment.payment_details?.group_name || 'Guruhsiz'}</span></div>
                                 <div><p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">To'langan Summa</p>{formatCurrency(selectedPayment.amount)}</div>
-                                <div className="text-right"><p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">Metod</p>{selectedPayment.payment_method}</div>
+                                <div className="text-right"><p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">Metod</p>{selectedPayment.payment_details?.payment_method_display || 'Noma\'lum'}</div>
                                 {/* Refund ma'lumoti */}
-                                {selectedPayment.refund_amount > 0 && !selectedPayment.refund_ignored && (
+                                {selectedPayment.payment_details?.refund_amount > 0 && !selectedPayment.payment_details?.refund_ignored && (
                                     <>
                                         <div className="col-span-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
                                             <div className="flex justify-between items-center">
                                                 <div>
                                                     <p className="text-[9px] text-emerald-400 uppercase tracking-widest mb-1">Refund (Qaytarilgan)</p>
-                                                    <p className="text-lg font-black text-emerald-400">-{formatCurrency(selectedPayment.refund_amount)}</p>
+                                                    <p className="text-lg font-black text-emerald-400">-{formatCurrency(selectedPayment.payment_details.refund_amount)}</p>
                                                 </div>
                                                 <div className="text-right">
                                                     <p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">Oylik to'lov</p>
-                                                    <p className="text-sm font-bold text-white">{formatCurrency(Number(selectedPayment.amount) + Number(selectedPayment.refund_amount))}</p>
+                                                    <p className="text-sm font-bold text-white">{formatCurrency(Number(selectedPayment.amount) + Number(selectedPayment.payment_details.refund_amount))}</p>
                                                 </div>
                                             </div>
                                         </div>
                                     </>
                                 )}
-                                {selectedPayment.refund_amount > 0 && selectedPayment.refund_ignored && (
+                                {selectedPayment.payment_details?.refund_amount > 0 && selectedPayment.payment_details?.refund_ignored && (
                                     <div className="col-span-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
                                         <p className="text-[9px] text-amber-400 uppercase tracking-widest mb-1">Refund Status</p>
                                         <p className="text-sm font-black text-amber-400">Refund bekor qilingan (Hisoblanmadi)</p>
@@ -716,8 +716,8 @@ const Kassa = () => {
                             {selectedPayment.notes && <div className="p-4 bg-white/5 rounded-xl text-xs italic text-gray-400">"{selectedPayment.notes}"</div>}
                         </div>
                         <div className="p-6 bg-white/[0.02] border-t border-[var(--border-glass)] flex gap-3">
-                            {get_user_info()?.role === 'super_admin' && !selectedPayment.is_verified && (
-                                <button onClick={() => handleVerify(selectedPayment.id)} className="flex-1 h-12 bg-emerald-600 text-white font-black text-[11px] uppercase tracking-widest rounded-2xl hover:bg-emerald-500 transition-all shadow-lg active:scale-95">Tasdiqlash</button>
+                            {get_user_info()?.role === 'super_admin' && !selectedPayment.payment_details?.is_verified && selectedPayment.payment_details?.original_payment_id && (
+                                <button onClick={() => handleVerify(selectedPayment.payment_details.original_payment_id)} className="flex-1 h-12 bg-emerald-600 text-white font-black text-[11px] uppercase tracking-widest rounded-2xl hover:bg-emerald-500 transition-all shadow-lg active:scale-95">Tasdiqlash</button>
                             )}
                             <button onClick={() => setShowDetailModal(false)} className="flex-1 h-12 bg-white/5 text-white font-black text-[11px] uppercase tracking-widest rounded-2xl hover:bg-white/10 transition-all border border-white/10">Yopish</button>
                         </div>

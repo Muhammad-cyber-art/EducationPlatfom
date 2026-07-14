@@ -66,7 +66,7 @@ function kassaReducer(state, action) {
         case 'VERIFY_PAYMENT_SUCCESS':
             return {
                 ...state,
-                payments: state.payments.map(p => p.id === action.payload ? { ...p, is_verified: true } : p)
+                payments: state.payments.map(p => (p.payment_details?.original_payment_id === action.payload || p.id === action.payload) ? { ...p, payment_details: { ...(p.payment_details || {}), is_verified: true } } : p)
             };
         default:
             return state;
@@ -99,20 +99,20 @@ export const useKassa = () => {
             const { date_gte, date_lte } = getDateRange(filters.date);
 
             const params = {
-                is_paid: true,
-                payment_method: filters.method || undefined,
+                transaction_type: 'income',
+                category: 'student_fee',
                 search: filters.search || undefined,
-                student__branch: filters.branch || undefined
+                branch: filters.branch || undefined
             };
 
             if (filters.date) {
-                params.paid_at__date = filters.date;
+                params.date = filters.date;
             } else {
-                params.paid_at__date__gte = date_gte;
-                params.paid_at__date__lte = date_lte;
+                params.date__gte = date_gte;
+                params.date__lte = date_lte;
             }
 
-            const payRes = await api.get("/finance/student-payments/", { params });
+            const payRes = await api.get("/finance/transactions/", { params });
             dispatch({ type: 'SET_PAYMENTS', payload: payRes.data.results || payRes.data });
 
             const transParams = {
@@ -206,7 +206,7 @@ export const useKassa = () => {
     }, []);
 
     const totalToday = useMemo(() => payments.reduce((sum, p) => sum + Number(p.amount), 0), [payments]);
-    const totalVerified = useMemo(() => payments.filter(p => p.is_verified).reduce((sum, p) => sum + Number(p.amount), 0), [payments]);
+    const totalVerified = useMemo(() => payments.filter(p => p.payment_details?.is_verified).reduce((sum, p) => sum + Number(p.amount), 0), [payments]);
     const totalWithdrawn = useMemo(() => withdrawals.reduce((sum, w) => sum + Number(w.amount), 0), [withdrawals]);
 
     const clearFilters = useCallback(() => {

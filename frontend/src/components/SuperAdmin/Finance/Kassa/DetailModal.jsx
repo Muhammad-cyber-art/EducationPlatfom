@@ -19,37 +19,37 @@ const DetailModal = ({ show, payment, onClose, onVerify, isSuperAdmin }) => {
                 <div className="p-8 space-y-6 text-white">
                     <div className="grid grid-cols-2 gap-6 font-bold text-sm">
         <div><p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">O'quvchi</p>{payment.student_name}</div>
-        <div className="text-right"><p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">Guruh</p><span className="text-[var(--gold)]">{payment.group_name}</span></div>
-        <div><p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">To'langan Summa</p>{formatCurrency(payment.paid_amount)}</div>
-        <div className="text-right"><p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">Metod</p>{payment.payment_method_display || payment.payment_method || "Naqd"}</div>
-                        {payment.refund_amount > 0 && !payment.refund_ignored && (
+        <div className="text-right"><p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">Guruh</p><span className="text-[var(--gold)]">{payment.payment_details?.group_name || 'Guruhsiz'}</span></div>
+        <div><p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">To'langan Summa</p>{formatCurrency(payment.amount)}</div>
+        <div className="text-right"><p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">Metod</p>{payment.payment_details?.payment_method_display || payment.payment_details?.payment_method || "Click / Card"}</div>
+                        {payment.payment_details?.refund_amount > 0 && !payment.payment_details?.refund_ignored && (
                             <>
                                 <div className="col-span-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
                                     <div className="flex justify-between items-center">
                                         <div>
                                             <p className="text-[9px] text-emerald-400 uppercase tracking-widest mb-1">Refund (Qaytarilgan)</p>
-                                            <p className="text-lg font-black text-emerald-400">-{formatCurrency(payment.refund_amount)}</p>
+                                            <p className="text-lg font-black text-emerald-400">-{formatCurrency(payment.payment_details.refund_amount)}</p>
                                         </div>
                                         <div className="text-right">
                                             <p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">Oylik to'lov</p>
-                                            <p className="text-sm font-bold text-white">{formatCurrency(Number(payment.amount) + Number(payment.refund_amount))}</p>
+                                            <p className="text-sm font-bold text-white">{formatCurrency(Number(payment.amount) + Number(payment.payment_details.refund_amount))}</p>
                                         </div>
                                     </div>
                                 </div>
                             </>
                         )}
-                        {payment.refund_amount > 0 && payment.refund_ignored && (
+                        {payment.payment_details?.refund_amount > 0 && payment.payment_details?.refund_ignored && (
                             <div className="col-span-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
                                 <p className="text-[9px] text-amber-400 uppercase tracking-widest mb-1">Refund Status</p>
                                 <p className="text-sm font-black text-amber-400">Refund bekor qilingan (Hisoblanmadi)</p>
                             </div>
                         )}
                     </div>
-                    {payment.notes && <div className="p-4 bg-white/5 rounded-xl text-xs italic text-gray-400">"{payment.notes}"</div>}
+                    {payment.description && <div className="p-4 bg-white/5 rounded-xl text-xs italic text-gray-400">"{payment.description}"</div>}
                 </div>
                 <div className="p-6 bg-white/[0.02] border-t border-[var(--border-glass)] flex gap-3">
-                    {isSuperAdmin && !payment.is_verified && (
-                        <button onClick={() => onVerify(payment.id)} className="flex-1 h-12 bg-emerald-600 text-white font-black text-[11px] uppercase tracking-widest rounded-2xl hover:bg-emerald-500 transition-all shadow-lg active:scale-95">Tasdiqlash</button>
+                    {isSuperAdmin && !payment.payment_details?.is_verified && (
+                        <button onClick={() => onVerify(payment.payment_details?.original_payment_id || payment.id)} className="flex-1 h-12 bg-emerald-600 text-white font-black text-[11px] uppercase tracking-widest rounded-2xl hover:bg-emerald-500 transition-all shadow-lg active:scale-95">Tasdiqlash</button>
                     )}
                     <button onClick={onClose} className="flex-1 h-12 bg-white/5 text-white font-black text-[11px] uppercase tracking-widest rounded-2xl hover:bg-white/10 transition-all border border-white/10">Yopish</button>
                 </div>

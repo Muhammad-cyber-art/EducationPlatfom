@@ -1004,6 +1004,7 @@ class FinanceTransactionSerializer(serializers.ModelSerializer):
     category_display = serializers.CharField(
         source="get_category_display", read_only=True
     )
+    payment_details = serializers.SerializerMethodField()
 
     class Meta:
         model = FinanceTransaction
@@ -1027,6 +1028,7 @@ class FinanceTransactionSerializer(serializers.ModelSerializer):
             "description",
             "related_id",
             "created_at",
+            "payment_details",
         ]
         read_only_fields = ["id", "created_at", "marked_by"]
 
@@ -1034,6 +1036,32 @@ class FinanceTransactionSerializer(serializers.ModelSerializer):
         if obj.marked_by:
             return obj.marked_by.get_full_name() or obj.marked_by.username
         return "Tizim"
+
+    def get_payment_details(self, obj):
+        if obj.category == 'student_fee' and obj.related_id and obj.related_id.startswith('STP-'):
+            parts = obj.related_id.split('-')
+            if len(parts) >= 2:
+                try:
+                    payment_id = int(parts[1])
+                    from finance.models import Payment
+                    payment = Payment.objects.filter(id=payment_id).first()
+                    if payment:
+                        return {
+                            'original_payment_id': payment.id,
+                            'is_verified': payment.is_verified,
+                            'receipt_image': payment.receipt_image.url if payment.receipt_image else None,
+                            'month': payment.month.strftime('%Y-%m') if payment.month else None,
+                            'payment_method': payment.payment_method,
+                            'payment_method_display': payment.get_payment_method_display(),
+                            'refund_amount': float(payment.refund_amount) if payment.refund_amount else 0,
+                            'refund_ignored': payment.refund_ignored,
+                            'is_partial': payment.is_partial,
+                            'is_receiptless': payment.is_receiptless,
+                            'group_name': payment.group.name if payment.group else None
+                        }
+                except Exception:
+                    pass
+        return None
 
 
 class CustomPaymentSerializer(serializers.Serializer):
