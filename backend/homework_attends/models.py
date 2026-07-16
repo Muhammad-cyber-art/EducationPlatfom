@@ -198,3 +198,24 @@ class Attendance(models.Model):
         if self.group:
             self.group_name = self.group.name
         super().save(*args, **kwargs)
+
+
+class AttendanceEditLog(models.Model):
+    attendance = models.ForeignKey(
+        Attendance, on_delete=models.CASCADE, related_name="edit_logs"
+    )
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="attendance_edits"
+    )
+    old_status = models.BooleanField()
+    new_status = models.BooleanField()
+    reason = models.TextField(blank=True, default='')  # Ixtiyoriy: Seamless flow uchun
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Davomat tahrir tarixi"
+        verbose_name_plural = "Davomat tahrir tarixlari"
+
+    def __str__(self):
+        return f"{self.attendance} | {self.changed_by} | {self.created_at}"

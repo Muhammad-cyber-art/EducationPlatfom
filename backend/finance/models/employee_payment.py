@@ -254,11 +254,9 @@ class EmployeePayment(models.Model):
                         },
                     )
                 except Exception as e:
-                    # Transaction yaratishda xatolik bo'lsa, log qilamiz
-                    print(f"FinanceTransaction creation error: {e}")
-                    import traceback
-
-                    traceback.print_exc()
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.exception(f"FinanceTransaction creation error for {self.employee.username}: {e}")
 
     def recalculate_salary(self, commission_basis="paid"):
         """Maoshni StaffProfile bo'yicha qayta hisoblash"""
@@ -275,10 +273,9 @@ class EmployeePayment(models.Model):
             self.attendance_deductions = {}
             return self.salary_base
         except Exception as e:
-            print(f"Recalculate salary error: {e}")
-            import traceback
-
-            traceback.print_exc()
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.exception(f"Recalculate salary error for {self.employee.username}: {e}")
             return self.salary_base
 
     def save(self, *args, **kwargs):
@@ -1015,10 +1012,14 @@ class StaffProfile(models.Model):
             employee=self.user, is_paid=False, month__gte=current_month
         )
 
+        to_update = []
         for payment in unpaid_payments:
             payment.salary_base = self.calculate_salary_for_month(payment.month)
             payment.attendance_deductions = {}
-            payment.save()
+            to_update.append(payment)
+            
+        if to_update:
+            EmployeePayment.objects.bulk_update(to_update, ['salary_base', 'attendance_deductions'])
 
 
 class EmployeeAdvance(models.Model):

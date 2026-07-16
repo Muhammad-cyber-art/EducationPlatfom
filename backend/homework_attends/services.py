@@ -5,6 +5,34 @@ from calendar import monthrange
 from .models import Attendance, Homework, HomeworkSubmission, MockTest, MockTestResult
 from groups.models import Group, Student
 
+
+def get_last_3_lesson_dates(group):
+    """Guruhning eng so'nggi 3 ta haqiqiy dars kunlarini qaytaradi.
+    
+    Faqat dars jadvaliga (get_lesson_dates) asoslanadi, bazadagi
+    davomat yozuvlariga emas. Oy boshi muammosi uchun max 3 oy orqaga qaraydi.
+    """
+    today = timezone.localdate()
+    all_past_dates = []
+    
+    year, month = today.year, today.month
+    for _ in range(3):  # MAX 3 oy orqaga qaraymiz (yetarli)
+        dates = group.get_lesson_dates(year, month)
+        past = sorted([d for d in dates if d <= today], reverse=True)
+        all_past_dates = past + all_past_dates  # eski sanalar boshiga qo'shiladi
+        
+        if len(all_past_dates) >= 3:
+            break
+        
+        # Oldingi oyga o'tamiz
+        if month == 1:
+            year, month = year - 1, 12
+        else:
+            month -= 1
+    
+    # Eng yangi 3 tasini qaytaramiz
+    return sorted(all_past_dates, reverse=True)[:3]
+
 def get_or_create_attendance_records(group, requested_date, view_only=False):
     """Davomat yozuvlarini olish yoki yaratish (istalgan kun uchun)
     
@@ -170,17 +198,20 @@ def bulk_confirm_attendance(group, requested_date, attendances_payload, user):
             created_objs = Attendance.objects.bulk_create(to_create)
             updated_ids.extend([obj.id for obj in created_objs])
 
-    # Qo'shimcha: To'lov va maoshni qayta hisoblash (bulk uchun)
-    if processed_student_ids:
-        from finance.services import update_attendance_based_payments
-        students = Student.objects.filter(id__in=processed_student_ids)
-        for student in students:
-            try:
-                update_attendance_based_payments(student, group, requested_date)
-            except Exception as e:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error("Failed to update payments for student %s in bulk: %s", student.id, e)
+        # Qo'shimcha: To'lov va maoshni qayta hisoblash (bulk uchun)
+        if processed_student_ids:
+            def trigger_finance_recalc():
+                from finance.services import update_attendance_based_payments
+                students = Student.objects.filter(id__in=processed_student_ids)
+                for student in students:
+                    try:
+                        update_attendance_based_payments(student, group, requested_date)
+                    except Exception as e:
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.error("Failed to update payments for student %s in bulk: %s", student.id, e)
+            
+            transaction.on_commit(trigger_finance_recalc)
 
     # Xabarnomalarni yuborishni fonda bajaramiz (API tez qaytishi uchun)
     import threading
@@ -204,7 +235,10 @@ def bulk_confirm_attendance(group, requested_date, attendances_payload, user):
                 pass
 
     if updated_ids:
-        threading.Thread(target=background_notifications, args=(updated_ids,)).start()
+        from django.utils import timezone
+        today = timezone.localdate()
+        if requested_date == today:
+            threading.Thread(target=background_notifications, args=(updated_ids,)).start()
 
     # Faqat guruhda faol studentlarning davomatini qaytaramiz
     return (
@@ -395,3 +429,69 @@ def archive_mock_test(instance, user):
             "group_id": instance.group.id
         }
     )
+
+def edit_past_attendance(attendance_id, admin_user, new_status, reason=''):
+    from django.db import transaction
+    from rest_framework.exceptions import ValidationError
+    from .models import AttendanceEditLog
+    
+    with transaction.atomic():
+        # 1. Row-level Lock bilan davomatni tortib olish (Race condition himoyasi)
+        try:
+            attendance = Attendance.objects.select_for_update().get(id=attendance_id)
+        except Attendance.DoesNotExist:
+            raise ValidationError("Davomat topilmadi.")
+            
+        if attendance.is_present == new_status:
+            return attendance  # O'zgarish yo'q
+             
+        group = attendance.group
+        
+        # 2. "Oxirgi 3 ta dars" validatsiyasi — dars jadvaliga asoslanadi (BUG #1 FIX)
+        last_3_dates = get_last_3_lesson_dates(group)
+        if attendance.date not in last_3_dates:
+            raise ValidationError("Siz faqat oxirgi 3 ta o'tilgan dars davomatini tahrirlashingiz mumkin.")
+             
+        # 3. Tarixni yozish (Audit) — reason ixtiyoriy, bo'sh bo'lishi mumkin (BUG #3 FIX)
+        AttendanceEditLog.objects.create(
+            attendance=attendance,
+            changed_by=admin_user,
+            old_status=attendance.is_present,
+            new_status=new_status,
+            reason=reason or ''
+        )
+        
+        # 4. Asosiy o'zgarishni yozish
+        attendance.is_present = new_status
+        attendance.marked_by = admin_user
+        attendance.save()
+        
+        # 5. Moliya recalculation — tranzaksiya yopilgach, post-commit da bajariladi
+        from finance.services import update_attendance_based_payments
+        transaction.on_commit(
+            lambda: update_attendance_based_payments(
+                attendance.student, group, attendance.date
+            )
+        )
+        
+    # 6. Asinxron xabarnomalar — FAQAT bugungi sana uchun (BUG Notification FIX)
+    import threading
+    def background_notifications(att_id):
+        try:
+            from telegram_bot.tasks import send_attendance_notifications_task
+            send_attendance_notifications_task.delay([att_id])
+        except Exception:
+            try:
+                from telegram_bot.signals import send_attendance_notification
+                att = Attendance.objects.get(id=att_id)
+                send_attendance_notification(att, async_send=False)
+            except Exception:
+                pass
+    
+    today = timezone.localdate()
+    if attendance.date == today:
+        threading.Thread(target=background_notifications, args=(attendance.id,)).start()
+    
+    return attendance
+
+

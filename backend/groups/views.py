@@ -811,6 +811,10 @@ class StudentNestedView(viewsets.ReadOnlyModelViewSet):
         user = self.request.user
         qs = self.queryset
         branch_id = self.request.query_params.get('branch_id')
+        
+        is_special = self.request.query_params.get('is_special')
+        if is_special == 'true':
+            qs = qs.exclude(status='regular')
 
         if user.role == 'super_admin':
             if branch_id:
@@ -835,6 +839,7 @@ class StudentNestedView(viewsets.ReadOnlyModelViewSet):
             
             if branch_id:
                 qs = qs.filter(branch_id=branch_id)
+                
             return qs
             
         if user.role == 'mentor':

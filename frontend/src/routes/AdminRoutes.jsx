@@ -20,6 +20,7 @@ import HomeworkSubmission from"../components/homework/HomeworkSubmsission";
 import MockTestDetails from"../components/mockTests/MockTestDetails";
 import GlobalStudentLayout from"../components/StudentComponents/GlobalStudentLayout";
 import GlobalStudentComponent from"../components/StudentComponents/GlobalStudents";
+import GlobalSpecialStudents from "../components/StudentComponents/GlobalSpecialStudents/GlobalSpecialStudents";
 import WaitingHall from"../components/StudentComponents/WaitingHall";
 import MentorFinance from"../components/mentorsComponent/MentorFinance";
 import AdminProfile from"../components/adminComponents/adminProfile";
@@ -58,6 +59,7 @@ export const AdminRoutes = (
  {/* Global Students Section */}
  <Route path="all_students" element={<GlobalStudentLayout />}>
  <Route index element={<GlobalStudentComponent />} />
+ <Route path="special-students" element={<GlobalSpecialStudents />} />
  <Route path=":student_id" element={<StudentProfilePage />} />
  <Route path="add_to_global" element={<StudentAdd />} />
  </Route>

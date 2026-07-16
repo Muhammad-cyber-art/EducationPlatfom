@@ -347,7 +347,9 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                     payment_map = prefetched_pm
                     extra_map = prefetched_em or {}
                 else:
-                    branch_groups = list(Group.objects.filter(branch=obj.employee.branch))
+                    branch_groups = list(Group.objects.filter(branch=obj.employee.branch).prefetch_related(
+                        "students", "old_students_fk", "enrollments", "enrollments__student", "special_lesson_days", "canceled_lesson_days"
+                    ))
                     payment_map = {}
                     payment_qs = Payment.objects.filter(
                         group__in=branch_groups,
@@ -668,7 +670,7 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                     return []
                 mentor_groups = list(
                     groups_qs.select_related("branch").prefetch_related(
-                        "students", "old_students_fk", "enrollments", "enrollments__student"
+                        "students", "old_students_fk", "enrollments", "enrollments__student", "special_lesson_days", "canceled_lesson_days"
                     )
                 )
                 if not mentor_groups:
@@ -1142,3 +1144,225 @@ class AdminExpenseSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["id", "marked_by", "created_at"]
+
+
+class SpecialStudentFinancialSerializer(serializers.Serializer):
+    student_id = serializers.IntegerField()
+    full_name = serializers.CharField()
+    phone = serializers.CharField()
+    status = serializers.CharField()
+    status_display = serializers.CharField()
+    group_id = serializers.IntegerField()
+    group_name = serializers.CharField()
+    monthly_price = serializers.DecimalField(max_digits=12, decimal_places=2)
+    custom_fee = serializers.DecimalField(max_digits=12, decimal_places=2, allow_null=True)
+    expected_amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    paid_amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    debt = serializers.DecimalField(max_digits=12, decimal_places=2)
+class BranchStatSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    income = serializers.DecimalField(max_digits=15, decimal_places=2)
+    expense = serializers.DecimalField(max_digits=15, decimal_places=2)
+    profit = serializers.DecimalField(max_digits=15, decimal_places=2)
+
+
+class GroupStatSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    profit = serializers.DecimalField(max_digits=15, decimal_places=2)
+    student_count = serializers.IntegerField()
+
+
+class FinanceDashboardSerializer(serializers.Serializer):
+    total_income = serializers.DecimalField(max_digits=15, decimal_places=2)
+    total_expense = serializers.DecimalField(max_digits=15, decimal_places=2)
+    net_profit = serializers.DecimalField(max_digits=15, decimal_places=2)
+    total_debt = serializers.DecimalField(max_digits=15, decimal_places=2)
+    branches = BranchStatSerializer(many=True)
+    top_groups = GroupStatSerializer(many=True)
+
+
+class BranchFinanceDetailSerializer(serializers.Serializer):
+    branch = serializers.DictField()
+    stats = serializers.DictField()
+    finance = serializers.DictField()
+    groups = serializers.ListField()
+    period = serializers.DictField()
+
+
+class FinanceTransactionSerializer(serializers.ModelSerializer):
+    marked_by_name = serializers.SerializerMethodField()
+    student_name = serializers.ReadOnlyField(source="student.full_name")
+    branch_name = serializers.ReadOnlyField(source="branch.name")
+    transaction_type_display = serializers.CharField(
+        source="get_transaction_type_display", read_only=True
+    )
+    category_display = serializers.CharField(
+        source="get_category_display", read_only=True
+    )
+    payment_details = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FinanceTransaction
+        fields = [
+            "id",
+            "transaction_type",
+            "transaction_type_display",
+            "category",
+            "category_display",
+            "amount",
+            "date",
+            "marked_by",
+            "marked_by_name",
+            "branch",
+            "branch_name",
+            "student",
+            "student_name",
+            "group",
+            "payer_name",
+            "title",
+            "description",
+            "related_id",
+            "created_at",
+            "payment_details",
+        ]
+        read_only_fields = ["id", "created_at", "marked_by"]
+
+    def get_marked_by_name(self, obj) -> str:
+        if obj.marked_by:
+            return obj.marked_by.get_full_name() or obj.marked_by.username
+        return "Tizim"
+
+    def get_payment_details(self, obj):
+        if obj.category == 'student_fee' and obj.related_id and obj.related_id.startswith('STP-'):
+            parts = obj.related_id.split('-')
+            if len(parts) >= 2:
+                try:
+                    payment_id = int(parts[1])
+                    from finance.models import Payment
+                    payment = Payment.objects.filter(id=payment_id).first()
+                    if payment:
+                        return {
+                            'original_payment_id': payment.id,
+                            'is_verified': payment.is_verified,
+                            'receipt_image': payment.receipt_image.url if payment.receipt_image else None,
+                            'month': payment.month.strftime('%Y-%m') if payment.month else None,
+                            'payment_method': payment.payment_method,
+                            'payment_method_display': payment.get_payment_method_display(),
+                            'refund_amount': float(payment.refund_amount) if payment.refund_amount else 0,
+                            'refund_ignored': payment.refund_ignored,
+                            'is_partial': payment.is_partial,
+                            'is_receiptless': payment.is_receiptless,
+                            'group_name': payment.group.name if payment.group else None
+                        }
+                except Exception:
+                    pass
+        return None
+
+
+class CustomPaymentSerializer(serializers.Serializer):
+    student = serializers.IntegerField()
+    group = serializers.IntegerField()
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    transaction_type = serializers.ChoiceField(
+        choices=[("income", "Kirim"), ("expense", "Chiqim")], default="income"
+    )
+    payer_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    description = serializers.CharField(
+        max_length=500, required=False, allow_blank=True
+    )
+    date = serializers.DateField(required=False)
+
+
+class EmployeeAdvanceSerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(
+        source="employee.get_full_name", read_only=True
+    )
+    marked_by_name = serializers.CharField(
+        source="marked_by.get_full_name", read_only=True
+    )
+
+    class Meta:
+        model = EmployeeAdvance
+        fields = [
+            "id",
+            "employee",
+            "employee_name",
+            "month",
+            "amount",
+            "description",
+            "date",
+            "marked_by",
+            "marked_by_name",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_at", "marked_by"]
+
+
+class SuccessSerializer(serializers.Serializer):
+    success = serializers.BooleanField(default=True)
+    message = serializers.CharField(required=False, allow_null=True)
+    count = serializers.IntegerField(required=False, allow_null=True)
+
+
+class AbsentStudentSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    phone = serializers.CharField()
+    group = serializers.CharField()
+
+
+class PaymentStatisticsSerializer(serializers.Serializer):
+    groups = serializers.ListField(child=serializers.DictField())
+    statistics = serializers.DictField()
+
+
+class AdminExpenseSerializer(serializers.ModelSerializer):
+    marked_by_name = serializers.CharField(
+        source="marked_by.get_full_name", read_only=True
+    )
+    branch_name = serializers.CharField(source="branch.name", read_only=True)
+
+    class Meta:
+        model = AdminExpense
+        fields = [
+            "id",
+            "title",
+            "description",
+            "amount",
+            "date",
+            "branch",
+            "branch_name",
+            "marked_by",
+            "marked_by_name",
+            "created_at",
+        ]
+        read_only_fields = ["id", "marked_by", "created_at"]
+
+
+class SpecialStudentFinancialSerializer(serializers.Serializer):
+    student_id = serializers.IntegerField()
+    full_name = serializers.CharField()
+    phone = serializers.CharField()
+    status = serializers.CharField()
+    status_display = serializers.CharField()
+    group_id = serializers.IntegerField()
+    group_name = serializers.CharField()
+    monthly_price = serializers.DecimalField(max_digits=12, decimal_places=2)
+    custom_fee = serializers.DecimalField(max_digits=12, decimal_places=2, allow_null=True)
+    expected_amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    paid_amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    debt = serializers.DecimalField(max_digits=12, decimal_places=2)
+    wallet_total_paid = serializers.DecimalField(max_digits=12, decimal_places=2)
+    wallet_total_refunded = serializers.DecimalField(max_digits=12, decimal_places=2)
+    last_payment_date = serializers.DateField(allow_null=True)
+
+class SpecialStudentDashboardSummarySerializer(serializers.Serializer):
+    total_expected = serializers.DecimalField(max_digits=15, decimal_places=2)
+    total_paid = serializers.DecimalField(max_digits=15, decimal_places=2)
+    total_debt = serializers.DecimalField(max_digits=15, decimal_places=2)
+    students_count = serializers.IntegerField()
+    status_counts = serializers.DictField(child=serializers.IntegerField(), required=False)
+
+class SpecialStudentDashboardResponseSerializer(serializers.Serializer):
+    summary = SpecialStudentDashboardSummarySerializer()
+    students = SpecialStudentFinancialSerializer(many=True)

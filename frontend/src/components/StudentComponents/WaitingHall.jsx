@@ -56,38 +56,38 @@ export default function WaitingHall() {
  <div className="absolute top-[10%] left-[5%] w-[400px] h-[400px] bg-[var(--gold)]/5 rounded-full blur-[100px] animate-pulse"></div>
  </div>
 
- {/* HEADER SECTION */}
- <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
- <div>
- <h1 className="gold-text text-3xl md:text-4xl font-black mb-2 flex items-center gap-3">
- Kutishlar Zali
- </h1>
- <p className="text-[var(--text-secondary)] text-sm max-w-lg">
- Guruhga qo'shilishi rejalashtirilgan o'quvchilar tahlili va boshqaruvi.
- </p>
- </div>
- <button
- onClick={() => setShowAddModal(true)}
- className="lux-btn lux-btn-primary flex items-center gap-3 py-3 px-8 group shadow-[var(--gold-glow)]"
- >
- <UserPlus size={18} className="group-hover:scale-110 transition-transform" />
- <span className="text-[11px] font-black capitalize tracking-widest">Yangi Reja</span>
- </button>
- </div>
-
- {/* SEARCH CARD */}
- <div className="lux-card mb-8 p-0.5 max-w-xl flex items-center bg-[var(--bg-panel)]/50 border border-[var(--border-glass)] backdrop-blur-md">
- <div className="flex-1 relative flex items-center">
- <Search size={16} className="absolute left-4 text-[var(--text-muted)]" />
- <input
- type="text"
- value={searchTerm}
- onChange={(e) => setSearchTerm(e.target.value)}
- placeholder="Qidiruv..."
- className="w-full h-11 bg-transparent pl-12 pr-6 text-xs text-[var(--text-primary)] border-none focus:ring-0 outline-none font-medium placeholder:text-[var(--text-muted)]/50"
- />
- </div>
- </div>
+        {/* HEADER SECTION */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+            <div>
+                <h1 className="gold-text text-2xl md:text-3xl font-black mb-1 flex items-center gap-3">
+                    Kutishlar Zali
+                </h1>
+                <p className="text-[var(--text-secondary)] text-xs max-w-lg">
+                    Guruhga qo'shilishi rejalashtirilgan o'quvchilar tahlili va boshqaruvi.
+                </p>
+            </div>
+            
+            <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+                <div className="relative flex items-center w-full sm:w-64 bg-[var(--bg-panel)]/50 border border-[var(--border-glass)] rounded-xl backdrop-blur-md px-3 py-2 shadow-inner">
+                    <Search size={14} className="text-[var(--text-muted)] mr-2 shrink-0" />
+                    <input
+                        type="text"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        placeholder="Qidiruv..."
+                        className="w-full bg-transparent text-xs text-[var(--text-primary)] border-none focus:ring-0 outline-none font-medium placeholder:text-[var(--text-muted)]/50"
+                    />
+                </div>
+                
+                <button
+                    onClick={() => setShowAddModal(true)}
+                    className="lux-btn lux-btn-primary flex items-center justify-center gap-2 py-2 px-6 group shadow-[var(--gold-glow)] shrink-0 w-full sm:w-auto"
+                >
+                    <UserPlus size={16} className="group-hover:scale-110 transition-transform" />
+                    <span className="text-[11px] font-black capitalize tracking-widest hidden sm:inline-block">Yangi Reja</span>
+                </button>
+            </div>
+        </div>
 
  {/* STUDENTS LIST */}
  {loading ? (
@@ -104,16 +104,26 @@ export default function WaitingHall() {
  <p className="text-xs text-[var(--text-secondary)]">Kutishlar zalida birorta ham o'quvchi topilmadi.</p>
  </div>
  ) : (
- <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
- {filteredStudents.map((student) => (
- <WaitingStudentCard
- key={student.id}
- student={student}
- onDelete={handleDelete}
- onAssignClick={onAssignClick}
- />
- ))}
- </div>
+            <div className="flex flex-col gap-2">
+                {/* List Header */}
+                <div className="hidden md:flex items-center gap-4 px-4 py-2 text-[10px] font-black tracking-wider text-[var(--text-muted)] uppercase border-b border-[var(--border-glass)]/50 mb-2 mx-1">
+                    <div className="w-10 shrink-0"></div>
+                    <div className="flex-[2]">O'quvchi</div>
+                    <div className="flex-1 min-w-[150px]">Izoh</div>
+                    <div className="w-28 text-right shrink-0">Sana</div>
+                    <div className="w-[76px] shrink-0"></div> {/* Actions space */}
+                </div>
+                
+                {/* List Items */}
+                {filteredStudents.map((student) => (
+                    <WaitingStudentCard
+                        key={student.id}
+                        student={student}
+                        onDelete={handleDelete}
+                        onAssignClick={onAssignClick}
+                    />
+                ))}
+            </div>
  )}
 
  <AddStudentModal

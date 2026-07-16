@@ -1,4 +1,5 @@
 import React from'react';
+import { Link } from 'react-router-dom';
 import { 
  Users, UserCircle, GraduationCap, TrendingUp, 
  DollarSign, CheckCircle, Clock, Target, Building2, 
@@ -7,7 +8,7 @@ import {
 import GoBackButton from'../../../sendback';
 
 export const BranchHeader = ({ branchName, periodControls }) => (
- <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-6 border-b border-[var(--border-glass)]">
+ <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-6 border-b border-[var(--border-glass)] mt-3">
  <div className="flex items-center gap-6">
  <GoBackButton />
  <div>
@@ -17,10 +18,13 @@ export const BranchHeader = ({ branchName, periodControls }) => (
  </p>
  </div>
  </div>
- <div className="flex flex-wrap items-center gap-2 justify-end">
+ <div className="flex flex-wrap items-center gap-3 justify-start lg:justify-end">
  {periodControls}
- <div className="flex items-center gap-2 px-3 py-1 bg-[var(--bg-void)]/40 border border-[var(--border-glass)] rounded">
- <span className="text-[9px] font-bold text-[var(--text-primary)] capitalize tracking-widest">Jonli Tahlil</span>
+ <div className="flex items-center h-9 px-3 bg-[var(--bg-void)]/40 border border-[var(--border-glass)] rounded-lg">
+ <span className="text-[9px] font-bold text-[var(--text-primary)] capitalize tracking-widest flex items-center gap-2">
+   <Activity size={12} className="text-[var(--gold)]" />
+   Jonli Tahlil
+ </span>
  </div>
  </div>
  </div>

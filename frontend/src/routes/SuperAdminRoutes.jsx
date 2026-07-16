@@ -28,6 +28,7 @@ import HomeworkSubmission from"../components/homework/HomeworkSubmsission";
 import MockTestDetails from"../components/mockTests/MockTestDetails";
 import GlobalStudentLayout from"../components/StudentComponents/GlobalStudentLayout";
 import GlobalStudentComponent from"../components/StudentComponents/GlobalStudents";
+import GlobalSpecialStudents from "../components/StudentComponents/GlobalSpecialStudents/GlobalSpecialStudents";
 import WaitingHall from"../components/StudentComponents/WaitingHall";
 import AdminProfile from"../components/adminComponents/adminProfile";
 
@@ -41,6 +42,8 @@ import StaffPaymentDetails from"../components/SuperAdmin/Finance/StaffPaymentDet
 import BranchFinance from"../components/SuperAdmin/Finance/BranchDetails";
 import UtilityPayments from "../components/SuperAdmin/Finance/UtilityPayments";
 import Kassa from "../components/SuperAdmin/Finance/Kassa/index.jsx";
+
+import SpecialStudentsDashboard from"../components/SuperAdmin/Finance/SpecialStudents/SpecialStudentsDashboard";
 
 export const SuperAdminRoutes = (
  <Route path="/super_admin" element={<SuperAdminLayout />}>
@@ -56,6 +59,7 @@ export const SuperAdminRoutes = (
  <Route path="utility-payments" element={<UtilityPayments />} />
  <Route path="kassa" element={<Kassa />} />
  <Route path="branch-details/:b_id" element={<BranchFinance />} />
+ <Route path="branch-details/:b_id/special-students" element={<SpecialStudentsDashboard />} />
  </Route>
 
  {/* Branches Management Section */}
@@ -98,6 +102,7 @@ export const SuperAdminRoutes = (
 
  <Route path="all_students" element={<GlobalStudentLayout />}>
  <Route index element={<GlobalStudentComponent />} />
+ <Route path="special-students" element={<GlobalSpecialStudents />} />
  <Route path=":student_id" element={<StudentProfilePage />} />
  <Route path="add_to_global" element={<StudentAdd />} />
  </Route>

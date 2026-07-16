@@ -1,120 +1,122 @@
-import React from"react";
-import { User, Camera, ShieldCheck, Activity, Send, Phone, Clock, Unplug } from"lucide-react";
+import React from "react";
+import { User, Camera, ShieldCheck, Activity, Send, Phone, Clock, Unplug } from "lucide-react";
 import { getPaymentStatus } from "./paymentStatus";
 
 const StudentProfileHeader = ({
- studentData,
- isEditing,
- editData,
- previewImage,
- primaryPayment,
- student_id,
- dispatch,
- handleImageChange,
- disconnectBotMutation
+  studentData,
+  isEditing,
+  editData,
+  previewImage,
+  primaryPayment,
+  student_id,
+  dispatch,
+  handleImageChange,
+  disconnectBotMutation
 }) => {
- const payStatus = getPaymentStatus(primaryPayment);
- return (
- <div className="flex flex-col md:flex-row items-center md:items-start gap-6 pb-10 border-b border-[var(--border-glass)] relative">
- <div className="relative group/avatar shrink-0">
- <div
- className="w-24 h-24 sm:w-32 sm:h-32 rounded-[2rem] overflow-hidden bg-[var(--bg-panel)] border border-[var(--border-glass)] p-1.5 shadow-lg relative"
- style={{ boxShadow: window.innerWidth > 1024 ? `0 20px 50px ${payStatus.shadowColor}` :'none' }}
- >
- <div className="w-full h-full rounded-[1.6rem] overflow-hidden bg-[var(--bg-void)] flex items-center justify-center relative">
- {previewImage ? (
- <img src={previewImage} className="w-full h-full object-cover" alt="" />
- ) : studentData?.image ? (
- <img src={studentData.image} className="w-full h-full object-cover" alt="" />
- ) : (
- <div className="flex flex-col items-center gap-1 opacity-40">
- <User size={32} className="text-[var(--gold)]" />
- <span className="text-[8px] font-black capitalize tracking-widest text-center mt-1">{studentData?.full_name?.[0]}</span>
- </div>
- )}
+  const payStatus = getPaymentStatus(primaryPayment);
+  
+  // Choose ring color based on payment status
+  const ringColor = payStatus.key === 'paid' ? 'ring-emerald-500/50' : payStatus.key === 'partial' ? 'ring-amber-500/50' : 'ring-rose-500/50';
 
- {isEditing && (
- <label className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center cursor-pointer opacity-0 group-hover/avatar:opacity-100 transition-opacity duration-300">
- <Camera size={24} className="text-[var(--gold)] mb-2" />
- <span className="text-[8px] font-black text-white capitalize tracking-widest">Rasmni o'zgartirish</span>
- <input type="file" className="hidden" onChange={handleImageChange} />
- </label>
- )}
- </div>
- </div>
- <div
- className={`absolute -bottom-2 -right-2 w-8 h-8 rounded-full border-[6px] border-[var(--bg-void)] shadow-2xl flex items-center justify-center ${payStatus.ringClass}`}
- >
- {payStatus.key === 'paid' ? <ShieldCheck size={12} className="text-white" /> : payStatus.key === 'partial' ? <Clock size={12} className="text-white" /> : <Activity size={12} className="text-white" />}
- </div>
- </div>
+  return (
+    <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 sm:gap-6 pb-6 border-b border-[var(--border-glass)] relative">
+      
+      {/* Avatar Container */}
+      <div className="relative group/avatar shrink-0 mt-2 sm:mt-0">
+        <div
+          className={`w-20 h-20 sm:w-28 sm:h-28 rounded-full overflow-hidden bg-[var(--bg-panel)] p-1 ring-2 ring-offset-4 ring-offset-[var(--bg-void)] ${ringColor} transition-all duration-300 shadow-xl`}
+        >
+          <div className="w-full h-full rounded-full overflow-hidden bg-[var(--bg-void)] flex items-center justify-center relative">
+            {previewImage ? (
+              <img src={previewImage} className="w-full h-full object-cover" alt="" />
+            ) : studentData?.image ? (
+              <img src={studentData.image} className="w-full h-full object-cover" alt="" />
+            ) : (
+              <div className="flex flex-col items-center justify-center w-full h-full bg-[var(--bg-panel)]">
+                <span className="text-3xl sm:text-4xl font-black text-[var(--text-secondary)] uppercase tracking-widest">
+                  {studentData?.full_name?.[0] || <User size={32} className="opacity-50" />}
+                </span>
+              </div>
+            )}
 
- <div className="flex-1 text-center md:text-left pt-2">
- <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 mb-3">
- {isEditing ? (
- <div className="relative flex-1 max-w-md">
- <input
- className="text-2xl sm:text-4xl font-black text-[var(--text-primary)] tracking-tighter capitalize bg-[var(--bg-void)]/60 border border-[var(--border-glass)] rounded-xl px-4 py-1 w-full outline-none focus:border-[var(--gold)]/50 transition-all"
- value={editData.full_name ||""}
- onChange={e => dispatch({ type:'UPDATE_EDIT_FIELD', payload: { full_name: e.target.value } })}
- placeholder="F.I.SH"
- />
- <div className="absolute -top-2 -left-2 px-2 py-0.5 bg-[var(--gold)] text-black text-[7px] font-black capitalize tracking-widest rounded-md">Ism-sharif tahrirlash</div>
- </div>
- ) : (
- <h1 className="text-2xl sm:text-4xl font-black text-[var(--text-primary)] tracking-tighter capitalize">
- {studentData?.full_name}
- </h1>
- )}
+            {isEditing && (
+              <label className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center cursor-pointer opacity-0 group-hover/avatar:opacity-100 transition-opacity duration-300">
+                <Camera size={20} className="text-white mb-1" />
+                <span className="text-[9px] font-bold text-white uppercase tracking-wider">O'zgartirish</span>
+                <input type="file" className="hidden" onChange={handleImageChange} />
+              </label>
+            )}
+          </div>
+        </div>
+      </div>
 
- <div className="flex flex-wrap items-center gap-2">
- <div className="w-fit px-3 py-1 rounded-full border border-[var(--border-glass)] text-[9px] font-black capitalize tracking-[0.3em] bg-[var(--bg-void)]/60 text-[var(--gold)] shadow-inner">
- Protocol: <span className="opacity-60">#{student_id}</span>
- </div>
+      {/* Info Container */}
+      <div className="flex-1 text-center sm:text-left flex flex-col justify-center sm:pt-2 w-full">
+        
+        {/* Name and Edit Input */}
+        <div className="mb-1.5">
+          {isEditing ? (
+            <input
+              className="text-2xl sm:text-3xl font-black text-[var(--text-primary)] capitalize bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-xl px-4 py-2 w-full max-w-md outline-none focus:border-[var(--text-primary)]/50 focus:ring-4 focus:ring-[var(--text-primary)]/10 transition-all shadow-inner"
+              value={editData.full_name || ""}
+              onChange={e => dispatch({ type: 'UPDATE_EDIT_FIELD', payload: { full_name: e.target.value } })}
+              placeholder="O'quvchi ism-sharifi..."
+            />
+          ) : (
+            <h1 className="text-2xl sm:text-3xl font-black text-[var(--text-primary)] tracking-tight capitalize">
+              {studentData?.full_name || "Noma'lum o'quvchi"}
+            </h1>
+          )}
+        </div>
 
- {studentData?.joined_at && (
- <div className="w-fit px-3 py-1 rounded-full border border-emerald-500/20 text-[9px] font-black capitalize tracking-[0.1em] bg-emerald-500/5 text-emerald-500 shadow-inner">
- Tizimga qo'shildi: <span className="opacity-80 font-normal">{new Date(studentData.joined_at).toLocaleDateString()}</span>
- </div>
- )}
+        {/* Subtext: ID and Date */}
+        {!isEditing && (
+          <div className="flex items-center justify-center sm:justify-start gap-2 text-xs sm:text-sm font-medium text-[var(--text-muted)] mb-4">
+            <span className="font-mono bg-[var(--bg-panel)] px-2 py-0.5 rounded border border-[var(--border-glass)]">ID: #{student_id}</span>
+            <span className="opacity-50">•</span>
+            <span>Qo'shilgan: {studentData?.joined_at ? new Date(studentData.joined_at).toLocaleDateString() : 'Noma\'lum'}</span>
+          </div>
+        )}
 
- {studentData?.telegram_id && (
- <div className="flex items-center gap-2">
-  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#0088cc]/10 border border-[#0088cc]/20 text-[#0088cc] shadow-lg animate-pulse" title="Telegram Botga ulangan">
-  <Send size={10} className="fill-current" />
-  <span className="text-[8px] font-black capitalize tracking-widest">BOT ACTIVE</span>
-  </div>
-  <button
-    onClick={() => {
-      if (window.confirm("Rostdan ham o'quvchini Telegram botdan uzmoqchimisiz? U qayta start bosib kirishi kerak bo'ladi.")) {
-        disconnectBotMutation?.mutate();
-      }
-    }}
-    disabled={disconnectBotMutation?.isPending}
-    className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500/20 transition-colors disabled:opacity-50"
-    title="Botdan uzish"
-  >
-    <Unplug size={10} />
-    <span className="text-[8px] font-black capitalize tracking-widest">
-      {disconnectBotMutation?.isPending ? "UZILMOQDA..." : "UZISH"}
-    </span>
-  </button>
- </div>
- )}
- </div>
- </div>
+        {/* Contact Group */}
+        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3">
+          {!isEditing && studentData?.phone && (
+            <a 
+              href={`tel:${studentData.phone}`}
+              className="flex items-center gap-2 text-[var(--text-secondary)] text-xs sm:text-sm font-bold bg-[var(--bg-panel)] hover:bg-[var(--text-primary)] hover:text-[var(--bg-panel)] transition-colors px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl border border-[var(--border-glass)] shadow-sm group"
+            >
+              <Phone size={14} className="opacity-70 group-hover:opacity-100" />
+              <span className="tracking-wide">{studentData.phone}</span>
+            </a>
+          )}
 
- <div className="flex flex-wrap items-center justify-center md:justify-start gap-4">
- {!isEditing && studentData?.phone && (
- <div className="flex items-center gap-2 text-[var(--text-secondary)] text-[10px] font-bold capitalize tracking-widest bg-[var(--bg-panel)]/40 px-3 py-1.5 rounded-xl border border-[var(--border-glass)]">
- <Phone size={12} className="text-[var(--gold)] opacity-50" />
- {studentData.phone}
- </div>
- )}
- </div>
- </div>
- </div>
- );
+          {!isEditing && studentData?.telegram_id && (
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0088cc]/10 border border-[#0088cc]/20 text-[#0088cc] shadow-sm">
+                <Send size={14} className="fill-current" />
+                <span className="text-[11px] sm:text-xs font-bold uppercase tracking-widest">Bot Ulangan</span>
+              </div>
+              
+              {/* Disconnect Button (Ghost) */}
+              <button
+                onClick={() => {
+                  if (window.confirm("Rostdan ham o'quvchini Telegram botdan uzmoqchimisiz? U qayta start bosib kirishi kerak bo'ladi.")) {
+                    disconnectBotMutation?.mutate();
+                  }
+                }}
+                disabled={disconnectBotMutation?.isPending}
+                className="p-1.5 sm:p-2 rounded-xl text-[var(--text-muted)] hover:text-rose-500 hover:bg-rose-500/10 transition-colors disabled:opacity-50"
+                title="Botdan uzish"
+              >
+                <Unplug size={16} />
+              </button>
+            </div>
+          )}
+        </div>
+
+      </div>
+    </div>
+  );
 };
 
 export default StudentProfileHeader;

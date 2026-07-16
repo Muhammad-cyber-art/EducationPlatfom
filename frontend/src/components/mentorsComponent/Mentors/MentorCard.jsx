@@ -34,14 +34,14 @@ const MentorCard = React.memo(({ mentor, effectiveBranchId, readOnly, viewMode }
  return (
  <div
  onClick={() => !colorCh && navigate(`${mentor.id}?branch=${effectiveBranchId}`)}
- className="lux-card group !p-3 sm:!p-4 flex items-center justify-between gap-4 overflow-hidden cursor-pointer relative hover:border-[var(--gold)]/30 transition-all duration-300"
- style={{ borderColor: `${selectedColor}15`, background: `${selectedColor}05` }}
+ className="lux-card group !p-3 sm:!p-4 flex items-center justify-between gap-4 overflow-hidden cursor-pointer relative bg-[var(--bg-panel)] border border-[var(--border-glass)] hover:border-[var(--gold)]/40 shadow-lg hover:shadow-xl hover:shadow-[var(--gold)]/10 transition-all duration-300 use-dynamic-border-left"
+ style={{ 
+  borderLeftWidth: '4px', 
+  borderLeftColor: selectedColor,
+  '--card-color': selectedColor,
+  '--card-color-dim': `${selectedColor}30`
+ }}
  >
- {/* Color Line Flag for List View */}
- <div
- className="absolute top-0 left-0 w-1 h-full opacity-60 group-hover:w-1.5 transition-all"
- style={{ background: selectedColor }}
- />
  <div className="flex items-center gap-4 sm:gap-6 flex-1 min-w-0">
  <div className="relative shrink-0">
  <div
@@ -52,7 +52,7 @@ const MentorCard = React.memo(({ mentor, effectiveBranchId, readOnly, viewMode }
  {mentor.image ? (
  <img src={mentor.image} className="w-full h-full object-cover" alt="" />
  ) : (
- <span className="text-xs sm:text-sm font-black" style={{ color: selectedColor }}>{initials}</span>
+ <span className="text-xs sm:text-sm font-black use-dynamic-color" style={{ color: selectedColor }}>{initials}</span>
  )}
  </div>
  </div>
@@ -65,37 +65,38 @@ const MentorCard = React.memo(({ mentor, effectiveBranchId, readOnly, viewMode }
  <h3 className="text-sm sm:text-base font-black text-[var(--text-primary)] capitalize tracking-tight truncate">
  {mentor.first_name} {mentor.last_name}
  </h3>
- <p className="text-[8px] sm:text-[9px] font-black text-[var(--gold)] capitalize tracking-[0.2em] mt-0.5 opacity-80" style={{ color: selectedColor }}>
- {mentor.subject ||'Mentor'}
+ <p className="text-[8px] sm:text-[9px] font-black capitalize tracking-[0.2em] mt-0.5 opacity-80 use-dynamic-color" style={{ color: selectedColor }}>
+ {mentor.subject || "Mentor"}
  </p>
  </div>
  </div>
 
- <div className="flex items-center gap-4 sm:gap-10 shrink-0">
- <div className="hidden sm:flex items-center gap-6">
- <div className="text-center">
- <p className="text-[10px] sm:text-[11px] font-black text-[var(--text-primary)]">{mentor.groups_count || 0}</p>
- <p className="text-[7px] font-bold text-[var(--text-muted)] capitalize tracking-widest mt-0.5">Gruhlar</p>
- </div>
- <div className="text-center border-l border-[var(--border-glass)] pl-6">
- <p className="text-[10px] sm:text-[11px] font-black text-[var(--text-primary)]">{mentor.students_count || 0}</p>
- <p className="text-[7px] font-bold text-[var(--text-muted)] capitalize tracking-widest mt-0.5">O'quvchilar</p>
- </div>
- </div>
- <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-[var(--bg-void)] border border-[var(--border-glass)] flex items-center justify-center text-[var(--text-muted)] group-hover:bg-[var(--gold)] group-hover:text-black transition-all">
- <ChevronRight size={14} className="sm:w-5 sm:h-5" />
- </div>
- </div>
-
- {/* Action button floating */}
- {!readOnly && (
- <button
- onClick={(e) => { e.stopPropagation(); setColorCh(!colorCh); }}
- className="absolute top-1 right-1 p-1.5 opacity-40 hover:opacity-100 text-[var(--text-muted)] transition-opacity"
- >
- <Palette size={12} />
- </button>
- )}
+        <div className="flex items-center gap-4 sm:gap-10 shrink-0">
+          <div className="hidden sm:flex items-center gap-6">
+            <div className="text-center">
+              <p className="text-[10px] sm:text-[11px] font-black text-[var(--text-primary)]">{mentor.groups_count || 0}</p>
+              <p className="text-[7px] font-bold text-[var(--text-muted)] capitalize tracking-widest mt-0.5">Gruhlar</p>
+            </div>
+            <div className="text-center border-l border-[var(--border-glass)] pl-6">
+              <p className="text-[10px] sm:text-[11px] font-black text-[var(--text-primary)]">{mentor.students_count || 0}</p>
+              <p className="text-[7px] font-bold text-[var(--text-muted)] capitalize tracking-widest mt-0.5">O'quvchilar</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {!readOnly && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setColorCh(!colorCh); }}
+                className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-[var(--bg-void)] border border-[var(--border-glass)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--gold)] transition-all z-10"
+                title="Rangni o'zgartirish"
+              >
+                <Palette size={14} className="sm:w-5 sm:h-5" />
+              </button>
+            )}
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-[var(--bg-void)] border border-[var(--border-glass)] flex items-center justify-center text-[var(--text-muted)] group-hover:bg-[var(--gold)] group-hover:text-black transition-all">
+              <ChevronRight size={14} className="sm:w-5 sm:h-5" />
+            </div>
+          </div>
+        </div>
 
  {/* Color Overlay for compact view */}
  {colorCh && (
@@ -114,23 +115,25 @@ const MentorCard = React.memo(({ mentor, effectiveBranchId, readOnly, viewMode }
  return (
  <div
  onClick={() => !colorCh && navigate(`${mentor.id}?branch=${effectiveBranchId}`)}
- className="lux-card group !p-0 overflow-hidden cursor-pointer relative hover:border-[var(--gold)]/30 transition-all duration-500"
+ className="lux-card group !p-0 overflow-hidden cursor-pointer relative hover:border-[var(--gold)]/30 transition-all duration-500 use-dynamic-border"
  style={{
  borderColor: `${selectedColor}25`,
- boxShadow: window.innerWidth > 1024 ? `0 10px 40px ${selectedColor}08` :'none'
+ boxShadow: window.innerWidth > 1024 ? `0 10px 40px ${selectedColor}08` :'none',
+ '--card-color': selectedColor,
+ '--card-color-dim': `${selectedColor}25`
  }}
  >
  <div className="absolute top-0 right-0 w-48 h-48 bg-[var(--gold)]/5 blur-[80px] opacity-10 pointer-events-none" />
 
  {/* Subtle Color Bar Accent */}
  <div
- className="absolute top-0 left-0 right-0 h-[2px] opacity-40 transition-opacity"
+ className="absolute top-0 left-0 right-0 h-[2px] opacity-40 transition-opacity use-dynamic-bg"
  style={{ background: selectedColor }}
  />
 
  {/* Premium Color Flag */}
  <div
- className="absolute top-0 left-8 w-7 h-11 z-10 shadow-lg origin-top"
+ className="absolute top-0 left-8 w-7 h-11 z-10 shadow-lg origin-top use-dynamic-bg"
  style={{
  background: selectedColor,
  clipPath:'polygon(0% 0%, 100% 0%, 100% 100%, 50% 85%, 0% 100%)',
@@ -149,7 +152,7 @@ const MentorCard = React.memo(({ mentor, effectiveBranchId, readOnly, viewMode }
  {mentor.image ? (
  <img src={mentor.image} className="w-full h-full object-cover" alt="" />
  ) : (
- <span className="text-xl sm:text-2xl font-bold tracking-tighter" style={{ color: selectedColor }}>{initials}</span>
+ <span className="text-xl sm:text-2xl font-bold tracking-tighter use-dynamic-color" style={{ color: selectedColor }}>{initials}</span>
  )}
  </div>
  </div>
@@ -160,7 +163,7 @@ const MentorCard = React.memo(({ mentor, effectiveBranchId, readOnly, viewMode }
 
  <div className="flex flex-col items-end gap-3">
  <div
- className="px-3 py-1 rounded-full border text-[8px] font-black capitalize tracking-[0.2em] bg-[var(--bg-void)]/40"
+ className="px-3 py-1 rounded-full border text-[8px] font-black capitalize tracking-[0.2em] bg-[var(--bg-void)]/40 flex items-center gap-1.5 use-dynamic-color use-dynamic-border"
  style={{ color: selectedColor, borderColor: `${selectedColor}30` }}
  >
  Lvl. {mentor.role ==='super_admin' ?'0' :'1'}
@@ -181,12 +184,12 @@ const MentorCard = React.memo(({ mentor, effectiveBranchId, readOnly, viewMode }
  <h3 className="text-base sm:text-lg font-bold text-[var(--text-primary)] capitalize tracking-tight transition-colors leading-tight">
  {mentor.first_name} <br className="hidden sm:block" /> {mentor.last_name}
  </h3>
- <div className="flex items-center gap-2 mt-1.5 sm:mt-2">
- <Star size={10} style={{ color: selectedColor, fill: selectedColor }} />
- <p className="text-[9px] sm:text-[10px] font-black capitalize tracking-[0.2em] opacity-80" style={{ color: selectedColor }}>
- {mentor.subject ||'Mentor'}
- </p>
- </div>
+  <div className="flex items-center gap-2 mt-1.5 sm:mt-2">
+  <Star size={10} className="use-dynamic-color" style={{ color: selectedColor, fill: selectedColor }} />
+  <p className="text-[9px] sm:text-[10px] font-black capitalize tracking-[0.2em] opacity-80 use-dynamic-color" style={{ color: selectedColor }}>
+  {mentor.subject || "Mentor"}
+  </p>
+  </div>
  </div>
 
  <div className="grid grid-cols-2 gap-3 sm:gap-4 py-4 sm:py-5 border-y border-[var(--border-glass)]">

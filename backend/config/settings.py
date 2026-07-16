@@ -292,6 +292,7 @@ CELERY_TASK_DEFAULT_QUEUE = 'default'
 CELERY_TASK_ROUTES = {
     'telegram_bot.reports_bot_logic.*': {'queue': 'heavy_reports'},
     'reports.tasks.*': {'queue': 'heavy_reports'},
+    'reports.admin_tasks.*': {'queue': 'heavy_reports'},
     'finance.tasks.*': {'queue': 'heavy_reports'},
 }
 
@@ -309,6 +310,14 @@ CELERY_BEAT_SCHEDULE = {
     'check-uncollected-reports-every-30-minutes': {
         'task': 'reports.tasks.alert_uncollected_reports_task',
         'schedule': crontab(minute='*/30'), # Har 30 daqiqada fonda tekshirish
+    },
+    'send-daily-reports-to-admins': {
+        'task': 'reports.send_daily_reports_to_admins',
+        'schedule': crontab(hour=23, minute=50), # Har kuni 23:50 da jo'natiladi
+    },
+    'send-monthly-financial-to-super-admins': {
+        'task': 'reports.send_monthly_financial_to_super_admins',
+        'schedule': crontab(hour=23, minute=55), # Har kuni tekshiriladi, lekin faqat oyning oxirida ishlaydi
     },
 }
 

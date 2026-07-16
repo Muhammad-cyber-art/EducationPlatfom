@@ -148,6 +148,24 @@ def process_contact_and_create_profile(clean_phone, chat_id):
             is_active=True
         )
         for student in students:
+            # ✅ SENIOR FIX: Student modelini o'ziga ham telegram_id larni yozib qo'yish
+            update_fields = []
+            
+            # Agar o'zining raqami mos kelsa
+            if student.phone and (student.phone == phone or student.phone.endswith(phone[-9:])):
+                if student.telegram_id != chat_id:
+                    student.telegram_id = chat_id
+                    update_fields.append('telegram_id')
+            
+            # Agar ota-onaning raqami mos kelsa
+            if student.parent_phone and (student.parent_phone == phone or student.parent_phone.endswith(phone[-9:])):
+                if student.parent_telegram_id != chat_id:
+                    student.parent_telegram_id = chat_id
+                    update_fields.append('parent_telegram_id')
+                    
+            if update_fields:
+                student.save(update_fields=update_fields)
+
             if not student_profile_created:
                 # Eski profillarni tozalash
                 BotProfile.objects.filter(telegram_id=chat_id).exclude(student=student).delete()

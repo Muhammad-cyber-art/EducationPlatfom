@@ -14,12 +14,14 @@ from datetime import timedelta
 
 from homework_attends.models import Attendance
 from groups.models import Group
-from homework_attends.serializers import AttendanceSerializer
+from homework_attends.serializers import AttendanceSerializer, AttendanceEditSerializer
 from homework_attends.services import (
     get_or_create_attendance_records, 
     generate_weekly_attendance_report, 
     bulk_confirm_attendance, 
-    get_monthly_attendance_data
+    get_monthly_attendance_data,
+    edit_past_attendance,
+    get_last_3_lesson_dates
 )
 from permissions.permissions import HasModulePermission
 from reports.models import ReportDownloadTrack
@@ -77,11 +79,13 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             instance = get_object_or_404(Attendance, id=attendance_id)
             today = timezone.localdate()
             if instance.date != today:
+                last_3_dates = get_last_3_lesson_dates(instance.group)
+                
                 # Grace period: Tungi 4 gacha kechagi kunni o'zgartirishga ruxsat
                 is_early_morning = timezone.localtime().hour < 4
                 is_yesterday = instance.date == (today - timedelta(days=1))
-                if not (is_early_morning and is_yesterday):
-                    return Response({"detail": f"Faqat bugungi davomatni tahrirlash mumkin. (Sana: {instance.date}, Bugun: {today})"}, status=status.HTTP_400_BAD_REQUEST)
+                if instance.date not in last_3_dates and not (is_early_morning and is_yesterday):
+                    return Response({"detail": f"Faqat bugungi yoki oxirgi 3 ta o'tilgan dars davomatini tahrirlashingiz mumkin."}, status=status.HTTP_400_BAD_REQUEST)
             
             instance.is_present = is_present
             instance.marked_by = request.user
@@ -100,13 +104,15 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 
         group = get_object_or_404(Group, id=group_id)
         
-        # User talabi: Faqat bugungi sana uchun davomat olish mumkin
+        # Ruxsat etilgan sanalar: Bugun, yoki oxirgi 3 ta dars
         today = timezone.localdate()
         if requested_date != today:
+            last_3_dates = get_last_3_lesson_dates(group)
+            
             is_early_morning = timezone.localtime().hour < 4
             is_yesterday = requested_date == (today - timedelta(days=1))
-            if not (is_early_morning and is_yesterday):
-                return Response({"detail": f"Faqat bugungi sana uchun davomat olish ruxsat etilgan. (Tanlangan: {requested_date}, Bugun: {today})"}, status=status.HTTP_400_BAD_REQUEST)
+            if requested_date not in last_3_dates and not (is_early_morning and is_yesterday):
+                return Response({"detail": f"Faqat bugungi yoki oxirgi 3 ta o'tilgan dars davomatini tahrirlashingiz mumkin."}, status=status.HTTP_400_BAD_REQUEST)
 
         student = get_object_or_404(group.students, id=student_id)
 
@@ -144,13 +150,15 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 
         group = get_object_or_404(Group, id=group_id)
         
-        # User talabi: Faqat bugungi sana uchun davomat olish mumkin
+        # Ruxsat etilgan sanalar: Bugun, yoki oxirgi 3 ta dars
         today = timezone.localdate()
         if requested_date != today:
+            last_3_dates = get_last_3_lesson_dates(group)
+            
             is_early_morning = timezone.localtime().hour < 4
             is_yesterday = requested_date == (today - timedelta(days=1))
-            if not (is_early_morning and is_yesterday):
-                return Response({"detail": f"Faqat bugungi sana uchun davomat olish ruxsat etilgan. (Tanlangan: {requested_date}, Bugun: {today})"}, status=status.HTTP_400_BAD_REQUEST)
+            if requested_date not in last_3_dates and not (is_early_morning and is_yesterday):
+                return Response({"detail": f"Faqat bugungi yoki oxirgi 3 ta o'tilgan dars davomatini tahrirlashingiz mumkin."}, status=status.HTTP_400_BAD_REQUEST)
 
 
         
@@ -320,24 +328,24 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                 date_str = str(d)
                 att_record = att_data.get(student.id, {}).get(date_str)
                 
+                # BUG #6 FIX: 'att_status' nomini ishlatamiz — 'status' DRF moduli bilan to'qnashmaslik uchun
                 if joined_at and d < joined_at:
-                    status = "not_joined"
+                    att_status = "not_joined"
                 elif att_record:
                     if not att_record.get('is_confirmed'):
-                        status = "not_taken" # "!" belgisi o'rniga status
+                        att_status = "not_taken"
                     elif att_record.get('is_present'):
-                        status = "present"
+                        att_status = "present"
                     else:
-                        status = "absent"
+                        att_status = "absent"
                 else:
                     # Dars kuni, lekin rekord yo'q
                     if d < timezone.localdate():
-                        status = "not_taken"
+                        att_status = "not_taken"
                     else:
-                        status = "none"
-
+                        att_status = "none"
                 
-                history.append({"date": date_str, "status": status})
+                history.append({"date": date_str, "status": att_status})
             
             report_data.append({
                 "student_id": student.id,
@@ -350,3 +358,42 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             "period": f"{year}-{month:02d}",
             "data": report_data
         })
+
+    @action(detail=True, methods=['patch'], url_path='edit-past', permission_classes=[IsAuthenticated])
+    def edit_past(self, request, pk=None):
+        """
+        Oxirgi 3 ta o'tilgan darsdan birortasining davomatini tahrirlash.
+        """
+        attendance = self.get_object()
+        serializer = AttendanceEditSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+        # Admin huquqini tekshirish
+        if request.user.role not in ['admin', 'super_admin']:
+            return Response(
+                {"detail": "Faqat administratorlar o'tgan davomatni tahrirlay oladi."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+            
+        try:
+            from rest_framework.exceptions import ValidationError
+            updated_attendance = edit_past_attendance(
+                attendance_id=attendance.id,
+                admin_user=request.user,
+                new_status=serializer.validated_data['new_status'],
+                reason=serializer.validated_data['reason']
+            )
+            return Response(
+                AttendanceSerializer(updated_attendance).data, 
+                status=status.HTTP_200_OK
+            )
+        except ValidationError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.exception("Davomat tahrirlashda xatolik: %s", str(e))
+            return Response(
+                {"detail": "Tizim xatoligi yuz berdi. Iltimos adminga murojaat qiling."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

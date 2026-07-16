@@ -720,3 +720,29 @@ select option {
   color: #ffffff !important;
   padding: 10px;
 }
+
+/* ======================================================= */
+/* SAFE DYNAMIC COLOR BYPASS FOR LIGHT THEME (User Colors) */
+/* ======================================================= */
+[data-theme='light'] .use-dynamic-color,
+[data-theme='light'] span.use-dynamic-color,
+[data-theme='light'] h3.use-dynamic-color,
+[data-theme='light'] p.use-dynamic-color,
+[data-theme='light'] div.use-dynamic-color {
+  color: var(--card-color) !important;
+}
+
+[data-theme='light'] .use-dynamic-bg,
+[data-theme='light'] div.use-dynamic-bg {
+  background: var(--card-color) !important;
+}
+
+[data-theme='light'] .use-dynamic-border,
+[data-theme='light'] div.use-dynamic-border {
+  border-color: var(--card-color-dim) !important;
+}
+
+[data-theme='light'] .use-dynamic-border-left,
+[data-theme='light'] div.use-dynamic-border-left {
+  border-left-color: var(--card-color) !important;
+}

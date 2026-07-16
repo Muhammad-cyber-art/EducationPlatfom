@@ -187,7 +187,7 @@ export default function GroupsStudent({
     }
   };
 
-  const handleToggle = async (attendanceId, currentStatus, studentId) => {
+  const handleToggle = async (attendanceId, currentStatus, studentId, studentName) => {
     if (!groupId) return;
 
     // Senior toggle logic:
@@ -288,9 +288,10 @@ export default function GroupsStudent({
           return (
             <tr
               key={item.id || index}
-              className="group hover:bg-[var(--bg-void)]/40 transition-all border-b border-[var(--border-glass)]/20"
+              className="group hover:bg-[var(--bg-void)]/40 transition-all border-b border-[var(--border-glass)]/20 use-dynamic-border-left"
               style={item.color && item.color !== '#ffffff' ? { 
-                borderLeft: `6px solid ${item.color}`
+                borderLeft: `6px solid ${item.color}`,
+                '--card-color': item.color
               } : {}}
             >
               <td className="px-4 py-3 text-center relative group/mark">
@@ -353,7 +354,7 @@ export default function GroupsStudent({
               <td className="px-4 py-3 text-center">
                 {canEdit ? (
                   <button
-                    onClick={(e) => { e.stopPropagation(); handleToggle(attId, isPresent, item.id); }}
+                    onClick={(e) => { e.stopPropagation(); handleToggle(attId, isPresent, item.id, item.full_name); }}
                     className={`h-9 px-6 rounded-xl text-[9px] font-black capitalize tracking-[0.2em] flex items-center gap-2 transition-all shadow-md active:scale-90 ${isPresent === true
                       ? 'bg-emerald-500 text-black shadow-emerald-500/20'
                       : isPresent === false
@@ -393,10 +394,11 @@ export default function GroupsStudent({
 
         return (
           <div key={item.id || index}
-               className={`lux-card !p-2.5 mb-2 group transition-all shadow-md relative overflow-visible ${markedStudents[item.id] ? 'border-[var(--gold)] bg-[var(--gold)]/5' : 'border-[var(--border-glass)]/30 hover:border-[var(--gold)]/40'}`}
+               className={`lux-card !p-2.5 mb-2 group transition-all shadow-md relative overflow-visible use-dynamic-border-left ${markedStudents[item.id] ? 'border-[var(--gold)] bg-[var(--gold)]/5' : 'border-[var(--border-glass)]/30 hover:border-[var(--gold)]/40'}`}
                style={{
                  zIndex: menuOpenId === item.id ? 9999 : 1,
-                 borderLeft: item.color && item.color !== '#ffffff' ? `6px solid ${item.color}` : undefined
+                 borderLeft: item.color && item.color !== '#ffffff' ? `6px solid ${item.color}` : undefined,
+                 '--card-color': item.color && item.color !== '#ffffff' ? item.color : undefined
                }}
           >
             <div className="flex items-center justify-between gap-3">
@@ -434,7 +436,7 @@ export default function GroupsStudent({
 
                 {canEdit ? (
                   <button
-                    onClick={(e) => { e.stopPropagation(); handleToggle(attId, isPresent, item.id); }}
+                    onClick={(e) => { e.stopPropagation(); handleToggle(attId, isPresent, item.id, item.full_name); }}
                     className={`h-9 px-5 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md active:scale-95 text-[9px] font-black capitalize tracking-widest ${isPresent === true
                       ? 'bg-emerald-500 text-black shadow-emerald-500/20'
                       : isPresent === false

@@ -72,35 +72,37 @@ def update_attendance_based_payments(student, group, date):
                 e,
             )
 
-    # 2. Mentor maoshi (discount/negotiated uchun) — faqat joriy oy
-    if student.status in ["discount", "negotiated"] and month_date == current_month:
+    # 2. Mentor maoshi (discount/negotiated uchun) — to'lanmagan bo'lsa o'tgan oylarni ham yangilash (BUG M-2 FIX)
+    if student.status in ["discount", "negotiated"]:
         try:
             mentor = group.mentor
             if mentor and hasattr(mentor, "staff_profile"):
                 profile = mentor.staff_profile
                 if profile.salary_type in ["percentage", "student_count"]:
-                    emp_payment = EmployeePayment.objects.filter(
-                        employee=mentor, month=month_date, is_paid=False
-                    ).first()
-                    if emp_payment:
-                        apply_calculated_salary_to_employee_payment(
-                            profile, month_date, emp_payment
-                        )
-                        emp_payment.save()
-                    else:
-                        emp_payment, _ = EmployeePayment.objects.get_or_create(
-                            employee=mentor,
-                            month=month_date,
-                            defaults={
-                                "salary_base": Decimal("0"),
-                                "is_paid": False,
-                                "attendance_deductions": {},
-                            },
-                        )
-                        apply_calculated_salary_to_employee_payment(
-                            profile, month_date, emp_payment
-                        )
-                        emp_payment.save()
+                    # BUG M-5 FIX: Tranzaksiya qo'shildi
+                    with transaction.atomic():
+                        emp_payment = EmployeePayment.objects.select_for_update().filter(
+                            employee=mentor, month=month_date, is_paid=False
+                        ).first()
+                        if emp_payment:
+                            apply_calculated_salary_to_employee_payment(
+                                profile, month_date, emp_payment
+                            )
+                            emp_payment.save()
+                        else:
+                            emp_payment, _ = EmployeePayment.objects.get_or_create(
+                                employee=mentor,
+                                month=month_date,
+                                defaults={
+                                    "salary_base": Decimal("0"),
+                                    "is_paid": False,
+                                    "attendance_deductions": {},
+                                },
+                            )
+                            apply_calculated_salary_to_employee_payment(
+                                profile, month_date, emp_payment
+                            )
+                            emp_payment.save()
         except Exception as e:
             logger.error(
                 "Failed to update mentor salary for group %s, date %s: %s",
@@ -114,6 +116,11 @@ def apply_calculated_salary_to_employee_payment(profile, month_date, emp_payment
     """
     StaffProfile.calculate_salary_for_month natijasini EmployeePayment ga yozadi.
     """
+    # BUG M-1 FIX: Davomat o'zgargan bo'lsa, yangi hisob uchun keshni tozalash kerak
+    if hasattr(profile, '_salary_memo'):
+        profile._salary_memo.pop((str(month_date), 'paid'), None)
+        profile._salary_memo.pop((str(month_date), 'expected'), None)
+        
     salary = profile.calculate_salary_for_month(month_date)
     emp_payment.salary_base = salary
     emp_payment.attendance_deductions = {}

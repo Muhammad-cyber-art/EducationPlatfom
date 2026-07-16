@@ -123,11 +123,17 @@ class StudentPaymentViewSet(viewsets.ModelViewSet):
                     group_months.add((p.group_id, p.month.year, p.month.month))
 
             lesson_dates_cache = {}
+            group_ids = list(set(gid for gid, _, _ in group_months))
+            groups_map = {
+                g.id: g for g in Group.objects.filter(id__in=group_ids).prefetch_related(
+                    'special_lesson_days', 'canceled_lesson_days'
+                )
+            }
             for gid, year, month in group_months:
-                try:
-                    group = Group.objects.get(id=gid)
+                group = groups_map.get(gid)
+                if group:
                     lesson_dates_cache[(gid, year, month)] = group.get_lesson_dates(year, month)
-                except Group.DoesNotExist:
+                else:
                     lesson_dates_cache[(gid, year, month)] = []
 
             context['lesson_dates_cache'] = lesson_dates_cache
@@ -284,7 +290,9 @@ class EmployeePaymentViewSet(viewsets.ModelViewSet):
                 groups_qs = groups_qs | Group.objects.filter(mentor_id__in=mentor_ids)
             if admin_branch_ids:
                 groups_qs = groups_qs | Group.objects.filter(branch_id__in=admin_branch_ids)
-            groups_qs = groups_qs.select_related('branch', 'mentor')
+            groups_qs = groups_qs.select_related('branch', 'mentor').prefetch_related(
+                'special_lesson_days', 'canceled_lesson_days'
+            )
 
             employee_groups = {}  # employee_id -> [Group]
             group_by_id = {}
@@ -1010,3 +1018,116 @@ def payment_statistics_view(request):
             "completion_rate": avg_rate
         }
     })
+
+from drf_spectacular.utils import extend_schema, OpenApiParameter
+from drf_spectacular.types import OpenApiTypes
+from datetime import date
+from decimal import Decimal
+from .serializers import SpecialStudentDashboardResponseSerializer
+
+class SpecialStudentsDashboardAPIView(APIView):
+    """
+    Filialdagi barcha "maxsus" statusga ega o'quvchilar va ularning dinamik moliyaviy ma'lumotlarini qaytaradi.
+    Statuslar: 'discount', 'low_income', 'negotiated', 'teacher_negotiated'
+    """
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('year', OpenApiTypes.INT, required=True),
+            OpenApiParameter('month', OpenApiTypes.INT, required=True),
+            OpenApiParameter('status', OpenApiTypes.STR, required=False, description="Masalan: discount, negotiated"),
+        ],
+        responses=SpecialStudentDashboardResponseSerializer
+    )
+    def get(self, request, branch_id):
+        try:
+            year = int(request.query_params.get('year', timezone.now().year))
+            month = int(request.query_params.get('month', timezone.now().month))
+            status_filter = request.query_params.get('status', None)
+        except ValueError:
+            return Response({"detail": "Yil yoki oy xato formatda"}, status=400)
+
+        statuses = ['discount', 'low_income', 'negotiated', 'teacher_negotiated']
+        if status_filter and status_filter in statuses:
+            statuses = [status_filter]
+            
+        students = Student.objects.filter(
+            branch_id=branch_id,
+            status__in=statuses,
+            is_active=True
+        ).prefetch_related('enrollments__group', 'finance_profile', 'payments')
+
+        data = []
+        total_expected = Decimal(0)
+        total_paid = Decimal(0)
+        total_debt = Decimal(0)
+        
+        for student in students:
+            # Har bir o'quvchining aktiv guruhlarini topamiz
+            active_enrollments = student.enrollments.filter(is_active=True)
+            for enr in active_enrollments:
+                group = enr.group
+                # Dinamik qarz hisoblash
+                expected = student.calculate_accrued_amount(year, month, group=group)
+                
+                # Payment orqali to'langan qismini aniqlaymiz
+                payments = [p for p in student.payments.all() if p.group_id == group.id and p.month and p.month.year == year and p.month.month == month]
+                paid_amt = Decimal(sum([p.paid_amount for p in payments])) if payments else Decimal(0)
+                
+                debt = max(Decimal(0), expected - paid_amt)
+                
+                # Wallet
+                wallet = getattr(student, 'finance_profile', None)
+                w_paid = wallet.total_paid_all_time if wallet else Decimal(0)
+                w_refunded = wallet.total_refunded if wallet else Decimal(0)
+                w_date = wallet.last_payment_date if wallet else None
+                
+                total_expected += expected
+                total_paid += paid_amt
+                total_debt += debt
+                
+                data.append({
+                    "student_id": student.id,
+                    "full_name": student.full_name,
+                    "phone": student.phone,
+                    "status": student.status,
+                    "status_display": student.get_status_display(),
+                    "group_id": group.id,
+                    "group_name": group.name,
+                    "monthly_price": group.monthly_price,
+                    "custom_fee": student.custom_fee,
+                    "expected_amount": expected,
+                    "paid_amount": paid_amt,
+                    "debt": debt,
+                    "wallet_total_paid": w_paid,
+                    "wallet_total_refunded": w_refunded,
+                    "last_payment_date": w_date,
+                })
+
+        status_counts = {
+            'discount': 0,
+            'low_income': 0,
+            'negotiated': 0,
+            'teacher_negotiated': 0
+        }
+        for s in students:
+            if s.status in status_counts:
+                status_counts[s.status] += 1
+            else:
+                status_counts[s.status] = 1
+
+        summary = {
+            "total_expected": total_expected,
+            "total_paid": total_paid,
+            "total_debt": total_debt,
+            "students_count": len(data),
+            "status_counts": status_counts
+        }
+        
+        serializer = SpecialStudentDashboardResponseSerializer({
+            "summary": summary,
+            "students": data
+        })
+        
+        return Response(serializer.data)

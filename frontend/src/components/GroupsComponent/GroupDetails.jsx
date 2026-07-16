@@ -250,8 +250,20 @@ export default function GroupDetailPage() {
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayStr = yesterday.toLocaleDateString('sv-SE');
 
+  const isAdmin = userData?.role === 'super_admin' || userData?.role === 'admin';
+
+  // BUG #4 FIX: Admin uchun ham "oxirgi 3 ta dars" cheklovi qo'llanadi.
+  // lessonDates dan bugungi sanagacha bo'lgan o'tgan darslarni olib, tartibga solamiz.
+  const last3EditableDates = useMemo(() => {
+    if (!lessonDates || !isCurrentMonth) return [];
+    const pastDates = lessonDates.filter(d => d <= todayStr_actual);
+    return pastDates.sort((a, b) => b.localeCompare(a)).slice(0, 3);
+  }, [lessonDates, todayStr_actual, isCurrentMonth]);
+
   const canEditAttendance = permissions.canTakeAttendance && isGroupLogicActive && (
-    selectedDate === todayStr_actual || (currentHour < 4 && selectedDate === yesterdayStr)
+    selectedDate === todayStr_actual ||
+    (currentHour < 4 && selectedDate === yesterdayStr) ||
+    (isAdmin && last3EditableDates.includes(selectedDate))
   );
 
 

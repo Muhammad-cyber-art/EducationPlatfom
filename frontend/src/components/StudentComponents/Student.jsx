@@ -269,32 +269,31 @@ export default function StudentProfilePage() {
 
   return (
     <div className="p-3 sm:p-6 lg:p-8 max-w-[1600px] mx-auto space-y-6 sm:space-y-8 lg:space-y-12 bg-[var(--bg-void)]/20 min-h-screen">
-      <StudentHeader
-        {...{
-          studentData,
-          isEditing,
-          userRole,
-          handleSaveEdit,
-          dispatch,
-          archiveMutation,
-          student_id,
-        }}
-        canEditStudent={permissions.canEditStudent}
-      />
+      <div className="flex flex-col gap-1 sm:gap-2">
+        <StudentHeader
+          {...{
+            isEditing,
+            userRole,
+            handleSaveEdit,
+            dispatch,
+          }}
+          canEditStudent={permissions.canEditStudent}
+        />
 
-      <StudentProfileHeader
-        {...{
-          studentData,
-          isEditing,
-          editData,
-          previewImage,
-          primaryPayment,
-          student_id,
-          dispatch,
-          handleImageChange,
-          disconnectBotMutation,
-        }}
-      />
+        <StudentProfileHeader
+          {...{
+            studentData,
+            isEditing,
+            editData,
+            previewImage,
+            primaryPayment,
+            student_id,
+            dispatch,
+            handleImageChange,
+            disconnectBotMutation,
+          }}
+        />
+      </div>
 
       {isEditing ? (
         <div className="max-w-4xl mx-auto">

@@ -29,7 +29,7 @@ export default function MentorsPage() {
  const dispatch = useDispatch();
  const searchTerm = useSelector(state => state.mentor.searchQuery);
  const [debouncedSearch, setDebouncedSearch] = useState("");
- const [viewMode, setViewMode] = useState("grid"); // grid or list
+ const [viewMode, setViewMode] = useState("list"); // grid or list
  const { ref, inView } = useInView();
 
  const { data: userData = {} } = useQuery({

@@ -135,3 +135,8 @@ class AttendanceBulkMarkSerializer(serializers.Serializer):
     """Bir nechta studentni birdaniga belgilash uchun"""
     student_id = serializers.IntegerField()
     is_present = serializers.BooleanField()
+
+class AttendanceEditSerializer(serializers.Serializer):
+    """Oxirgi 3 ta dars davomatini o'zgartirish uchun"""
+    new_status = serializers.BooleanField()
+    reason = serializers.CharField(max_length=500, required=False, allow_blank=True, default='')

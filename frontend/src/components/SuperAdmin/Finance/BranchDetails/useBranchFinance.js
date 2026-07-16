@@ -58,23 +58,24 @@ export const useBranchFinance = () => {
  ? ((data.finance.received_income / data.finance.expected_income) * 100).toFixed(1)
  : 0;
 
- return {
- loading,
- data,
- error,
- fetchBranchFinance,
- formatNumber,
- progressPercentage,
- stats: data?.stats,
- finance: data?.finance,
- branch: data?.branch,
- groups: data?.groups,
- selectedYear,
- selectedMonth,
- setSelectedYear,
- setSelectedMonth,
- goPrevMonth,
- goCurrentMonth,
- formatMonthLabel,
- };
+  return {
+    loading,
+    data,
+    error,
+    fetchBranchFinance,
+    formatNumber,
+    progressPercentage,
+    stats: data?.stats,
+    finance: data?.finance,
+    branch: data?.branch,
+    groups: data?.groups,
+    selectedYear,
+    selectedMonth,
+    setSelectedYear,
+    setSelectedMonth,
+    goPrevMonth,
+    goCurrentMonth,
+    formatMonthLabel,
+    b_id,
+  };
 };

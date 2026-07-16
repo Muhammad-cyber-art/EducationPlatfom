@@ -597,9 +597,9 @@ def calculate_group_revenue_and_mentor_share(
                         per_lesson_fee = floor_amount(contract_amount / lessons_count)
                         student_expected_amount = floor_amount(per_lesson_fee * present_count)
                         mentor_share_expected += student_expected_amount * commission_pct
-                        # Paid uchun: faqat to'lov amalga oshirilgan bo'lsa
-                        if paid_amount > 0:
-                            mentor_share_paid += student_expected_amount * commission_pct
+                        # BUG M-3 FIX: Paid uchun faqat haqiqatda to'langan qismidan foiz olinadi (ortiqchasi emas)
+                        if net_actual > 0:
+                            mentor_share_paid += min(student_expected_amount, net_actual) * commission_pct
                 elif is_student_count:
                     # Student boshiga: mentor_stafka asosida hisoblash
                     if lessons_count > 0:

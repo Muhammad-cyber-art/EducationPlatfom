@@ -417,24 +417,8 @@ const AttendanceSection = ({
         document.body
       )}
 
-      {/* SEARCH PROTOCOL */}
-      <div className="px-4 sm:px-6 py-2 border-b border-[var(--border-glass)]/10 bg-[var(--bg-void)]/20 shadow-inner">
-        <div className="relative group">
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] group-focus-within:text-[var(--gold)] transition-colors">
-            <Search size={14} />
-          </div>
-          <input
-            type="text"
-            placeholder="O'quvchi qidirish..."
-            className="lux-input !py-2.5 !pl-10 !pr-4 !bg-[var(--bg-void)]/30 !border-[var(--border-glass)] !text-[10px] w-full"
-            value={studentSearch}
-            onChange={(e) => uiDispatch({ type: "SET_FIELD", field: "studentSearch", value: e.target.value })}
-          />
-        </div>
-      </div>
-
       {!isGroupLogicActive && !isEditing && (
-        <div className="mx-8 mb-4 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-4 animate-in fade-in slide-in-from-top-2 duration-500">
+        <div className="mx-8 mt-2 mb-2 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-4 animate-in fade-in slide-in-from-top-2 duration-500">
           <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-500">
             <Lock size={20} />
           </div>
@@ -447,45 +431,63 @@ const AttendanceSection = ({
         </div>
       )}
 
-      {/* MONTH NAVIGATION */}
-      <div className="px-4 sm:px-6 py-3 flex items-center justify-between gap-3 border-b border-[var(--border-glass)] bg-[var(--bg-void)]/30">
-        <button
-          onClick={onPrevMonth}
-          className="flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--gold)] hover:border-[var(--gold)]/30 transition-all active:scale-95"
-          title="O'tgan oy"
-        >
-          <ChevronLeft size={18} />
-        </button>
-
-        <div className="flex items-center gap-3">
-          <h4 className="text-sm sm:text-base font-black text-[var(--text-primary)] tracking-tight">
-            {MONTH_NAMES[selectedMonth - 1]} {selectedYear}
-          </h4>
-          {!isCurrentMonth && (
-            <span className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[7px] font-black uppercase tracking-widest flex items-center gap-1">
-              <Lock size={8} /> Arxiv
-            </span>
-          )}
+      {/* SEARCH AND MONTH NAVIGATION PROTOCOL */}
+      <div className="px-4 sm:px-6 py-2 border-b border-[var(--border-glass)]/10 bg-[var(--bg-void)]/30 shadow-inner flex flex-col md:flex-row items-center justify-between gap-4">
+        
+        {/* SEARCH PROTOCOL */}
+        <div className="relative group w-full md:w-1/3 md:max-w-[280px]">
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] group-focus-within:text-[var(--gold)] transition-colors">
+            <Search size={14} />
+          </div>
+          <input
+            type="text"
+            placeholder="O'quvchi qidirish..."
+            className="lux-input !py-2 !pl-10 !pr-4 !bg-[var(--bg-void)]/30 !border-[var(--border-glass)] !text-[10px] w-full"
+            value={studentSearch}
+            onChange={(e) => uiDispatch({ type: "SET_FIELD", field: "studentSearch", value: e.target.value })}
+          />
         </div>
 
-        <div className="flex items-center gap-2">
-          {!isCurrentMonth && (
-            <button
-              onClick={onGoToCurrentMonth}
-              className="h-8 px-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-[8px] font-black uppercase tracking-widest hover:bg-emerald-500/20 transition-all active:scale-95"
-              title="Joriy oyga qaytish"
-            >
-              Bugun
-            </button>
-          )}
+        {/* MONTH NAVIGATION */}
+        <div className="flex items-center justify-between md:justify-end gap-3 w-full md:w-auto">
           <button
-            onClick={onNextMonth}
-            disabled={isCurrentMonth}
-            className="flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--gold)] hover:border-[var(--gold)]/30 transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed"
-            title="Keyingi oy"
+            onClick={onPrevMonth}
+            className="flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--gold)] hover:border-[var(--gold)]/30 transition-all active:scale-95 shrink-0"
+            title="O'tgan oy"
           >
-            <ChevronRight size={18} />
+            <ChevronLeft size={16} />
           </button>
+
+          <div className="flex items-center gap-2 justify-center flex-1 md:flex-none md:px-4">
+            <h4 className="text-sm font-black text-[var(--text-primary)] tracking-tight whitespace-nowrap">
+              {MONTH_NAMES[selectedMonth - 1]} {selectedYear}
+            </h4>
+            {!isCurrentMonth && (
+              <span className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[7px] font-black uppercase tracking-widest flex items-center gap-1">
+                <Lock size={8} /> Arxiv
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {!isCurrentMonth && (
+              <button
+                onClick={onGoToCurrentMonth}
+                className="h-8 px-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-[8px] font-black uppercase tracking-widest hover:bg-emerald-500/20 transition-all active:scale-95"
+                title="Joriy oyga qaytish"
+              >
+                Bugun
+              </button>
+            )}
+            <button
+              onClick={onNextMonth}
+              disabled={isCurrentMonth}
+              className="flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--gold)] hover:border-[var(--gold)]/30 transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Keyingi oy"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
         </div>
       </div>
 
