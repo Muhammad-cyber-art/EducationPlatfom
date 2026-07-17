@@ -889,7 +889,8 @@ class StaffProfile(models.Model):
         # Enrollment cache: barcha guruhlar uchun enrollment + salary config + join dates
         from groups.models import GroupEnrollment
         _all_enrollments = GroupEnrollment.objects.filter(
-            group_id__in=mentor_group_ids
+            group_id__in=mentor_group_ids,
+            is_active=True
         ).select_related("student")
         enrollment_cache = {}
         _join_dates = {}
@@ -904,10 +905,23 @@ class StaffProfile(models.Model):
 
         # Legacy old_students_fk (eski tizimdan qolgan o'quvchilar)
         from groups.models import Student
-        for st in Student.objects.filter(group_id__in=mentor_group_ids).only(
+        _inactive_enrollments = set(
+            GroupEnrollment.objects.filter(
+                group_id__in=mentor_group_ids,
+                is_active=False
+            ).values_list("student_id", "group_id")
+        )
+
+        for st in Student.objects.filter(
+            group_id__in=mentor_group_ids,
+            is_active=True,
+            is_archived=False
+        ).only(
             'id', 'custom_fee', 'status', 'full_name', 'joined_at', 'group_id'
         ):
             gid = st.group_id
+            if (st.id, gid) in _inactive_enrollments:
+                continue
             if gid not in enrollment_cache:
                 enrollment_cache[gid] = {}
             enrollment_cache[gid][st.id] = st

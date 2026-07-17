@@ -8,6 +8,7 @@ const StudentGroupsSection = ({
     paymentsAllGroups,
     showGroupMenu,
     unenrollMutation,
+    generatePaymentMutation,
     navigate,
     dispatch
 }) => {
@@ -75,6 +76,19 @@ const StudentGroupsSection = ({
                                         >
                                             <LogIn size={14} /> Ko'chirish
                                         </button>
+                                        {!groupPayment && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    dispatch({ type: 'TOGGLE_MENU', payload: false });
+                                                    generatePaymentMutation.mutate(group.id);
+                                                }}
+                                                className="w-full flex items-center gap-2.5 px-4 py-3 text-[9px] font-black text-[var(--text-primary)] uppercase tracking-widest hover:bg-blue-500 hover:text-white transition-colors"
+                                                disabled={generatePaymentMutation.isLoading}
+                                            >
+                                                {generatePaymentMutation.isLoading ? <DollarSign size={14} className="animate-spin" /> : <DollarSign size={14} />} Oylik yaratish
+                                            </button>
+                                        )}
                                         <button
                                             onClick={(e) => {
                                                 e.stopPropagation();

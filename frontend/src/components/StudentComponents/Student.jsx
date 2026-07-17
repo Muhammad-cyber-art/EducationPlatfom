@@ -129,6 +129,7 @@ export default function StudentProfilePage() {
     archiveMutation,
     mergeMutation,
     disconnectBotMutation,
+    generatePaymentMutation,
   } = mutations;
 
   // Derived Data
@@ -233,7 +234,7 @@ export default function StudentProfilePage() {
   };
 
   const handleDeleteHistory = async (paymentId) => {
-    if (userRole !== "super_admin")
+    if (userRole !== "super_admin" && userRole !== "admin")
       return toast.error("Faqat SuperAdmin o'chira oladi");
     if (
       !window.confirm("Ushbu oy uchun to'lov ma'lumotlarini o'chirmoqchimisiz?")
@@ -327,6 +328,7 @@ export default function StudentProfilePage() {
                 showGroupMenu,
                 dispatch,
                 unenrollMutation,
+                generatePaymentMutation,
                 handlePaymentConfirm,
                 navigate,
               }}

@@ -412,11 +412,13 @@ def calculate_group_revenue_and_mentor_share(
     if enrollment_cache is not None and group.id in enrollment_cache:
         all_students_map = dict(enrollment_cache[group.id])
     else:
-        for enr in group.enrollments.select_related("student").all():
+        for enr in group.enrollments.filter(is_active=True).select_related("student"):
             if enr.student:
                 all_students_map[enr.student.id] = enr.student
-        for st in group.old_students_fk.all():
-            all_students_map[st.id] = st
+        unenrolled_ids = set(group.enrollments.filter(is_active=False).values_list('student_id', flat=True))
+        for st in group.old_students_fk.filter(is_active=True, is_archived=False):
+            if st.id not in unenrolled_ids:
+                all_students_map[st.id] = st
     all_students = list(all_students_map.values())
     processed_pairs = set()
 

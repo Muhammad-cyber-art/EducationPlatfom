@@ -381,11 +381,13 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                     if enrollment_cache is not None and group.id in enrollment_cache:
                         all_students_map = dict(enrollment_cache[group.id])
                     else:
-                        for enr in group.enrollments.select_related("student").all():
+                        for enr in group.enrollments.filter(is_active=True).select_related("student"):
                             if enr.student:
                                 all_students_map[enr.student.id] = enr.student
-                        for st in group.old_students_fk.all():
-                            all_students_map[st.id] = st
+                        _unenrolled = set(group.enrollments.filter(is_active=False).values_list('student_id', flat=True))
+                        for st in group.old_students_fk.filter(is_active=True, is_archived=False):
+                            if st.id not in _unenrolled:
+                                all_students_map[st.id] = st
 
                     for student in all_students_map.values():
                         key = (student.id, group.id)
@@ -525,11 +527,13 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                     if enrollment_cache is not None and group.id in enrollment_cache:
                         all_students_map = dict(enrollment_cache[group.id])
                     else:
-                        for enr in group.enrollments.select_related("student").all():
+                        for enr in group.enrollments.filter(is_active=True).select_related("student"):
                             if enr.student:
                                 all_students_map[enr.student.id] = enr.student
-                        for st in group.old_students_fk.all():
-                            all_students_map[st.id] = st
+                        _unenrolled = set(group.enrollments.filter(is_active=False).values_list('student_id', flat=True))
+                        for st in group.old_students_fk.filter(is_active=True, is_archived=False):
+                            if st.id not in _unenrolled:
+                                all_students_map[st.id] = st
 
                     for student in all_students_map.values():
                         key = (student.id, group.id)
@@ -715,11 +719,13 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                 if enrollment_cache is not None and group.id in enrollment_cache:
                     all_students_map = dict(enrollment_cache[group.id])
                 else:
-                    for enr in group.enrollments.select_related("student").all():
+                    for enr in group.enrollments.filter(is_active=True).select_related("student"):
                         if enr.student:
                             all_students_map[enr.student.id] = enr.student
-                    for st in group.old_students_fk.all():
-                        all_students_map[st.id] = st
+                    _unenrolled = set(group.enrollments.filter(is_active=False).values_list('student_id', flat=True))
+                    for st in group.old_students_fk.filter(is_active=True, is_archived=False):
+                        if st.id not in _unenrolled:
+                            all_students_map[st.id] = st
 
                 groups_data.append(
                     {

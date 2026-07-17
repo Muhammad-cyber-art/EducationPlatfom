@@ -5,7 +5,7 @@ from .views import (
     StaffProfileViewSet, FinanceDashboardView, trigger_monthly_payments,
     FinanceTransactionViewSet, EmployeeAdvanceViewSet, AbsentTodayStudentsView,
     payment_statistics_view, MonthlyBranchTrendsView, AdminExpenseViewSet, MentorGroupSalaryConfigViewSet,
-    SpecialStudentsDashboardAPIView
+    SpecialStudentsDashboardAPIView, generate_single_student_payment
 )
 
 router = DefaultRouter()
@@ -20,6 +20,7 @@ urlpatterns = [
     path('', include(router.urls)),
     path('statistics/', FinanceDashboardView.as_view(), name='finance-stats'),
     path('generate/',trigger_monthly_payments, name='trigger-monthly-payments'),
+    path('generate-student-payment/', generate_single_student_payment, name='generate-single-student-payment'),
     path('statistics/branch-finance/<int:branch_id>/', BranchFinanceDetailView.as_view(), name='branch-finance-detail'),
     path('statistics/monthly-branch-trends/', MonthlyBranchTrendsView.as_view(), name='monthly-branch-trends'),
     path('statistics/absent-students/<int:branch_id>/', AbsentTodayStudentsView.as_view(), name='absent-students-list'),

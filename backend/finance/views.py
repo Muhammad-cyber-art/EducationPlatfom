@@ -372,12 +372,13 @@ class EmployeePaymentViewSet(viewsets.ModelViewSet):
                         k = (row['group_id'], row['student_id'])
                         attendance_cache[k] = attendance_cache.get(k, 0) + 1
 
-            # 7. Enrollment cache
+            # 7. Enrollment cache — FAQAT FAOL o'quvchilar (is_active=True)
             enrollment_cache = {}
             _join_dates = {}
             if all_group_ids:
                 for enr in GroupEnrollment.objects.filter(
-                    group_id__in=all_group_ids
+                    group_id__in=all_group_ids,
+                    is_active=True
                 ).select_related('student'):
                     if enr.group_id not in enrollment_cache:
                         enrollment_cache[enr.group_id] = {}
@@ -388,10 +389,21 @@ class EmployeePaymentViewSet(viewsets.ModelViewSet):
             enrollment_cache['_join_dates'] = _join_dates
 
             # Legacy old_students_fk (eski tizimdan qolgan o'quvchilar)
+            # Guruhdan chiqarilgan (is_active=False enrollment bor) o'quvchilarni filtrlaymiz
+            _inactive_student_group_pairs = set(
+                GroupEnrollment.objects.filter(
+                    group_id__in=all_group_ids,
+                    is_active=False
+                ).values_list('student_id', 'group_id')
+            )
             for st in Student.objects.filter(
-                group_id__in=all_group_ids
+                group_id__in=all_group_ids,
+                is_active=True,
+                is_archived=False
             ).only('id', 'custom_fee', 'status', 'full_name', 'joined_at', 'group_id'):
                 gid = st.group_id
+                if (st.id, gid) in _inactive_student_group_pairs:
+                    continue
                 if gid not in enrollment_cache:
                     enrollment_cache[gid] = {}
                 enrollment_cache[gid][st.id] = st
@@ -827,6 +839,53 @@ def trigger_monthly_payments(request):
         return Response({'success': True, 'count': count}, status=200)
     except Exception as e:
         return Response({'success': False, 'message': str(e)}, status=500)
+
+@extend_schema(request=None, responses={200: SuccessSerializer})
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_single_student_payment(request):
+    try:
+        student_id = request.data.get('student_id')
+        group_id = request.data.get('group_id')
+        if not student_id or not group_id:
+            return Response({"error": "student_id va group_id talab qilinadi"}, status=400)
+        
+        from groups.models import Group , Student
+        from finance.models import Payment
+        from finance.utils import calculate_attendance_based_student_payment, floor_amount
+        from decimal import Decimal
+        from django.utils import timezone
+        
+        student = get_object_or_404(Student, id=student_id)
+        group = get_object_or_404(Group, id=group_id)
+        
+        month_date = timezone.localdate().replace(day=1)
+        
+        if Payment.objects.filter(student=student, group=group, month=month_date).exists():
+            return Response({"error": "Bu oy uchun to'lov qog'ozi allaqachon yaratilgan"}, status=400)
+            
+        base_price = group.monthly_price
+        if student.status in ["low_income", "negotiated", "discount", "teacher_negotiated"]:
+            if student.custom_fee is not None:
+                base_price = student.custom_fee
+
+        if student.status == "discount":
+            payment_amount = calculate_attendance_based_student_payment(
+                student, group, month_date
+            )
+        else:
+            payment_amount = Decimal(str(floor_amount(base_price)))
+
+        payment, created = Payment.objects.get_or_create(
+            student=student,
+            group=group,
+            month=month_date,
+            defaults={"amount": payment_amount, "is_paid": False},
+        )
+        
+        return Response({"success": True, "created": created}, status=200)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
 
 class AdminExpenseViewSet(viewsets.ModelViewSet):
     """

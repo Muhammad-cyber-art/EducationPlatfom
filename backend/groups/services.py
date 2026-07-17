@@ -51,19 +51,21 @@ def enroll_student_to_group(group, student_id, create_payment=True):
                 if not p_created and not p_obj.is_paid:
                     p_obj.amount = final_amount
                     p_obj.save()
-            return enrollment, True
         else:
             # Agar enrollment avvaldan bor bo'lsa, u is_active=False bo'lishi mumkin
             if not enrollment.is_active:
                 enrollment.is_active = True
                 enrollment.save()
+            
+            # Agar o'quvchining asosiy guruhi bo'lmasa, uni shu guruhga ulaymiz
+            if not student.group:
+                student.group = group
+                student.save()
                 
-                # Agar o'quvchining asosiy guruhi bo'lmasa, uni shu guruhga ulaymiz
-                if not student.group:
-                    student.group = group
-                    student.save()
+        from finance.services import sync_mentor_salary
+        sync_mentor_salary(group)
                     
-            return enrollment, False
+        return enrollment, created
 
 def unenroll_student_from_group(group, student_id, request_user):
     """O'quvchini guruhdan chiqarish logikasi"""
@@ -103,6 +105,10 @@ def unenroll_student_from_group(group, student_id, request_user):
             # Oxirgi guruhi bo'lsa - Arxivga o'tkazamiz va Waiting Hall ga qo'shamiz
             from archivebase.services import move_student_to_waiting_hall
             move_student_to_waiting_hall(student, request_user, reason=f"{group.name} guruhidan chiqarildi", branch=group.branch)
+            
+            from finance.services import sync_mentor_salary
+            sync_mentor_salary(group)
+            
             return "waiting_hall"
         else:
             # Boshqa guruhlari bo'lsa ham, ushbu filial kutish zaliga nusxa qo'shamiz (User talabi)
@@ -125,6 +131,10 @@ def unenroll_student_from_group(group, student_id, request_user):
                 # Branchni ham qolgan guruhga moslaymiz
                 student.branch = next_enrollment.group.branch
                 student.save()
+                
+            from finance.services import sync_mentor_salary
+            sync_mentor_salary(group)
+                
             return "active_elsewhere"
 
 def transfer_student_to_group(student, new_group_id, request_user, reason, from_group_id=None):
@@ -303,6 +313,10 @@ def transfer_student_to_group(student, new_group_id, request_user, reason, from_
                 student.branch = new_group.branch
                 
             student.save()
+            
+        from finance.services import sync_mentor_salary
+        sync_mentor_salary(old_group, current_month_start)
+        sync_mentor_salary(new_group, current_month_start)
         
     return True
 

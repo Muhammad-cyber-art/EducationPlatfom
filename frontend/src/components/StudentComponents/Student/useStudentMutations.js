@@ -182,6 +182,24 @@ export const useStudentMutations = (student_id, dispatch, navigate) => {
     },
   });
 
+  const generatePaymentMutation = useMutation({
+    mutationFn: async (groupId) => {
+      const response = await api.post("/finance/generate-student-payment/", {
+        student_id,
+        group_id: groupId,
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      toast.success("Oylik to'lov yaratildi");
+      queryClient.invalidateQueries(["payments-all"]);
+      queryClient.invalidateQueries(["student-history", student_id]);
+    },
+    onError: (err) => {
+      toast.error(err.response?.data?.error || "Xatolik yuz berdi");
+    },
+  });
+
   return {
     editMutation,
     paymentMutation,
@@ -191,5 +209,6 @@ export const useStudentMutations = (student_id, dispatch, navigate) => {
     archiveMutation,
     mergeMutation,
     disconnectBotMutation,
+    generatePaymentMutation,
   };
 };

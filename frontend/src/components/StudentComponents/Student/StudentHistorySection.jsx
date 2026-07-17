@@ -175,7 +175,7 @@ const StudentHistorySection = ({
                           </div>
                         )}
 
-                        {userRole === "super_admin" && (
+                        {(userRole === "super_admin" || userRole === "admin") && (
                           <button
                             onClick={() => handleDeleteHistory(p.id)}
                             className="p-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition-all"

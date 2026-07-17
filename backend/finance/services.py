@@ -32,6 +32,28 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
+def sync_mentor_salary(group, month_date=None):
+    """
+    Berilgan guruh mentorining ushbu oydagi oylik-maoshini (EmployeePayment)
+    bazadagi haqiqiy (real-time) o'quvchilar/to'lovlar soniga qarab qayta hisoblaydi.
+    """
+    if not group or not group.mentor:
+        return
+    
+    if month_date is None:
+        month_date = timezone.localdate().replace(day=1)
+        
+    employee_payment = EmployeePayment.objects.filter(
+        employee=group.mentor,
+        month=month_date,
+        is_paid=False
+    ).first()
+    
+    if employee_payment:
+        employee_payment.recalculate_salary()
+        employee_payment.save(update_fields=['salary_base'])
+
+
 def update_attendance_based_payments(student, group, date):
     """
     Davomat o'zgarganda:
@@ -950,11 +972,15 @@ def get_branch_finance_stats(branch_id, month, year):
                 g_debt = Decimal("0")
                 # Barcha studentlarni olamiz
                 all_students_map = {}
-                for enrollment in group.enrollments.all():
+                for enrollment in group.enrollments.filter(is_active=True):
                     if enrollment.student:
                         all_students_map[enrollment.student.id] = enrollment.student
-                for s in group.old_students_fk.all():
-                    all_students_map[s.id] = s
+                
+                unenrolled_ids = set(group.enrollments.filter(is_active=False).values_list('student_id', flat=True))
+                for s in group.old_students_fk.filter(is_archived=False, is_active=True):
+                    if s.id not in unenrolled_ids:
+                        all_students_map[s.id] = s
+                        
                 students = list(all_students_map.values())
                 student_count = len(students)
                 processed_pairs = set()
