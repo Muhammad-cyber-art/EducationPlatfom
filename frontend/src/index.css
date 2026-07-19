@@ -304,7 +304,6 @@ body {
  padding: 24px;
  transition: opacity 0.3s, transform 0.3s, border-color 0.3s, box-shadow 0.3s;
  box-shadow: 0 12px 40px -10px var(--shadow-color);
- position: relative;
 }
 
 .lux-card::before {
