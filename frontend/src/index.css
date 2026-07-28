@@ -56,8 +56,8 @@
 /* Light Mode Enhancement Layer */
 [data-theme='light'] .lux-card {
  background: white !important;
- box-shadow: 0 10px 30px -10px var(--shadow-color) !important;
- border-color: rgba(150, 123, 79, 0.15) !important;
+ box-shadow: 0 15px 40px -10px rgba(0, 0, 0, 0.08), 0 5px 15px rgba(150, 123, 79, 0.08) !important;
+ border: 1px solid rgba(150, 123, 79, 0.25) !important;
 }
 
 [data-theme='light'] .lux-card:hover {
@@ -297,6 +297,28 @@ body {
  transition: opacity 0.3s, transform 0.3s, border-color 0.3s, box-shadow 0.3s;
  box-shadow: 0 12px 40px -10px var(--shadow-color);
  position: relative;
+}
+
+.glass {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(253, 250, 245, 0.85) 100%);
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  border: 1px solid rgba(150, 123, 79, 0.15);
+  box-shadow: 0 12px 40px -10px var(--shadow-color);
+}
+
+.glass-soft {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.8) 0%, rgba(250, 246, 238, 0.6) 100%);
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(150, 123, 79, 0.25);
+  box-shadow: 0 8px 30px -10px rgba(150, 123, 79, 0.1);
+}
+
+[data-theme='dark'] .glass-soft {
+  background: rgba(10, 10, 10, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 30px -10px rgba(0, 0, 0, 0.5);
 }
 .lux-card-for-grps {
  background: var(--card-bg-for-grps);
