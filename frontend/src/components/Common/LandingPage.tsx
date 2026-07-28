@@ -129,41 +129,41 @@ const founders = [
 
 export function LandingPage() {
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div data-theme="light" className="min-h-screen bg-[#fdfaf5] text-[#120f0d]">
       {/* Aurora background */}
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-40 -left-32 h-[38rem] w-[38rem] rounded-full bg-gold/30 blur-[120px]" />
         <div className="absolute top-1/3 -right-40 h-[34rem] w-[34rem] rounded-full bg-gold-soft/35 blur-[130px]" />
         <div className="absolute bottom-0 left-1/4 h-[30rem] w-[30rem] rounded-full bg-sky/15 blur-[130px]" />
-        <div className="absolute inset-0 bg-background/40" />
+        <div className="absolute inset-0 bg-[#fdfaf5]/40" />
       </div>
 
       {/* Nav */}
       <header className="sticky top-0 z-50 px-4 pt-4">
         <nav className="mx-auto flex max-w-6xl items-center justify-between rounded-3xl px-5 py-3 backdrop-blur-3xl bg-white/80 border border-black/5 shadow-sm">
           <a href="#hero" className="flex items-center gap-2.5">
-            <span className="bg-cta-gradient flex h-9 w-9 items-center justify-center rounded-xl text-primary-foreground">
+            <span className="bg-cta-gradient flex h-9 w-9 items-center justify-center rounded-xl text-white">
               <GraduationCap className="h-5 w-5" />
             </span>
             <span className="font-display text-base font-semibold tracking-tight">Yaxshi Niyat</span>
           </a>
-          <div className="hidden items-center gap-7 text-sm text-muted-foreground md:flex">
-            <a className="transition-colors hover:text-foreground" href="#routerlar">
+          <div className="hidden items-center gap-7 text-sm text-[#827161] md:flex">
+            <a className="transition-colors hover:text-[#120f0d]" href="#routerlar">
               Routerlar
             </a>
-            <a className="transition-colors hover:text-foreground" href="#telegram">
+            <a className="transition-colors hover:text-[#120f0d]" href="#telegram">
               Telegram bot
             </a>
-            <a className="transition-colors hover:text-foreground" href="#moliya">
+            <a className="transition-colors hover:text-[#120f0d]" href="#moliya">
               Moliya
             </a>
-            <a className="transition-colors hover:text-foreground" href="#asoschilar">
+            <a className="transition-colors hover:text-[#120f0d]" href="#asoschilar">
               Asoschilar
             </a>
           </div>
           <Link
             to="/login"
-            className="bg-cta-gradient rounded-full px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-soft transition-transform hover:scale-[1.04]"
+            className="bg-cta-gradient rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition-transform hover:scale-[1.04]"
           >
             Tizimga kirish
           </Link>
@@ -179,7 +179,7 @@ export function LandingPage() {
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ ...spring, delay: 0.05 }}
-                className="glass inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold tracking-wide text-muted-foreground"
+                className="bg-white/90 backdrop-blur-2xl border border-[#967b4f]/15 shadow-md inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold tracking-wide text-[#827161]"
               >
                 <Sparkles className="h-3.5 w-3.5 text-gold" />
                 Premium Ta'lim Boshqaruvi
@@ -199,7 +199,7 @@ export function LandingPage() {
                 initial={{ opacity: 0, y: 22 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ ...spring, delay: 0.2 }}
-                className="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground md:text-lg"
+                className="mt-6 max-w-xl text-base leading-relaxed text-[#827161] md:text-lg"
               >
                 Yaxshi Niyat platformasi — markazning har bir bo'g'inini mukammal nazorat qiluvchi,
                 o'qituvchilar, adminlar va moliyaviy hisobotlarni bir joyda jamlagan raqamli
@@ -217,7 +217,7 @@ export function LandingPage() {
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.96 }}
                     transition={{ type: "spring", stiffness: 400, damping: 12 }}
-                    className="bg-cta-gradient inline-flex items-center gap-2 rounded-full px-7 py-4 text-sm font-semibold text-primary-foreground shadow-float"
+                    className="bg-cta-gradient inline-flex items-center gap-2 rounded-full px-7 py-4 text-sm font-semibold text-white shadow-float"
                   >
                     Boshlash / Tizimga kirish
                     <ArrowRight className="h-4 w-4" />
@@ -256,7 +256,7 @@ export function LandingPage() {
               className="max-w-2xl"
             >
               <h2 className="text-3xl font-bold md:text-5xl">Kuchli va himoyalangan routerlar</h2>
-              <p className="mt-5 text-muted-foreground md:text-lg">
+              <p className="mt-5 text-[#827161] md:text-lg">
                 Har bir xodim faqat o'ziga tegishli vazifalarni bajaradi. Rolga asoslangan routerlar
                 ma'lumotlar xavfsizligini 100% ta'minlaydi.
               </p>
@@ -277,12 +277,12 @@ export function LandingPage() {
                     className={`absolute -top-20 -right-16 h-44 w-44 rounded-full bg-gradient-to-br blur-2xl ${role.ring}`}
                   />
                   <span
-                    className={`relative flex h-12 w-12 items-center justify-center rounded-2xl bg-background/80 ${role.tone}`}
+                    className={`relative flex h-12 w-12 items-center justify-center rounded-2xl bg-[#fdfaf5]/80 ${role.tone}`}
                   >
                     <role.icon className="h-6 w-6" />
                   </span>
                   <h3 className="relative mt-6 text-xl font-semibold">{role.title}</h3>
-                  <ul className="relative mt-5 space-y-3.5 text-sm leading-relaxed text-muted-foreground">
+                  <ul className="relative mt-5 space-y-3.5 text-sm leading-relaxed text-[#827161]">
                     {role.items.map((item) => (
                       <li key={item} className="flex gap-3">
                         <span
@@ -302,7 +302,7 @@ export function LandingPage() {
         <section id="telegram" className="px-4 py-24">
           <div className="mx-auto grid max-w-6xl gap-14 lg:grid-cols-2">
             <div className="lg:sticky lg:top-28 lg:h-fit">
-              <div className="glass rounded-[2.5rem] p-5">
+              <div className="bg-white/90 backdrop-blur-2xl border border-[#967b4f]/15 shadow-md rounded-[2.5rem] p-5">
                 <div className="flex items-center gap-3 border-b border-border/60 pb-4">
                   <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gold/20 text-gold">
                     <Send className="h-5 w-5" />
@@ -325,13 +325,13 @@ export function LandingPage() {
                         damping: 14,
                         delay: 0.15 + i * 0.15,
                       }}
-                      className="rounded-3xl rounded-bl-lg bg-background/85 p-4 shadow-soft"
+                      className="rounded-3xl rounded-bl-lg bg-[#fdfaf5]/85 p-4 shadow-soft"
                     >
                       <span className="text-[11px] font-semibold tracking-wide text-gold uppercase">
                         {m.tag}
                       </span>
-                      <p className="mt-2 text-sm leading-relaxed text-foreground/90">{m.text}</p>
-                      <p className="mt-2 text-right text-[11px] text-muted-foreground">{m.time}</p>
+                      <p className="mt-2 text-sm leading-relaxed text-[#120f0d]/90">{m.text}</p>
+                      <p className="mt-2 text-right text-[11px] text-[#827161]">{m.time}</p>
                     </motion.div>
                   ))}
                 </div>
@@ -345,14 +345,14 @@ export function LandingPage() {
                 viewport={{ once: true, margin: "-80px" }}
                 transition={{ type: "spring", stiffness: 110, damping: 15 }}
               >
-                <span className="glass inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold text-muted-foreground">
+                <span className="bg-white/90 backdrop-blur-2xl border border-[#967b4f]/15 shadow-md inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold text-[#827161]">
                   <Zap className="h-3.5 w-3.5 text-gold" />
                   Avtomatizatsiya &amp; Telegram Bot
                 </span>
                 <h2 className="mt-6 text-3xl font-bold md:text-4xl">
                   Ta'limni nazorat qilish hech qachon bunchalik shaffof bo'lmagan.
                 </h2>
-                <p className="mt-5 text-muted-foreground md:text-lg">
+                <p className="mt-5 text-[#827161] md:text-lg">
                   Ota-onalar farzandlarining har bir qadamidan, darsdagi faolligidan va to'lov
                   xarajatlaridan real vaqtda xabardor bo'lib turishadi.
                 </p>
@@ -366,13 +366,13 @@ export function LandingPage() {
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true, margin: "-60px" }}
                     transition={{ ...pop, damping: 14, delay: i * 0.08 }}
-                    className="glass-soft rounded-[2rem] p-7"
+                    className="bg-white/70 backdrop-blur-xl border border-[#967b4f]/25 shadow-sm rounded-[2rem] p-7"
                   >
-                    <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-background/80 text-gold">
+                    <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#fdfaf5]/80 text-gold">
                       <f.icon className="h-5 w-5" />
                     </span>
                     <h3 className="mt-5 text-lg font-semibold">{f.title}</h3>
-                    <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">{f.text}</p>
+                    <p className="mt-2.5 text-sm leading-relaxed text-[#827161]">{f.text}</p>
                   </motion.div>
                 ))}
               </div>
@@ -394,7 +394,7 @@ export function LandingPage() {
                   Murakkab moliyaviy muammolarga{" "}
                   <span className="text-gold-gradient">aqlli yechimlar</span>.
                 </h2>
-                <p className="mt-5 text-muted-foreground md:text-lg">
+                <p className="mt-5 text-[#827161] md:text-lg">
                   Bizning moliya va hisob-kitob modulimiz oddiy tizimlardan farqli o'laroq, hayotda
                   uchrashadigan har qanday "noaniq" moliyaviy holatlarni hisobga oladi.
                 </p>
@@ -408,23 +408,23 @@ export function LandingPage() {
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true, margin: "-60px" }}
                     transition={{ ...pop, damping: 14, delay: i * 0.08 }}
-                    className="glass-soft rounded-[2rem] p-7"
+                    className="bg-white/70 backdrop-blur-xl border border-[#967b4f]/25 shadow-sm rounded-[2rem] p-7"
                   >
-                    <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-background/80 text-gold">
+                    <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#fdfaf5]/80 text-gold">
                       <f.icon className="h-5 w-5" />
                     </span>
                     <h3 className="mt-5 text-lg font-semibold">{f.title}</h3>
-                    <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">{f.text}</p>
+                    <p className="mt-2.5 text-sm leading-relaxed text-[#827161]">{f.text}</p>
                   </motion.div>
                 ))}
               </div>
             </div>
 
             <div className="lg:sticky lg:top-28 lg:h-fit">
-              <div className="glass rounded-[2.5rem] p-7">
+              <div className="bg-white/90 backdrop-blur-2xl border border-[#967b4f]/15 shadow-md rounded-[2.5rem] p-7">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold">Hisobot Namuna</p>
-                  <span className="rounded-full bg-gold/25 px-3 py-1 text-[11px] font-semibold text-foreground/70">
+                  <span className="rounded-full bg-gold/25 px-3 py-1 text-[11px] font-semibold text-[#120f0d]/70">
                     Noyabr
                   </span>
                 </div>
@@ -438,7 +438,7 @@ export function LandingPage() {
                       transition={{ type: "spring", stiffness: 160, damping: 15, delay: i * 0.08 }}
                       className="flex items-center justify-between border-b border-border/60 pb-3 text-sm"
                     >
-                      <span className="text-muted-foreground">{r.label}</span>
+                      <span className="text-[#827161]">{r.label}</span>
                       <span className="font-semibold">{r.value}</span>
                     </motion.div>
                   ))}
@@ -463,7 +463,7 @@ export function LandingPage() {
               className="max-w-2xl"
             >
               <h2 className="text-3xl font-bold md:text-5xl">Loyihamiz Asoschilari</h2>
-              <p className="mt-5 text-muted-foreground md:text-lg">
+              <p className="mt-5 text-[#827161] md:text-lg">
                 Tizimni eng yuksak standartlarda yaratgan va raqamli ta'lim kelajagini shakllantirgan
                 yetakchi mutaxassislar.
               </p>
@@ -478,7 +478,7 @@ export function LandingPage() {
                   viewport={{ once: true, margin: "-60px" }}
                   transition={{ ...pop, delay: i * 0.12 }}
                   whileHover={{ y: -8 }}
-                  className="glass overflow-hidden rounded-[2.5rem] p-8 flex flex-col items-center text-center"
+                  className="bg-white/90 backdrop-blur-2xl border border-[#967b4f]/15 shadow-md overflow-hidden rounded-[2.5rem] p-8 flex flex-col items-center text-center"
                 >
                   <div className="relative mb-6 rounded-full p-1.5 bg-gradient-to-tr from-[#967b4f] to-[#e4d4b8] shadow-[0_15px_30px_rgba(150,123,79,0.25)]">
                     <img
@@ -491,7 +491,7 @@ export function LandingPage() {
                   <div>
                     <h3 className="text-2xl font-bold">{f.name}</h3>
                     <p className="mt-1.5 text-sm font-semibold tracking-wide text-gold uppercase">{f.role}</p>
-                    <p className="mt-4 text-sm leading-relaxed text-muted-foreground">{f.bio}</p>
+                    <p className="mt-4 text-sm leading-relaxed text-[#827161]">{f.bio}</p>
                   </div>
                 </motion.article>
               ))}
@@ -502,14 +502,14 @@ export function LandingPage() {
 
       {/* Footer */}
       <footer className="px-4 pb-10">
-        <div className="glass mx-auto flex max-w-6xl flex-col items-center gap-4 rounded-4xl px-8 py-10 text-center">
+        <div className="bg-white/90 backdrop-blur-2xl border border-[#967b4f]/15 shadow-md mx-auto flex max-w-6xl flex-col items-center gap-4 rounded-4xl px-8 py-10 text-center">
           <div className="flex items-center gap-2.5">
-            <span className="bg-cta-gradient flex h-9 w-9 items-center justify-center rounded-xl text-primary-foreground">
+            <span className="bg-cta-gradient flex h-9 w-9 items-center justify-center rounded-xl text-white">
               <GraduationCap className="h-5 w-5" />
             </span>
             <span className="font-display text-base font-semibold">Yaxshi Niyat</span>
           </div>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-[#827161]">
             © {new Date().getFullYear()} Yaxshi Niyat Educational Platform. Barcha huquqlar
             himoyalangan.
           </p>
