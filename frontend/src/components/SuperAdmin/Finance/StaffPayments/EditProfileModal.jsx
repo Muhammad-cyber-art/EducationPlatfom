@@ -16,7 +16,7 @@ const EditProfileModal = ({
 
  return createPortal(
  <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
- <div className="bg-[var(--bg-void)] border border-[var(--border-glass)] rounded-[2.5rem] w-full max-w-sm max-h-[90vh] overflow-y-auto shadow-2xl scrollbar-thin scrollbar-track-transparent scrollbar-thumb-[var(--gold)]/20 animate-in zoom-in-95 duration-200">
+ <div className="bg-[var(--bg-void)] border border-[#2a2a2a] rounded-[2.5rem] w-full max-w-sm max-h-[90vh] overflow-y-auto shadow-2xl scrollbar-thin scrollbar-track-transparent scrollbar-thumb-[var(--gold)]/20 animate-in zoom-in-95 duration-200">
  <div className="sticky top-0 z-10 h-1 w-full bg-gradient-to-r from-[var(--gold)]/50 via-[var(--gold)] to-[var(--gold)]/50"></div>
  <div className="p-5">
  <div className="flex justify-between items-center mb-5">
@@ -33,7 +33,7 @@ const EditProfileModal = ({
  key={type}
  type="button"
  onClick={() => dispatch(updateEditForm({ salary_type: type }))}
- className={`py-2.5 px-3 rounded-xl transition-all ${editForm.salary_type === type ?'bg-[var(--gold)] text-black shadow-[0_0_15px_rgba(184,134,11,0.3)]' :'bg-[var(--bg-panel)] text-[var(--text-muted)] border border-[var(--border-glass)]'}`}
+ className={`py-2.5 px-3 rounded-xl transition-all ${editForm.salary_type === type ?'bg-[var(--gold)] text-black shadow-[0_0_15px_rgba(184,134,11,0.3)]' :'bg-[var(--bg-panel)] text-[var(--text-muted)] border border-[#2a2a2a]'}`}
  >
  <span className="text-[10px] font-black capitalize">
  {type ==='fixed' ?'Belgilangan' : type ==='percentage' ?'Foiz' :'Student'}
@@ -50,7 +50,7 @@ const EditProfileModal = ({
  value={editForm.fixed_salary}
  onChange={(e) => dispatch(updateEditForm({ fixed_salary: e.target.value }))}
  placeholder="0"
- className="w-full bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-xl py-2.5 px-4 text-[var(--text-primary)] focus:outline-none focus:border-[var(--gold)]/50 transition-all font-black text-sm shadow-inner"
+ className="w-full bg-[var(--bg-panel)] border border-[#2a2a2a] rounded-xl py-2.5 px-4 text-[var(--text-primary)] focus:outline-none focus:border-[var(--gold)]/50 transition-all font-black text-sm shadow-inner"
  />
  </div>
  ) : editForm.salary_type ==='percentage' ? (
@@ -60,7 +60,7 @@ const EditProfileModal = ({
  type="number"
  value={editForm.commission_percentage}
  onChange={(e) => dispatch(updateEditForm({ commission_percentage: e.target.value }))}
- className="w-full bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-xl py-2.5 px-4 text-[var(--text-primary)] focus:outline-none focus:border-[var(--gold)]/50 transition-all font-bold text-sm shadow-inner"
+ className="w-full bg-[var(--bg-panel)] border border-[#2a2a2a] rounded-xl py-2.5 px-4 text-[var(--text-primary)] focus:outline-none focus:border-[var(--gold)]/50 transition-all font-bold text-sm shadow-inner"
  />
  </div>
  ) : (
@@ -70,7 +70,7 @@ const EditProfileModal = ({
  value={editForm.per_student_amount}
  onChange={(e) => dispatch(updateEditForm({ per_student_amount: e.target.value }))}
  placeholder="0"
- className="w-full bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-xl py-2.5 px-4 text-[var(--text-primary)] focus:outline-none focus:border-[var(--gold)]/50 transition-all font-black text-sm shadow-inner"
+ className="w-full bg-[var(--bg-panel)] border border-[#2a2a2a] rounded-xl py-2.5 px-4 text-[var(--text-primary)] focus:outline-none focus:border-[var(--gold)]/50 transition-all font-black text-sm shadow-inner"
  />
  </div>
  )}
@@ -81,7 +81,7 @@ const EditProfileModal = ({
  type="text"
  value={editForm.karta}
  onChange={(e) => dispatch(updateEditForm({ karta: e.target.value }))}
- className="w-full bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-xl py-2.5 px-4 text-[var(--text-primary)] focus:outline-none focus:border-[var(--gold)]/50 transition-all font-bold text-sm font-mono tracking-widest shadow-inner"
+ className="w-full bg-[var(--bg-panel)] border border-[#2a2a2a] rounded-xl py-2.5 px-4 text-[var(--text-primary)] focus:outline-none focus:border-[var(--gold)]/50 transition-all font-bold text-sm font-mono tracking-widest shadow-inner"
  />
  </div>
 

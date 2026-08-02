@@ -6,13 +6,13 @@ const AdvanceHistory = ({ data, formatCurrency, isSuperAdmin, handleDeleteAdvanc
 
     return (
         <div className="bg-[var(--bg-panel)] border border-rose-500/10 rounded-2xl overflow-hidden shadow-xl">
-            <div className="px-5 py-3 border-b border-[var(--border-glass)] flex items-center gap-2 bg-rose-500/5">
+            <div className="px-5 py-3 border-b border-[#2a2a2a] flex items-center gap-2 bg-rose-500/5">
                 <Coins size={14} className="text-rose-400" />
                 <span className="text-[10px] font-black text-rose-400 capitalize tracking-widest">Berilgan Avanslar</span>
             </div>
             <div className="max-h-[200px] overflow-y-auto">
                 <table className="w-full text-left">
-                    <tbody className="divide-y divide-[var(--border-glass)]">
+                    <tbody className="divide-y divide-[#2a2a2a]">
                         {data.advances_history.map((adv) => (
                             <tr key={adv.id} className="hover:bg-rose-500/5 transition-colors group">
                                 <td className="px-5 py-3">

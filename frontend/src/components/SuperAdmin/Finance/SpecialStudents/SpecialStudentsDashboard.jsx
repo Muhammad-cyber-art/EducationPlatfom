@@ -34,7 +34,7 @@ export default function SpecialStudentsDashboard() {
   
   const periodControls = (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="flex items-center gap-2 h-9 px-2 bg-[var(--bg-void)]/40 border border-[var(--border-glass)] rounded-lg">
+      <div className="flex items-center gap-2 h-9 px-2 bg-[var(--bg-void)]/40 border border-[#2a2a2a] rounded-lg">
         <Calendar size={12} className="text-[var(--gold)] opacity-60 shrink-0" />
         <select
           value={selectedMonth}
@@ -102,7 +102,7 @@ export default function SpecialStudentsDashboard() {
   return (
     <div className="space-y-6 pb-12 max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 mt-5">
       {/* Header section */}
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-6 border-b border-[var(--border-glass)]">
+      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-6 border-b border-[#2a2a2a]">
         <div className="flex items-center gap-6">
           <GoBackButton />
           <div>
@@ -118,7 +118,7 @@ export default function SpecialStudentsDashboard() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-9 px-3 bg-transparent border border-[var(--border-glass)] rounded-lg text-[10px] font-black text-[var(--text-primary)] outline-none cursor-pointer"
+            className="h-9 px-3 bg-transparent border border-[#2a2a2a] rounded-lg text-[10px] font-black text-[var(--text-primary)] outline-none cursor-pointer"
           >
             <option value="" className="bg-[var(--bg-panel)] text-[var(--text-primary)]">Barcha Statuslar</option>
             <option value="discount" className="bg-[var(--bg-panel)] text-[var(--text-primary)]">Imtiyozli</option>
@@ -207,8 +207,8 @@ export default function SpecialStudentsDashboard() {
       )}
 
       {/* Table Section */}
-      <div className="lux-card overflow-hidden border border-[var(--border-glass)]">
-        <div className="p-4 sm:p-5 border-b border-[var(--border-glass)] flex flex-col sm:flex-row justify-between items-start sm:items-center bg-[var(--bg-void)]/40 gap-4">
+      <div className="lux-card overflow-hidden border border-[#2a2a2a]">
+        <div className="p-4 sm:p-5 border-b border-[#2a2a2a] flex flex-col sm:flex-row justify-between items-start sm:items-center bg-[var(--bg-void)]/40 gap-4">
           <h3 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-wider flex items-center gap-2">
             <ShieldCheck size={16} className="text-[var(--gold)]" /> Maxsus Ro'yxat
           </h3>
@@ -221,7 +221,7 @@ export default function SpecialStudentsDashboard() {
               placeholder="Ism, telefon yoki guruh..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full sm:w-64 h-9 pl-9 pr-3 bg-[var(--bg-void)] border border-[var(--border-glass)] rounded-lg text-[11px] font-bold text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--gold)] transition-colors"
+              className="w-full sm:w-64 h-9 pl-9 pr-3 bg-[var(--bg-void)] border border-[#2a2a2a] rounded-lg text-[11px] font-bold text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--gold)] transition-colors"
             />
           </div>
         </div>
@@ -230,17 +230,17 @@ export default function SpecialStudentsDashboard() {
           <table className="w-full text-left border-collapse min-w-[1000px]">
             <thead>
               <tr className="bg-[var(--bg-void)]/80 text-[9px] font-black uppercase tracking-widest text-[var(--text-muted)]">
-                <th className="py-4 px-5 border-b border-[var(--border-glass)]">O'quvchi</th>
-                <th className="py-4 px-5 border-b border-[var(--border-glass)]">Status</th>
-                <th className="py-4 px-5 border-b border-[var(--border-glass)]">Guruh</th>
-                <th className="py-4 px-5 border-b border-[var(--border-glass)] text-right">Kelishilgan Narx</th>
-                <th className="py-4 px-5 border-b border-[var(--border-glass)] text-right">Hisoblangan qarz</th>
-                <th className="py-4 px-5 border-b border-[var(--border-glass)] text-right">Oy uchun to'landi</th>
-                <th className="py-4 px-5 border-b border-[var(--border-glass)] text-right text-rose-400">Qarz</th>
-                <th className="py-4 px-5 border-b border-[var(--border-glass)] text-center border-l border-[var(--border-glass)]">Wallet (Tarix)</th>
+                <th className="py-4 px-5 border-b border-[#2a2a2a]">O'quvchi</th>
+                <th className="py-4 px-5 border-b border-[#2a2a2a]">Status</th>
+                <th className="py-4 px-5 border-b border-[#2a2a2a]">Guruh</th>
+                <th className="py-4 px-5 border-b border-[#2a2a2a] text-right">Kelishilgan Narx</th>
+                <th className="py-4 px-5 border-b border-[#2a2a2a] text-right">Hisoblangan qarz</th>
+                <th className="py-4 px-5 border-b border-[#2a2a2a] text-right">Oy uchun to'landi</th>
+                <th className="py-4 px-5 border-b border-[#2a2a2a] text-right text-rose-400">Qarz</th>
+                <th className="py-4 px-5 border-b border-[#2a2a2a] text-center border-l border-[#2a2a2a]">Wallet (Tarix)</th>
               </tr>
             </thead>
-            <tbody className="text-[11px] font-bold text-[var(--text-primary)] divide-y divide-[var(--border-glass)]">
+            <tbody className="text-[11px] font-bold text-[var(--text-primary)] divide-y divide-[#2a2a2a]">
               {students && students.length > 0 ? (
                 students.map((student, index) => (
                   <tr key={`${student.student_id}-${student.group_id}-${index}`} className="hover:bg-[var(--bg-void)]/20 transition-colors">
@@ -278,7 +278,7 @@ export default function SpecialStudentsDashboard() {
                     <td className="py-3 px-5 text-right font-black text-rose-400 tabular-nums">
                       {formatNumber(student.debt)} <span className="text-[8px] text-rose-400/50">UZS</span>
                     </td>
-                    <td className="py-3 px-5 border-l border-[var(--border-glass)]">
+                    <td className="py-3 px-5 border-l border-[#2a2a2a]">
                       <div className="flex flex-col items-center gap-1.5">
                         <div className="flex items-center gap-2">
                           <Wallet size={12} className="text-[var(--gold)]" />

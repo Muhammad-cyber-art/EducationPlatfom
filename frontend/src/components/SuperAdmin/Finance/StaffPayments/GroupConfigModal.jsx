@@ -209,7 +209,7 @@ const GroupConfigModal = ({ isOpen, onClose, staffId, data }) => {
 
     return createPortal(
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300 overflow-y-auto">
-            <div className="relative w-full max-w-lg max-h-[85vh] overflow-y-auto bg-[var(--bg-void)] border border-[var(--border-glass)] rounded-2xl shadow-2xl scrollbar-thin scrollbar-track-transparent scrollbar-thumb-[var(--gold)]/20 animate-in zoom-in-95 duration-200">
+            <div className="relative w-full max-w-lg max-h-[85vh] overflow-y-auto bg-[var(--bg-void)] border border-[#2a2a2a] rounded-2xl shadow-2xl scrollbar-thin scrollbar-track-transparent scrollbar-thumb-[var(--gold)]/20 animate-in zoom-in-95 duration-200">
                 <div className="sticky top-0 z-10 h-1 w-full bg-gradient-to-r from-[var(--gold)]/50 via-[var(--gold)] to-[var(--gold)]/50"></div>
 
                 <div className="p-3">
@@ -270,7 +270,7 @@ const GroupConfigModal = ({ isOpen, onClose, staffId, data }) => {
                                     return (
                                         <div
                                             key={config.id}
-                                            className="flex items-center justify-between p-2.5 bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-lg"
+                                            className="flex items-center justify-between p-2.5 bg-[var(--bg-panel)] border border-[#2a2a2a] rounded-lg"
                                         >
                                             <div className="flex-1 min-w-0">
                                                 <div className="font-bold text-[var(--text-primary)] text-[10px] truncate">
@@ -307,7 +307,7 @@ const GroupConfigModal = ({ isOpen, onClose, staffId, data }) => {
                                     value={groupConfigForm.group}
                                     onChange={(e) => dispatch(updateGroupConfigForm({ group: e.target.value }))}
                                     disabled={groupConfigsLoading}
-                                    className="w-full bg-[var(--bg-panel)] border border-[var(--border-glass)] text-[var(--text-primary)] rounded-lg px-3 py-2.5 text-[10px] font-bold focus:outline-none focus:border-[var(--gold)]/50 transition-all disabled:opacity-50"
+                                    className="w-full bg-[var(--bg-panel)] border border-[#2a2a2a] text-[var(--text-primary)] rounded-lg px-3 py-2.5 text-[10px] font-bold focus:outline-none focus:border-[var(--gold)]/50 transition-all disabled:opacity-50"
                                 >
                                     <option value="">Guruhni tanlang</option>
                                     {availableGroups.map(group => (
@@ -325,7 +325,7 @@ const GroupConfigModal = ({ isOpen, onClose, staffId, data }) => {
                                         value={groupConfigForm.salary_type}
                                         onChange={(e) => dispatch(updateGroupConfigForm({ salary_type: e.target.value }))}
                                         disabled={groupConfigsLoading}
-                                        className="w-full bg-[var(--bg-panel)] border border-[var(--border-glass)] text-[var(--text-primary)] rounded-lg px-3 py-2.5 text-[10px] font-bold focus:outline-none focus:border-[var(--gold)]/50 transition-all disabled:opacity-50"
+                                        className="w-full bg-[var(--bg-panel)] border border-[#2a2a2a] text-[var(--text-primary)] rounded-lg px-3 py-2.5 text-[10px] font-bold focus:outline-none focus:border-[var(--gold)]/50 transition-all disabled:opacity-50"
                                     >
                                         <option value="percentage">Foiz</option>
                                         <option value="student_count">Talaba</option>
@@ -343,7 +343,7 @@ const GroupConfigModal = ({ isOpen, onClose, staffId, data }) => {
                                                 placeholder="15"
                                                 showCurrency={false}
                                                 allowDecimal={true}
-                                                className="w-full bg-[var(--bg-panel)] border border-[var(--border-glass)] text-[var(--text-primary)] rounded-lg px-3 py-2.5 text-[10px] font-bold focus:outline-none focus:border-[var(--gold)]/50 transition-all placeholder-[var(--text-muted)]/50 disabled:opacity-50"
+                                                className="w-full bg-[var(--bg-panel)] border border-[#2a2a2a] text-[var(--text-primary)] rounded-lg px-3 py-2.5 text-[10px] font-bold focus:outline-none focus:border-[var(--gold)]/50 transition-all placeholder-[var(--text-muted)]/50 disabled:opacity-50"
                                             />
                                             {/* Percentage label */}
                                             {groupConfigForm.commission_percentage && (
@@ -358,7 +358,7 @@ const GroupConfigModal = ({ isOpen, onClose, staffId, data }) => {
                                             onChange={(e) => dispatch(updateGroupConfigForm({ per_student_amount: e.target.value }))}
                                             disabled={groupConfigsLoading}
                                             placeholder="200000"
-                                            className="w-full bg-[var(--bg-panel)] border border-[var(--border-glass)] text-[var(--text-primary)] rounded-lg px-3 py-2.5 text-[10px] font-bold focus:outline-none focus:border-[var(--gold)]/50 transition-all placeholder-[var(--text-muted)]/50 disabled:opacity-50"
+                                            className="w-full bg-[var(--bg-panel)] border border-[#2a2a2a] text-[var(--text-primary)] rounded-lg px-3 py-2.5 text-[10px] font-bold focus:outline-none focus:border-[var(--gold)]/50 transition-all placeholder-[var(--text-muted)]/50 disabled:opacity-50"
                                         />
                                     )}
                                 </div>
@@ -384,7 +384,7 @@ const GroupConfigModal = ({ isOpen, onClose, staffId, data }) => {
                             type="button"
                             onClick={handleClose}
                             disabled={groupConfigsLoading}
-                            className="w-full bg-transparent hover:bg-[var(--bg-panel)] text-[var(--text-muted)] hover:text-[var(--text-primary)] font-black text-[9px] capitalize tracking-[0.2em] py-2 rounded-lg transition-all border border-transparent hover:border-[var(--border-glass)]"
+                            className="w-full bg-transparent hover:bg-[var(--bg-panel)] text-[var(--text-muted)] hover:text-[var(--text-primary)] font-black text-[9px] capitalize tracking-[0.2em] py-2 rounded-lg transition-all border border-transparent hover:border-[#2a2a2a]"
                         >
                             Yopish
                         </button>

@@ -37,7 +37,7 @@ const StaffPaymentModal = ({ isOpen, onClose, onConfirm, info, amount, expectedA
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
 
             {/* Modal Content */}
-            <div className="relative w-full max-w-[360px] overflow-hidden bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-2xl shadow-2xl shadow-indigo-500/10">
+            <div className="relative w-full max-w-[360px] overflow-hidden bg-[var(--bg-panel)] border border-[#2a2a2a] rounded-2xl shadow-2xl shadow-indigo-500/10">
 
                 {/* Yuqoridagi dekorativ gradient line */}
                 <div className="h-1.5 w-full bg-gradient-to-r from-indigo-600 via-violet-500 to-indigo-600"></div>
@@ -65,7 +65,7 @@ const StaffPaymentModal = ({ isOpen, onClose, onConfirm, info, amount, expectedA
                     {/* Sarlavha va Xodim Ma'lumoti */}
                     <div className="text-center mb-6">
                         <h2 className="text-xl font-black text-white mb-2 tracking-tight capitalize">To'lovni Tasdiqlash</h2>
-                        <div className="bg-slate-900/50 border border-[var(--border-glass)] p-3 rounded-xl mb-4">
+                        <div className="bg-slate-900/50 border border-[#2a2a2a] p-3 rounded-xl mb-4">
                             <p className="text-[8px] font-black text-slate-600 capitalize tracking-[0.3em] mb-1">Xodim</p>
                             <p className="text-sm font-black text-indigo-300 capitalize">
                                 {info?.employee_first_name} {info?.employee_last_name}
@@ -89,7 +89,7 @@ const StaffPaymentModal = ({ isOpen, onClose, onConfirm, info, amount, expectedA
                                         onClick={() => setUseExpected(v => !v)}
                                         className={`px-2.5 py-1 rounded-lg text-[9px] font-black tracking-widest border ${useExpected
                                                 ? 'bg-indigo-500/20 text-indigo-200 border-indigo-500/40'
-                                                : 'bg-[var(--bg-panel)] text-slate-400 border-[var(--border-glass)]'
+                                                : 'bg-[var(--bg-panel)] text-slate-400 border-[#2a2a2a]'
                                             }`}
                                     >
                                         {useExpected ? 'EXPECTED' : 'PAID'}
@@ -105,7 +105,7 @@ const StaffPaymentModal = ({ isOpen, onClose, onConfirm, info, amount, expectedA
                                     value={bonus || ""}
                                     onChange={(e) => setBonus(Number(e.target.value))}
                                     placeholder="0"
-                                    className="w-full bg-[var(--bg-void)] border border-[var(--border-glass)] rounded-xl py-2 px-3 text-xs font-black text-emerald-400 focus:outline-none focus:border-emerald-500/50 transition-all shadow-inner"
+                                    className="w-full bg-[var(--bg-void)] border border-[#2a2a2a] rounded-xl py-2 px-3 text-xs font-black text-emerald-400 focus:outline-none focus:border-emerald-500/50 transition-all shadow-inner"
                                 />
                             </div>
                             <div className="space-y-1.5">
@@ -114,7 +114,7 @@ const StaffPaymentModal = ({ isOpen, onClose, onConfirm, info, amount, expectedA
                                     value={deduction || ""}
                                     onChange={(e) => setDeduction(Number(e.target.value))}
                                     placeholder="0"
-                                    className="w-full bg-[var(--bg-void)] border border-[var(--border-glass)] rounded-xl py-2 px-3 text-xs font-black text-rose-400 focus:outline-none focus:border-rose-500/50 transition-all shadow-inner"
+                                    className="w-full bg-[var(--bg-void)] border border-[#2a2a2a] rounded-xl py-2 px-3 text-xs font-black text-rose-400 focus:outline-none focus:border-rose-500/50 transition-all shadow-inner"
                                 />
                             </div>
                         </div>
@@ -124,7 +124,7 @@ const StaffPaymentModal = ({ isOpen, onClose, onConfirm, info, amount, expectedA
                                 <span className="text-[10px] font-bold text-slate-500 capitalize tracking-tight">Kutilayotgan maosh:</span>
                                 <span className="text-[10px] font-black text-slate-300 tabular-nums">{baseAmount.toLocaleString()} UZS</span>
                             </div>
-                            <div className="flex justify-between items-center pt-2 border-t border-[var(--border-glass)]">
+                            <div className="flex justify-between items-center pt-2 border-t border-[#2a2a2a]">
                                 <span className="text-xs font-black text-indigo-400 capitalize tracking-widest">Yakuniy Summa:</span>
                                 <span className="text-lg font-black text-white tabular-nums tracking-tighter">
                                     {finalAmount.toLocaleString()} <span className="text-[10px] text-slate-500">UZS</span>
@@ -163,7 +163,7 @@ const StaffPaymentModal = ({ isOpen, onClose, onConfirm, info, amount, expectedA
                     </div>
 
                     {/* Footer Info */}
-                    <div className="mt-6 flex items-center justify-center gap-2 text-[8px] text-slate-800 capitalize tracking-widest font-black border-t border-[var(--border-glass)] pt-5">
+                    <div className="mt-6 flex items-center justify-center gap-2 text-[8px] text-slate-800 capitalize tracking-widest font-black border-t border-[#2a2a2a] pt-5">
                         <ShieldCheck size={10} className="text-slate-800" />
                         Moliya bo'limi nazoratida
                     </div>

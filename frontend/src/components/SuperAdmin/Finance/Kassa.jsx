@@ -161,9 +161,9 @@ const Kassa = () => {
         return Number(val).toLocaleString() + " UZS";
     };
 
-    const totalToday = payments.reduce((sum, p) => sum + Number(p.amount), 0);
-    const totalVerified = payments.filter(p => p.payment_details?.is_verified).reduce((sum, p) => sum + Number(p.amount), 0);
-    const totalWithdrawn = withdrawals.reduce((sum, w) => sum + Number(w.amount), 0);
+    const totalToday = payments.filter(p => p.status !== 'cancelled').reduce((sum, p) => sum + Number(p.amount), 0);
+    const totalVerified = payments.filter(p => p.payment_details?.is_verified && p.status !== 'cancelled').reduce((sum, p) => sum + Number(p.amount), 0);
+    const totalWithdrawn = withdrawals.filter(w => w.status !== 'cancelled').reduce((sum, w) => sum + Number(w.amount), 0);
 
     return (
         <>
@@ -173,7 +173,7 @@ const Kassa = () => {
             </div>
 
             {/* HEADER ACTION AREA */}
-            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 p-6 bg-[var(--bg-panel)]/40 border border-[var(--border-glass)] rounded-[2.5rem] shadow-2xl backdrop-blur-xl relative overflow-hidden group">
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 p-6 bg-[var(--bg-panel)]/40 border border-[#2a2a2a] rounded-[2.5rem] shadow-2xl backdrop-blur-xl relative overflow-hidden group">
                 <div className="absolute inset-0 bg-gradient-to-r from-[var(--gold)]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
 
                 <div className="flex items-center gap-6 relative z-10">
@@ -235,7 +235,7 @@ const Kassa = () => {
             </div>
 
             {/* SMART FILTER TOOLBAR */}
-            <div className="flex flex-col lg:flex-row gap-4 p-4 bg-[var(--bg-panel)]/30 border border-[var(--border-glass)] rounded-[2rem] backdrop-blur-md">
+            <div className="flex flex-col lg:flex-row gap-4 p-4 bg-[var(--bg-panel)]/30 border border-[#2a2a2a] rounded-[2rem] backdrop-blur-md">
                 <div className="flex-1 relative group">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)] group-focus-within:text-[var(--gold)] transition-colors" size={16} />
                     <input
@@ -243,7 +243,7 @@ const Kassa = () => {
                         placeholder="Qidiruv (Ism, tel, guruh)..."
                         value={filters.search}
                         onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                        className="w-full h-12 bg-[#0a0a0a] border border-[var(--border-glass)] rounded-xl pl-12 pr-4 text-[13px] font-bold text-white placeholder:text-gray-600 outline-none focus:border-[var(--gold)]/50 transition-all"
+                        className="w-full h-12 bg-[#0a0a0a] border border-[#2a2a2a] rounded-xl pl-12 pr-4 text-[13px] font-bold text-white placeholder:text-gray-600 outline-none focus:border-[var(--gold)]/50 transition-all"
                     />
                 </div>
 
@@ -254,7 +254,7 @@ const Kassa = () => {
                             type="date"
                             value={filters.date}
                             onChange={(e) => setFilters({ ...filters, date: e.target.value })}
-                            className="w-full h-12 bg-[#0a0a0a] border border-[var(--border-glass)] rounded-xl pl-10 pr-3 text-[12px] font-black text-[var(--gold)] outline-none focus:border-[var(--gold)]/50 transition-all"
+                            className="w-full h-12 bg-[#0a0a0a] border border-[#2a2a2a] rounded-xl pl-10 pr-3 text-[12px] font-black text-[var(--gold)] outline-none focus:border-[var(--gold)]/50 transition-all"
                         />
                     </div>
 
@@ -263,7 +263,7 @@ const Kassa = () => {
                         <select
                             value={filters.branch}
                             onChange={(e) => setFilters({ ...filters, branch: e.target.value })}
-                            className="w-full h-12 bg-[#0a0a0a] border border-[var(--border-glass)] rounded-xl pl-10 pr-8 text-[11px] font-black text-white outline-none focus:border-[var(--gold)]/50 transition-all appearance-none cursor-pointer"
+                            className="w-full h-12 bg-[#0a0a0a] border border-[#2a2a2a] rounded-xl pl-10 pr-8 text-[11px] font-black text-white outline-none focus:border-[var(--gold)]/50 transition-all appearance-none cursor-pointer"
                         >
                             <option value="" className="bg-[#0a0a0a]">Filiallar</option>
                             {branches.map(b => (
@@ -278,7 +278,7 @@ const Kassa = () => {
                         <select
                             value={filters.method}
                             onChange={(e) => setFilters({ ...filters, method: e.target.value })}
-                            className="w-full h-12 bg-[#0a0a0a] border border-[var(--border-glass)] rounded-xl pl-10 pr-8 text-[11px] font-black text-white outline-none focus:border-[var(--gold)]/50 transition-all appearance-none cursor-pointer"
+                            className="w-full h-12 bg-[#0a0a0a] border border-[#2a2a2a] rounded-xl pl-10 pr-8 text-[11px] font-black text-white outline-none focus:border-[var(--gold)]/50 transition-all appearance-none cursor-pointer"
                         >
                             <option value="" className="bg-[#0a0a0a]">Metodlar</option>
                             <option value="cash" className="bg-[#0a0a0a]">Naqd (Cash)</option>
@@ -307,7 +307,7 @@ const Kassa = () => {
             </div>
 
             {/* TAB SELECTOR */}
-            <div className="flex items-center gap-2 p-1.5 bg-[var(--bg-panel)]/30 border border-[var(--border-glass)] rounded-[1.25rem] w-full sm:w-fit overflow-x-auto no-scrollbar">
+            <div className="flex items-center gap-2 p-1.5 bg-[var(--bg-panel)]/30 border border-[#2a2a2a] rounded-[1.25rem] w-full sm:w-fit overflow-x-auto no-scrollbar">
                 <button 
                     onClick={() => setActiveTab("incomes")}
                     className={`flex-1 sm:flex-none whitespace-nowrap px-6 xl:px-10 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 ${activeTab === 'incomes' ? 'bg-[var(--gold)] text-black shadow-[0_8px_20px_rgba(184,134,11,0.3)] scale-105 z-10' : 'text-[var(--text-muted)] hover:text-white hover:bg-white/5'}`}
@@ -327,12 +327,12 @@ const Kassa = () => {
             {/* DATA GRID PROTOCOL */}
             <div className="relative">
                 {/* Desktop Table View */}
-                <div className="hidden lg:block lux-card !p-0 !rounded-[2.5rem] overflow-hidden border-[var(--border-glass)] shadow-2xl bg-[var(--bg-panel)]/20 backdrop-blur-xl">
+                <div className="hidden lg:block lux-card !p-0 !rounded-[2.5rem] overflow-hidden border-[#2a2a2a] shadow-2xl bg-[var(--bg-panel)]/20 backdrop-blur-xl">
                     <div className="overflow-x-auto">
                         {activeTab === "incomes" ? (
                             <table className="w-full text-left border-collapse">
                                 <thead>
-                                    <tr className="bg-white/[0.03] border-b border-[var(--border-glass)]">
+                                    <tr className="bg-white/[0.03] border-b border-[#2a2a2a]">
                                         <th className="px-8 py-6 text-[10px] font-black text-[var(--gold)] uppercase tracking-[0.3em]">O'quvchi / Guruh</th>
                                         <th className="px-8 py-6 text-[10px] font-black text-[var(--gold)] uppercase tracking-[0.3em]">To'lov Usuli</th>
                                         <th className="px-8 py-6 text-[10px] font-black text-[var(--gold)] uppercase tracking-[0.3em]">Summa</th>
@@ -341,32 +341,41 @@ const Kassa = () => {
                                         <th className="px-8 py-6 text-[10px] font-black text-[var(--gold)] uppercase tracking-[0.3em] text-right">Amallar</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-[var(--border-glass)]">
+                                <tbody className="divide-y divide-[#2a2a2a]">
                                     {loading ? (
                                         <tr><td colSpan="6" className="p-32 text-center text-[var(--gold)] animate-pulse uppercase font-black tracking-widest">Ma'lumotlar yuklanmoqda...</td></tr>
                                     ) : payments.length === 0 ? (
                                         <tr><td colSpan="6" className="p-32 text-center text-[var(--text-muted)] font-black uppercase tracking-widest">Hozircha hech qanday tushum topilmadi</td></tr>
-                                    ) : payments.map((p) => (
-                                        <tr key={p.id} className="hover:bg-white/[0.04] transition-all duration-300 group/row">
+                                    ) : payments.map((p) => {
+                                        const isCancelled = p.status === 'cancelled';
+                                        return (
+                                        <tr key={p.id} className={`hover:bg-white/[0.04] transition-all duration-300 group/row ${isCancelled ? 'opacity-50' : ''}`}>
                                             <td className="px-8 py-6">
                                                 <div className="flex items-center gap-4">
-                                                    <div className="w-12 h-12 rounded-2xl bg-[var(--bg-void)] border border-[var(--border-glass)] flex items-center justify-center text-[var(--text-muted)] group-hover/row:border-[var(--gold)]/30 transition-colors">
+                                                    <div className={`w-12 h-12 rounded-2xl bg-[var(--bg-void)] border flex items-center justify-center text-[var(--text-muted)] transition-colors ${isCancelled ? 'border-gray-500/30' : 'border-[#2a2a2a] group-hover/row:border-[var(--gold)]/30'}`}>
                                                         <User size={22} strokeWidth={1.5} />
                                                     </div>
                                                     <div>
-                                                        <p className="text-sm font-black text-white capitalize">{p.student_name}</p>
-                                                        <p className="text-[10px] text-[var(--text-muted)] font-black uppercase tracking-widest mt-1 opacity-70">{p.payment_details?.group_name || 'Guruhsiz'}</p>
+                                                        <p className={`text-sm font-black capitalize ${isCancelled ? 'text-[var(--text-muted)] line-through' : 'text-white'}`}>
+                                                            {p.student_name}
+                                                        </p>
+                                                        <p className="text-[10px] text-[var(--text-muted)] font-black uppercase tracking-widest mt-1 opacity-70">
+                                                            {p.payment_details?.group_name || 'Guruhsiz'}
+                                                            {isCancelled && <span className="ml-2 text-red-500">Bekor qilingan</span>}
+                                                        </p>
                                                     </div>
                                                 </div>
                                             </td>
                                             <td className="px-8 py-6">
-                                                <div className={`inline-flex items-center gap-3 px-4 py-2 rounded-2xl border text-[10px] font-black uppercase tracking-wider ${p.payment_details?.payment_method === 'cash' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-blue-500/10 border-blue-500/20 text-blue-500'}`}>
+                                                <div className={`inline-flex items-center gap-3 px-4 py-2 rounded-2xl border text-[10px] font-black uppercase tracking-wider ${isCancelled ? 'bg-gray-500/10 border-gray-500/20 text-gray-400' : p.payment_details?.payment_method === 'cash' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-blue-500/10 border-blue-500/20 text-blue-500'}`}>
                                                     {p.payment_details?.payment_method === 'cash' ? <Banknote size={14} /> : <Smartphone size={14} />}
                                                     {p.payment_details?.payment_method === 'cash' ? 'Naqd (Cash)' : 'Click / Card'}
                                                 </div>
                                             </td>
                                             <td className="px-8 py-6">
-                                                <div className="text-base font-black text-white tabular-nums tracking-tight">{formatCurrency(p.amount)}</div>
+                                                <div className={`text-base font-black tabular-nums tracking-tight ${isCancelled ? 'text-gray-500 line-through' : 'text-white'}`}>
+                                                    {formatCurrency(p.amount)}
+                                                </div>
                                                 {p.payment_details?.refund_amount > 0 && !p.payment_details?.refund_ignored && (
                                                     <div className="mt-1 text-[9px] font-bold text-emerald-400">Refund: -{formatCurrency(p.payment_details.refund_amount)}</div>
                                                 )}
@@ -396,13 +405,14 @@ const Kassa = () => {
                                                 </div>
                                             </td>
                                         </tr>
-                                    ))}
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         ) : (
                             <table className="w-full text-left border-collapse">
                                 <thead>
-                                    <tr className="bg-white/[0.03] border-b border-[var(--border-glass)]">
+                                    <tr className="bg-white/[0.03] border-b border-[#2a2a2a]">
                                         <th className="px-8 py-6 text-[10px] font-black text-[var(--gold)] uppercase tracking-[0.3em]">Operatsiya</th>
                                         <th className="px-8 py-6 text-[10px] font-black text-[var(--gold)] uppercase tracking-[0.3em]">Toifa</th>
                                         <th className="px-8 py-6 text-[10px] font-black text-[var(--gold)] uppercase tracking-[0.3em]">Summa</th>
@@ -411,7 +421,7 @@ const Kassa = () => {
                                         <th className="px-8 py-6 text-[10px] font-black text-[var(--gold)] uppercase tracking-[0.3em] text-right">Status</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-[var(--border-glass)]">
+                                <tbody className="divide-y divide-[#2a2a2a]">
                                     {loading ? (
                                         <tr><td colSpan="6" className="p-32 text-center text-red-500 animate-pulse uppercase font-black tracking-widest">Yuklanmoqda...</td></tr>
                                     ) : withdrawals.length === 0 ? (
@@ -468,28 +478,33 @@ const Kassa = () => {
                         <div className="p-20 text-center text-[var(--gold)] animate-pulse font-black uppercase tracking-widest">Yuklanmoqda...</div>
                     ) : (activeTab === 'incomes' ? payments : withdrawals).length === 0 ? (
                         <div className="p-20 text-center text-[var(--text-muted)] font-black uppercase tracking-widest">Hech qanday ma'lumot topilmadi</div>
-                    ) : (activeTab === 'incomes' ? payments : withdrawals).map((item) => (
-                        <div key={item.id} className="p-5 bg-[var(--bg-panel)]/40 border border-[var(--border-glass)] rounded-3xl backdrop-blur-xl relative overflow-hidden active:scale-[0.98] transition-all">
+                    ) : (activeTab === 'incomes' ? payments : withdrawals).map((item) => {
+                        const isCancelled = item.status === 'cancelled';
+                        return (
+                        <div key={item.id} className={`p-5 bg-[var(--bg-panel)]/40 border border-[#2a2a2a] rounded-3xl backdrop-blur-xl relative overflow-hidden active:scale-[0.98] transition-all ${isCancelled ? 'opacity-50' : ''}`}>
                             {activeTab === 'incomes' ? (
                                 <>
                                     <div className="flex justify-between items-start mb-4">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-xl bg-[var(--bg-void)] border border-[var(--border-glass)] flex items-center justify-center text-[var(--text-muted)]">
+                                            <div className={`w-10 h-10 rounded-xl bg-[var(--bg-void)] border flex items-center justify-center text-[var(--text-muted)] ${isCancelled ? 'border-gray-500/30' : 'border-[#2a2a2a]'}`}>
                                                 <User size={18} />
                                             </div>
                                             <div>
-                                                <h3 className="text-sm font-black text-white capitalize">{item.student_name}</h3>
-                                                <p className="text-[9px] text-[var(--gold)] font-black uppercase tracking-widest">{item.payment_details?.group_name || 'Guruhsiz'}</p>
+                                                <h3 className={`text-sm font-black capitalize ${isCancelled ? 'text-[var(--text-muted)] line-through' : 'text-white'}`}>{item.student_name}</h3>
+                                                <p className={`text-[9px] font-black uppercase tracking-widest ${isCancelled ? 'text-gray-500' : 'text-[var(--gold)]'}`}>
+                                                    {item.payment_details?.group_name || 'Guruhsiz'}
+                                                    {isCancelled && <span className="ml-2 text-red-500">Bekor qilingan</span>}
+                                                </p>
                                             </div>
                                         </div>
-                                        <div className={`px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest ${item.payment_details?.payment_method === 'cash' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-blue-500/10 border-blue-500/20 text-blue-500'}`}>
+                                        <div className={`px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest ${isCancelled ? 'bg-gray-500/10 border-gray-500/20 text-gray-400' : item.payment_details?.payment_method === 'cash' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-blue-500/10 border-blue-500/20 text-blue-500'}`}>
                                             {item.payment_details?.payment_method === 'cash' ? 'Naqd' : 'Click/Card'}
                                         </div>
                                     </div>
                                     <div className="flex justify-between items-end">
                                         <div className="space-y-1">
                                             <p className="text-[8px] text-[var(--text-muted)] font-black uppercase tracking-widest">To'lov summasi</p>
-                                            <p className="text-lg font-black text-white tabular-nums">{formatCurrency(item.amount)}</p>
+                                            <p className={`text-lg font-black tabular-nums ${isCancelled ? 'text-gray-500 line-through' : 'text-white'}`}>{formatCurrency(item.amount)}</p>
                                             {item.payment_details?.refund_amount > 0 && !item.payment_details?.refund_ignored && (
                                                 <p className="text-[9px] font-bold text-emerald-400">Refund: -{formatCurrency(item.payment_details.refund_amount)}</p>
                                             )}
@@ -536,7 +551,8 @@ const Kassa = () => {
                                 </>
                             )}
                         </div>
-                    ))}
+                        );
+                    })}
                 </div>
             </div>
             </div> {/* Closing space-y-8 animate-lux-fade */}
@@ -547,10 +563,10 @@ const Kassa = () => {
                     <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setShowWithdrawModal(false)}></div>
                     <form 
                         onSubmit={handleWithdraw} 
-                        className="relative w-full max-w-xl bg-[var(--bg-void)] border border-[var(--border-glass)] rounded-[3rem] shadow-[0_0_100px_rgba(0,0,0,0.5)] overflow-hidden animate-lux-pop flex flex-col max-h-[90vh]"
+                        className="relative w-full max-w-xl bg-[var(--bg-void)] border border-[#2a2a2a] rounded-[3rem] shadow-[0_0_100px_rgba(0,0,0,0.5)] overflow-hidden animate-lux-pop flex flex-col max-h-[90vh]"
                     >
                         {/* Header Section */}
-                        <div className="p-8 xl:p-10 border-b border-[var(--border-glass)] flex items-center justify-between bg-gradient-to-r from-red-600/10 via-transparent to-transparent">
+                        <div className="p-8 xl:p-10 border-b border-[#2a2a2a] flex items-center justify-between bg-gradient-to-r from-red-600/10 via-transparent to-transparent">
                             <div className="flex items-center gap-5">
                                 <div className="w-14 h-14 rounded-[1.5rem] bg-red-600/10 flex items-center justify-center text-red-500 border border-red-500/20 shadow-[inset_0_0_20px_rgba(220,38,38,0.1)]">
                                     <TrendingDown size={28} strokeWidth={2.5} />
@@ -582,7 +598,7 @@ const Kassa = () => {
                                             required
                                             value={withdrawData.branch || filters.branch}
                                             onChange={(e) => setWithdrawData({...withdrawData, branch: e.target.value})}
-                                            className="w-full h-16 bg-[#0a0a0a] border border-[var(--border-glass)] rounded-2xl px-6 text-[13px] font-bold text-white outline-none focus:border-red-500/50 transition-all appearance-none cursor-pointer"
+                                            className="w-full h-16 bg-[#0a0a0a] border border-[#2a2a2a] rounded-2xl px-6 text-[13px] font-bold text-white outline-none focus:border-red-500/50 transition-all appearance-none cursor-pointer"
                                         >
                                             <option value="">Filialni tanlang...</option>
                                             {branches.map(b => (
@@ -608,7 +624,7 @@ const Kassa = () => {
                                         value={withdrawData.amount}
                                         onChange={handleAmountChange}
                                         placeholder="0"
-                                        className="w-full h-20 bg-[#0a0a0a] border border-[var(--border-glass)] rounded-3xl px-8 text-white font-black text-3xl outline-none focus:border-red-500/50 transition-all placeholder:opacity-10 tabular-nums shadow-inner"
+                                        className="w-full h-20 bg-[#0a0a0a] border border-[#2a2a2a] rounded-3xl px-8 text-white font-black text-3xl outline-none focus:border-red-500/50 transition-all placeholder:opacity-10 tabular-nums shadow-inner"
                                     />
                                 </div>
                                 
@@ -635,13 +651,13 @@ const Kassa = () => {
                                     value={withdrawData.description}
                                     onChange={(e) => setWithdrawData({...withdrawData, description: e.target.value})}
                                     placeholder="Masalan: Ijara to'lovi, Kantselyariya yoki Shaxsiy avans..."
-                                    className="w-full h-32 bg-[#0a0a0a] border border-[var(--border-glass)] rounded-3xl p-6 text-white text-sm font-medium outline-none focus:border-red-500/50 transition-all resize-none placeholder:opacity-20 leading-relaxed shadow-inner"
+                                    className="w-full h-32 bg-[#0a0a0a] border border-[#2a2a2a] rounded-3xl p-6 text-white text-sm font-medium outline-none focus:border-red-500/50 transition-all resize-none placeholder:opacity-20 leading-relaxed shadow-inner"
                                 />
                             </div>
                         </div>
 
                         {/* Footer Section */}
-                        <div className="p-8 xl:p-10 bg-white/[0.02] border-t border-[var(--border-glass)] flex flex-col sm:flex-row gap-4">
+                        <div className="p-8 xl:p-10 bg-white/[0.02] border-t border-[#2a2a2a] flex flex-col sm:flex-row gap-4">
                             <button 
                                 type="button"
                                 onClick={() => setShowWithdrawModal(false)}
@@ -675,8 +691,8 @@ const Kassa = () => {
             {showDetailModal && selectedPayment && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowDetailModal(false)}></div>
-                    <div className="relative w-full max-w-lg bg-[var(--bg-void)] border border-[var(--border-glass)] rounded-[2.5rem] shadow-2xl overflow-hidden animate-lux-pop">
-                        <div className="p-8 border-b border-[var(--border-glass)] flex items-center justify-between bg-gradient-to-r from-[var(--gold)]/10 to-transparent">
+                    <div className="relative w-full max-w-lg bg-[var(--bg-void)] border border-[#2a2a2a] rounded-[2.5rem] shadow-2xl overflow-hidden animate-lux-pop">
+                        <div className="p-8 border-b border-[#2a2a2a] flex items-center justify-between bg-gradient-to-r from-[var(--gold)]/10 to-transparent">
                             <div className="flex items-center gap-4">
                                 <div className="w-12 h-12 rounded-2xl bg-[var(--gold-dim)] flex items-center justify-center text-[var(--gold)] border border-[var(--gold)]/20 shadow-inner"><FileText size={24} /></div>
                                 <div><h2 className="text-xl font-black text-white tracking-tight">To'lov Tafsilotlari</h2><p className="text-[9px] font-black text-[var(--gold)] uppercase tracking-[0.3em]">ID: STP-{selectedPayment.id}</p></div>
@@ -715,7 +731,7 @@ const Kassa = () => {
                             </div>
                             {selectedPayment.notes && <div className="p-4 bg-white/5 rounded-xl text-xs italic text-gray-400">"{selectedPayment.notes}"</div>}
                         </div>
-                        <div className="p-6 bg-white/[0.02] border-t border-[var(--border-glass)] flex gap-3">
+                        <div className="p-6 bg-white/[0.02] border-t border-[#2a2a2a] flex gap-3">
                             {get_user_info()?.role === 'super_admin' && !selectedPayment.payment_details?.is_verified && selectedPayment.payment_details?.original_payment_id && (
                                 <button onClick={() => handleVerify(selectedPayment.payment_details.original_payment_id)} className="flex-1 h-12 bg-emerald-600 text-white font-black text-[11px] uppercase tracking-widest rounded-2xl hover:bg-emerald-500 transition-all shadow-lg active:scale-95">Tasdiqlash</button>
                             )}

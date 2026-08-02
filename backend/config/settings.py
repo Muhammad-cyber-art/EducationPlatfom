@@ -61,7 +61,7 @@ INSTALLED_APPS = [
     'django_filters',
     'drf_spectacular',
     ]
-
+    
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',

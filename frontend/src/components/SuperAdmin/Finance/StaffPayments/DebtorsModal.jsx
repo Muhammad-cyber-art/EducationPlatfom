@@ -69,7 +69,7 @@ const StudentRow = memo(({ student, isPaid, formatCurrency }) => {
   const refundIgnored = student.refund_ignored;
   const isAttendanceBased = student.is_attendance_based;
   return (
-    <div className="flex flex-col gap-2 p-3 bg-[var(--bg-void)]/40 hover:bg-[var(--bg-void)]/60 border border-[var(--border-glass)] rounded-xl transition-all duration-200 group">
+    <div className="flex flex-col gap-2 p-3 bg-[var(--bg-void)]/40 hover:bg-[var(--bg-void)]/60 border border-[#2a2a2a] rounded-xl transition-all duration-200 group">
       <div className="flex items-center gap-4">
         {/* Avatar & Basic Info */}
         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -204,9 +204,9 @@ const DebtorsModal = ({ group, onClose, formatCurrency }) => {
 
   return createPortal(
     <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-[2px] animate-in fade-in duration-200 p-4">
-      <div className="bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-[1.5rem] w-full max-w-4xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col">
+      <div className="bg-[var(--bg-panel)] border border-[#2a2a2a] rounded-[1.5rem] w-full max-w-4xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col">
         {/* Header - Compact */}
-        <div className="p-4 sm:p-5 border-b border-[var(--border-glass)] flex items-center justify-between bg-[var(--bg-void)]/30">
+        <div className="p-4 sm:p-5 border-b border-[#2a2a2a] flex items-center justify-between bg-[var(--bg-void)]/30">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-[var(--gold)]/10 rounded-xl flex items-center justify-center">
               <Users size={20} className="text-[var(--gold)]" />
@@ -229,7 +229,7 @@ const DebtorsModal = ({ group, onClose, formatCurrency }) => {
         </div>
 
         {/* Tabs - Minimal */}
-        <div className="flex border-b border-[var(--border-glass)] bg-[var(--bg-void)]/10">
+        <div className="flex border-b border-[#2a2a2a] bg-[var(--bg-void)]/10">
           <button
             onClick={() => setActiveTab("debtors")}
             className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-all border-b-2 ${activeTab === "debtors" ? "text-amber-500 border-amber-500 bg-amber-500/5" : "text-[var(--text-muted)] border-transparent hover:text-[var(--text-primary)]"}`}
@@ -287,7 +287,7 @@ const DebtorsModal = ({ group, onClose, formatCurrency }) => {
         </div>
 
         {/* Footer - Lightweight */}
-        <div className="p-4 border-t border-[var(--border-glass)] bg-[var(--bg-void)]/20 flex items-center justify-between">
+        <div className="p-4 border-t border-[#2a2a2a] bg-[var(--bg-void)]/20 flex items-center justify-between">
           <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest">
             {activeTab === "debtors" ? "Jami Qarz" : "Jami To'lov"}
           </span>

@@ -8,7 +8,7 @@ import {
 import GoBackButton from'../../../sendback';
 
 export const BranchHeader = ({ branchName, periodControls }) => (
- <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-6 border-b border-[var(--border-glass)] mt-3">
+ <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-6 border-b border-[#2a2a2a] mt-3">
  <div className="flex items-center gap-6">
  <GoBackButton />
  <div>
@@ -20,7 +20,7 @@ export const BranchHeader = ({ branchName, periodControls }) => (
  </div>
  <div className="flex flex-wrap items-center gap-3 justify-start lg:justify-end">
  {periodControls}
- <div className="flex items-center h-9 px-3 bg-[var(--bg-void)]/40 border border-[var(--border-glass)] rounded-lg">
+ <div className="flex items-center h-9 px-3 bg-[var(--bg-void)]/40 border border-[#2a2a2a] rounded-lg">
  <span className="text-[9px] font-bold text-[var(--text-primary)] capitalize tracking-widest flex items-center gap-2">
    <Activity size={12} className="text-[var(--gold)]" />
    Jonli Tahlil
@@ -57,7 +57,7 @@ export const FinancialIntelligence = ({ finance, formatNumber, progressPercentag
  <span className="text-[9px] font-bold text-[var(--text-primary)] capitalize">Yig'im Tezligi</span>
  <span className="text-xl font-bold text-[var(--gold)]">{progressPercentage}%</span>
  </div>
- <div className="h-1.5 w-full bg-[var(--bg-void)]/40 rounded-full overflow-hidden border border-[var(--border-glass)]">
+ <div className="h-1.5 w-full bg-[var(--bg-void)]/40 rounded-full overflow-hidden border border-[#2a2a2a]">
  <div className="h-full bg-[var(--gold)] opacity-80" style={{ width: `${progressPercentage}%` }} />
  </div>
  </div>
@@ -101,11 +101,11 @@ export const FinancialIntelligence = ({ finance, formatNumber, progressPercentag
  <div className="flex items-center gap-3"><div className="flex items-center gap-1.5 px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 text-[9px] font-bold border border-emerald-500/20"><TrendingUp size={10} /> {progressPercentage}% Natija</div></div>
  </div>
  <div className="grid grid-cols-1 gap-4">
- <div className="p-4 bg-[var(--bg-void)]/60 rounded-xl border border-[var(--border-glass)]">
+ <div className="p-4 bg-[var(--bg-void)]/60 rounded-xl border border-[#2a2a2a]">
  <p className="text-[8px] font-bold text-[var(--text-muted)] capitalize mb-1">Chiqimlar</p>
  <p className="text-base font-bold text-[var(--text-primary)] tracking-tight capitalize">{formatNumber(finance.expenses)} <span className="text-[9px] not-italic opacity-30">UZS</span></p>
  </div>
- <div className="p-4 bg-[var(--bg-void)]/60 rounded-xl border border-[var(--border-glass)]">
+ <div className="p-4 bg-[var(--bg-void)]/60 rounded-xl border border-[#2a2a2a]">
  <p className="text-[8px] font-bold text-[var(--text-muted)] capitalize mb-1">Sof Foyda</p>
  <p className="text-lg font-bold text-[var(--gold)] tracking-tight capitalize">{formatNumber(finance.net_profit)} <span className="text-[9px] not-italic opacity-30">UZS</span></p>
  </div>
@@ -118,7 +118,7 @@ export const FinancialIntelligence = ({ finance, formatNumber, progressPercentag
 
 export const UnitBreakdown = ({ groups, formatNumber }) => (
  <div className="space-y-4">
- <div className="flex items-end justify-between border-b border-[var(--border-glass)] pb-3">
+ <div className="flex items-end justify-between border-b border-[#2a2a2a] pb-3">
  <h3 className="text-lg font-bold text-[var(--text-primary)] capitalize tracking-tight">Guruhlar Tahlili</h3>
  <div className="flex items-center gap-2 text-[9px] font-black text-[var(--text-muted)] capitalize tracking-widest">
  <span className="text-[var(--text-primary)]">{groups.length}</span> Ta Guruh Mavjud
@@ -131,7 +131,7 @@ export const UnitBreakdown = ({ groups, formatNumber }) => (
  <div key={group.id} className="lux-card !p-4 hover:border-[var(--gold)]/30">
  <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
  <div className="flex items-center gap-4 w-full lg:w-60">
- <div className="w-10 h-10 rounded-lg bg-[var(--bg-void)] border border-[var(--border-glass)] flex items-center justify-center text-[var(--gold)]"><Layers size={20} /></div>
+ <div className="w-10 h-10 rounded-lg bg-[var(--bg-void)] border border-[#2a2a2a] flex items-center justify-center text-[var(--gold)]"><Layers size={20} /></div>
  <div className="min-w-0">
  <h4 className="text-sm font-bold text-[var(--text-primary)] capitalize tracking-tight truncate">{group.name}</h4>
  <div className="flex items-center gap-2 mt-0.5"><UserCircle size={10} className="text-[var(--text-muted)] opacity-50" /><p className="text-[8px] font-bold text-[var(--text-muted)] capitalize truncate">Mentor: {group.mentor}</p></div>
@@ -160,14 +160,14 @@ export const UnitBreakdown = ({ groups, formatNumber }) => (
 
 const BranchStatCard = ({ label, value, icon, color, nom }) => (
  <div className="lux-card !p-3">
- <div className="flex justify-between items-start mb-4"><div className={`p-2 bg-[var(--bg-void)]/60 rounded-lg border border-[var(--border-glass)] ${color}`}>{icon}</div></div>
+ <div className="flex justify-between items-start mb-4"><div className={`p-2 bg-[var(--bg-void)]/60 rounded-lg border border-[#2a2a2a] ${color}`}>{icon}</div></div>
  <p className="text-[7px] font-bold text-[var(--text-muted)] capitalize mb-1">{nom}</p>
  <h3 className="text-xl font-bold text-[var(--text-primary)] tracking-tight capitalize">{value}</h3>
  </div>
 );
 
 const MiniIndicator = ({ label, value, icon, color }) => (
- <div className="p-2 bg-[var(--bg-void)]/30 rounded-lg border border-[var(--border-glass)]">
+ <div className="p-2 bg-[var(--bg-void)]/30 rounded-lg border border-[#2a2a2a]">
  <div className={`flex items-center gap-1.5 mb-1 ${color} opacity-50`}>{icon}<span className="text-[7px] font-bold capitalize">{label}</span></div>
  <p className="text-xs font-bold text-[var(--text-primary)] tabular-nums">{value}</p>
  </div>

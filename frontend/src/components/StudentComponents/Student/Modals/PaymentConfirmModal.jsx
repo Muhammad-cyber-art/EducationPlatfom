@@ -25,10 +25,22 @@ export const PaymentConfirmModal = ({ isOpen, onClose, onConfirm, data, loading 
     const expectedAmount = useMemo(() => {
         if (!data) return 0;
         const refund = data.refundAmount || 0;
-        const base = calculateRefund ? Math.max(0, (data.fullAmount || 0) - refund) : (data.fullAmount || 0);
+        const fullAmount = data.fullAmount || 0;
         const remaining = data.remainingAmount;
-        if (remaining != null && remaining > 0) return remaining;
-        return base;
+
+        // BUG #1 FIX: Agar bu davomiy (partial) to'lov bo'lsa — qolgan summani ko'rsatamiz.
+        // Davomiy to'lov: remaining > 0 VA remaining < fullAmount (allaqachon bir qismi to'langan).
+        // Yangi to'lov: remaining == fullAmount (hali hech narsa to'lanmagan).
+        const isPartialContinuation = remaining != null && remaining > 0 && remaining < fullAmount;
+        if (isPartialContinuation) {
+            // Davomiy to'lovda refund qo'llanmaydi — qolgan summani to'laydi
+            return remaining;
+        }
+
+        // Yangi to'lov: refund toggle to'g'ri ishlaydi
+        // calculateRefund = true  → fullAmount - refund (masalan 400 - 314 = 86)
+        // calculateRefund = false → fullAmount           (masalan 400)
+        return calculateRefund ? Math.max(0, fullAmount - refund) : fullAmount;
     }, [data, calculateRefund]);
 
     useEffect(() => {
@@ -43,17 +55,28 @@ export const PaymentConfirmModal = ({ isOpen, onClose, onConfirm, data, loading 
 
     if (!isOpen) return null;
 
-    const buildPayload = (isPartial, payAmount, isCustom) => ({
-        payment_method: method,
-        receipt_image: method === 'click' ? receiptImage : null,
-        is_receiptless: method === 'click' ? noReceipt : false,
-        notes: notes,
-        ignore_refund: !calculateRefund,
-        pay_full_month: !isPartial && !isCustom && !calculateRefund,
-        is_partial_payment: isPartial,
-        is_custom_amount: isCustom,
-        amount: String(Math.floor(payAmount)),
-    });
+    const buildPayload = (isPartial, payAmount, isCustom) => {
+        const remaining = data?.remainingAmount;
+        const fullAmount = data?.fullAmount || 0;
+        // Agar allaqachon qisman to'langan bo'lsa va hozir qolganini to'layotgan bo'lsa
+        const isPartialContinuation = remaining != null && remaining > 0 && remaining < fullAmount;
+
+        return {
+            payment_method: method,
+            receipt_image: method === 'click' ? receiptImage : null,
+            is_receiptless: method === 'click' ? noReceipt : false,
+            notes: notes,
+            ignore_refund: isPartialContinuation ? true : !calculateRefund,
+            // pay_full_month: refund hisoblamaslik uchun (calculateRefund=false holati)
+            pay_full_month: isPartialContinuation ? true : (!isPartial && !isCustom && !calculateRefund),
+            // BUG #1 FIX: is_full_amount — to'liq oylik to'lov (refund bilan yoki refundsiz).
+            // Backend bu flag orqali is_paid=True belgilaydi (kontrakt narxiga emas, flag ga qaraydi).
+            is_full_amount: !isPartial && !isCustom,
+            is_partial_payment: isPartial,
+            is_custom_amount: isCustom,
+            amount: String(Math.floor(payAmount)),
+        };
+    };
 
     const submitPayment = (isPartial, payAmount, isCustom = false) => {
         onConfirm(buildPayload(isPartial, payAmount, isCustom));

@@ -431,6 +431,16 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                         if net_amount != 0 or (p and p.is_paid):
                             total += net_amount
 
+                # Add revenue from deleted students
+                if prefetched_pm is not None:
+                    deleted_payments = [p for p in prefetched_pm.values() if getattr(p, 'student_id', None) is None]
+                else:
+                    deleted_payments = [p for p in payment_qs if p.student_id is None]
+
+                for p in deleted_payments:
+                    if p.is_paid:
+                        total += Decimal(str(p.amount or 0))
+
                 result = int(floor_amount(total, precision=None))
                 return result
 
@@ -565,6 +575,13 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
 
                         total += Decimal(str(group.monthly_price or 0))
                         total += extra_map.get(key, Decimal("0"))
+
+                # Add expected revenue from deleted students
+                prefetched_pm = self._get_prefetched_payment_map()
+                if prefetched_pm is not None:
+                    deleted_payments = [p for p in prefetched_pm.values() if getattr(p, 'student_id', None) is None]
+                    for p in deleted_payments:
+                        total += Decimal(str(p.amount or 0))
 
                 result = int(floor_amount(total, precision=None))
                 logger.info(
@@ -1004,7 +1021,15 @@ class BranchFinanceDetailSerializer(serializers.Serializer):
 
 class FinanceTransactionSerializer(serializers.ModelSerializer):
     marked_by_name = serializers.SerializerMethodField()
-    student_name = serializers.ReadOnlyField(source="student.full_name")
+    cancelled_by_name = serializers.SerializerMethodField()
+    student_name = serializers.SerializerMethodField()
+    
+    def get_student_name(self, obj):
+        name = obj.student_name or (obj.student.full_name if obj.student else "Noma'lum")
+        if not obj.student and obj.category == 'student_fee':
+            if not name.endswith("(O'chirilgan)"):
+                name = f"{name} (O'chirilgan)"
+        return name
     branch_name = serializers.ReadOnlyField(source="branch.name")
     transaction_type_display = serializers.CharField(
         source="get_transaction_type_display", read_only=True
@@ -1026,6 +1051,9 @@ class FinanceTransactionSerializer(serializers.ModelSerializer):
             "date",
             "marked_by",
             "marked_by_name",
+            "cancelled_by",
+            "cancelled_by_name",
+            "cancelled_at",
             "branch",
             "branch_name",
             "student",
@@ -1037,13 +1065,24 @@ class FinanceTransactionSerializer(serializers.ModelSerializer):
             "related_id",
             "created_at",
             "payment_details",
+            "status",
+            "record_type",
+            "is_verified",
+            "verified_by",
+            "verified_at",
         ]
-        read_only_fields = ["id", "created_at", "marked_by"]
+        read_only_fields = ["id", "created_at", "marked_by", "cancelled_by", "cancelled_at", "verified_by", "verified_at"]
 
     def get_marked_by_name(self, obj) -> str:
         if obj.marked_by:
             return obj.marked_by.get_full_name() or obj.marked_by.username
         return "Tizim"
+
+    def get_cancelled_by_name(self, obj) -> str | None:
+        if obj.cancelled_by:
+            return obj.cancelled_by.get_full_name() or obj.cancelled_by.username
+        return None
+
 
     def get_payment_details(self, obj):
         if obj.category == 'student_fee' and obj.related_id and obj.related_id.startswith('STP-'):
@@ -1065,10 +1104,27 @@ class FinanceTransactionSerializer(serializers.ModelSerializer):
                             'refund_ignored': payment.refund_ignored,
                             'is_partial': payment.is_partial,
                             'is_receiptless': payment.is_receiptless,
-                            'group_name': payment.group.name if payment.group else None
+                            'group_name': obj.group_name or payment.group_name or (payment.group.name if payment.group else None)
                         }
-                except Exception:
-                    pass
+                    else:
+                        # Fallback for deleted students where Payment was hard-deleted by migration 0013
+                        return {
+                            'original_payment_id': payment_id,
+                            'is_verified': obj.is_verified,
+                            'receipt_image': None,
+                            'month': obj.date.strftime('%Y-%m') if obj.date else None,
+                            'payment_method': obj.payment_method,
+                            'payment_method_display': dict(Payment.PAYMENT_METHODS).get(obj.payment_method, "Noma'lum") if obj.payment_method else "Noma'lum",
+                            'refund_amount': 0,
+                            'refund_ignored': False,
+                            'is_partial': False,
+                            'is_receiptless': False,
+                            'group_name': obj.group_name
+                        }
+                except Exception as e:
+                    import traceback
+                    print(f"Exception in get_payment_details: {e}")
+                    traceback.print_exc()
         return None
 
 
@@ -1183,6 +1239,7 @@ class FinanceDashboardSerializer(serializers.Serializer):
     total_expense = serializers.DecimalField(max_digits=15, decimal_places=2)
     net_profit = serializers.DecimalField(max_digits=15, decimal_places=2)
     total_debt = serializers.DecimalField(max_digits=15, decimal_places=2)
+    pending_income = serializers.DecimalField(max_digits=15, decimal_places=2, required=False)
     branches = BranchStatSerializer(many=True)
     top_groups = GroupStatSerializer(many=True)
 
@@ -1197,7 +1254,14 @@ class BranchFinanceDetailSerializer(serializers.Serializer):
 
 class FinanceTransactionSerializer(serializers.ModelSerializer):
     marked_by_name = serializers.SerializerMethodField()
-    student_name = serializers.ReadOnlyField(source="student.full_name")
+    student_name = serializers.SerializerMethodField()
+    
+    def get_student_name(self, obj):
+        name = obj.student_name or (obj.student.full_name if obj.student else "Noma'lum")
+        if not obj.student and obj.category == 'student_fee':
+            if not name.endswith("(O'chirilgan)"):
+                name = f"{name} (O'chirilgan)"
+        return name
     branch_name = serializers.ReadOnlyField(source="branch.name")
     transaction_type_display = serializers.CharField(
         source="get_transaction_type_display", read_only=True
@@ -1217,6 +1281,8 @@ class FinanceTransactionSerializer(serializers.ModelSerializer):
             "category_display",
             "amount",
             "date",
+            "status",
+            "record_type",
             "marked_by",
             "marked_by_name",
             "branch",
@@ -1258,10 +1324,27 @@ class FinanceTransactionSerializer(serializers.ModelSerializer):
                             'refund_ignored': payment.refund_ignored,
                             'is_partial': payment.is_partial,
                             'is_receiptless': payment.is_receiptless,
-                            'group_name': payment.group.name if payment.group else None
+                            'group_name': obj.group_name or payment.group_name or (payment.group.name if payment.group else None)
                         }
-                except Exception:
-                    pass
+                    else:
+                        # Fallback for deleted students where Payment was hard-deleted by migration 0013
+                        return {
+                            'original_payment_id': payment_id,
+                            'is_verified': obj.is_verified,
+                            'receipt_image': None,
+                            'month': obj.date.strftime('%Y-%m') if obj.date else None,
+                            'payment_method': obj.payment_method,
+                            'payment_method_display': dict(Payment.PAYMENT_METHODS).get(obj.payment_method, "Noma'lum") if obj.payment_method else "Noma'lum",
+                            'refund_amount': 0,
+                            'refund_ignored': False,
+                            'is_partial': False,
+                            'is_receiptless': False,
+                            'group_name': obj.group_name
+                        }
+                except Exception as e:
+                    import traceback
+                    print(f"Exception in get_payment_details ListSerializer: {e}")
+                    traceback.print_exc()
         return None
 
 

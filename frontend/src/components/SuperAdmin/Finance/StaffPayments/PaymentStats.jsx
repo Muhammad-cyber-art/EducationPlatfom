@@ -71,7 +71,7 @@ const PaymentStats = ({
                     </div>
                 </div>
             ) : (
-                <div className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-glass)] shadow-lg">
+                <div className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-[#2a2a2a] shadow-lg">
                     <p className="text-[10px] font-black text-[var(--text-muted)] capitalize tracking-widest mb-1.5">
                         Asosiy Maosh
                     </p>
@@ -83,7 +83,7 @@ const PaymentStats = ({
 
             {/* 2. POTENTIAL REVENUE */}
             {isStudentCountType ? (
-                <div className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-glass)] shadow-lg">
+                <div className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-[#2a2a2a] shadow-lg">
                     <p className="text-[10px] font-black text-[var(--text-muted)] capitalize tracking-widest mb-1.5 flex items-center gap-2">
                         <TrendingUp size={12} className="text-amber-500" /> Tahminiy Tushum
                     </p>
@@ -94,7 +94,7 @@ const PaymentStats = ({
                 </div>
             ) : (
                 (data.bonus > 0 || data.deductions > 0) && (
-                    <div className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-glass)]">
+                    <div className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-[#2a2a2a]">
                         <div className="flex items-center justify-between mb-1.5">
                             <p className="text-[10px] font-black text-[var(--text-muted)] capitalize tracking-widest">Qo'shimcha</p>
                             <div className="flex gap-1">
@@ -122,7 +122,7 @@ const PaymentStats = ({
                 </div>
             ) : (
                 isStudentCountType && (data.bonus > 0 || data.deductions > 0) ? (
-                    <div className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-glass)]">
+                    <div className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-[#2a2a2a]">
                         <div className="flex items-center justify-between mb-1.5">
                             <p className="text-[10px] font-black text-[var(--text-muted)] capitalize tracking-widest">Qo'shimcha</p>
                             <div className="flex gap-1">

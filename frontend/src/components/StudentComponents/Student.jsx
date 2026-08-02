@@ -16,6 +16,7 @@ import StudentEditForm from "./Student/StudentEditForm";
 import StudentDossier from "./Student/StudentDossier";
 import StudentGroupsSection from "./Student/StudentGroupsSection";
 import StudentHistorySection from "./Student/StudentHistorySection";
+import StudentFinanceSection from "./Student/StudentFinanceSection";
 import StudentModals from "./Student/StudentModals";
 import UnenrollSelectModal from "./Student/UnenrollSelectModal";
 import JoinGroupModal from "./Student/Modals/JoinGroupModal";
@@ -171,6 +172,17 @@ export default function StudentProfilePage() {
     });
   }, [studentHistory?.extra_transactions, groups]);
 
+  const ledgerTransactions = useMemo(() => {
+    const historyLedger = studentHistory?.ledger_transactions || [];
+    return historyLedger.map((tx) => {
+      const groupInfo = groups.find((g) => g.id === tx.group);
+      return {
+        ...tx,
+        group_name: groupInfo?.name || "Eski guruh",
+      };
+    });
+  }, [studentHistory?.ledger_transactions, groups]);
+
   // Handlers
   const handleSaveEdit = () => editMutation.mutate(state.editData);
 
@@ -189,18 +201,19 @@ export default function StudentProfilePage() {
       const fullAmount =
         pData?.amount ??
         (studentData?.status === "negotiated" ||
-        studentData?.status === "low_income" ||
-        studentData?.status === "teacher_negotiated"
+          studentData?.status === "low_income" ||
+          studentData?.status === "teacher_negotiated"
           ? studentData?.custom_fee || g?.monthly_price
           : g?.monthly_price);
 
-      const remainingAmount = pData?.is_partial
+      const remainingAmount = (pData?.paid_amount > 0)
         ? (pData?.remaining_amount ??
           Math.max(
             0,
             Number(pData?.amount || 0) - Number(pData?.paid_amount || 0),
           ))
         : null;
+
 
       dispatch({
         type: "TOGGLE_CONFIRM_PAYMENT",
@@ -335,10 +348,12 @@ export default function StudentProfilePage() {
               canConfirmPayment={permissions.canConfirmPayment}
             />
 
-            <StudentHistorySection
+            <StudentFinanceSection
               {...{
+                studentData,
                 payments,
                 extraTransactions,
+                ledgerTransactions,
                 transfers,
                 userRole,
                 handlePaymentConfirm,

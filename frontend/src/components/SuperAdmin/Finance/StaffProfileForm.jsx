@@ -25,7 +25,7 @@ const StaffProfileForm = ({ isOpen, onClose, onSuccess, branch }) => {
 
  return createPortal(
  <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300 overflow-y-auto">
- <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-[var(--bg-void)] border border-[var(--border-glass)] rounded-[2.5rem] shadow-2xl scrollbar-thin scrollbar-track-transparent scrollbar-thumb-[var(--gold)]/20 animate-in zoom-in-95 duration-200">
+ <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-[var(--bg-void)] border border-[#2a2a2a] rounded-[2.5rem] shadow-2xl scrollbar-thin scrollbar-track-transparent scrollbar-thumb-[var(--gold)]/20 animate-in zoom-in-95 duration-200">
  <div className="sticky top-0 z-10 h-1.5 w-full bg-gradient-to-r from-[var(--gold)]/50 via-[var(--gold)] to-[var(--gold)]/50"></div>
 
  <div className="p-4 md:p-5">
@@ -81,7 +81,7 @@ const StaffProfileForm = ({ isOpen, onClose, onSuccess, branch }) => {
  placeholder="8600 **** **** ****"
  maxLength="19"
  disabled={loading}
- className="w-full bg-[var(--bg-panel)] border border-[var(--border-glass)] text-[var(--text-primary)] rounded-xl px-4 py-3.5 text-xs font-bold focus:outline-none focus:border-[var(--gold)]/50 transition-all placeholder:[var(--text-muted)]/50 disabled:opacity-50 shadow-inner tracking-widest font-mono"
+ className="w-full bg-[var(--bg-panel)] border border-[#2a2a2a] text-[var(--text-primary)] rounded-xl px-4 py-3.5 text-xs font-bold focus:outline-none focus:border-[var(--gold)]/50 transition-all placeholder:[var(--text-muted)]/50 disabled:opacity-50 shadow-inner tracking-widest font-mono"
  />
  </div>
 
@@ -102,7 +102,7 @@ const StaffProfileForm = ({ isOpen, onClose, onSuccess, branch }) => {
  type="button"
  onClick={handleClose}
  disabled={loading}
- className="w-full bg-transparent hover:bg-[var(--bg-panel)] text-[var(--text-muted)] hover:text-[var(--text-primary)] font-black text-[9px] capitalize tracking-[0.2em] py-2.5 rounded-xl transition-all border border-transparent hover:border-[var(--border-glass)]"
+ className="w-full bg-transparent hover:bg-[var(--bg-panel)] text-[var(--text-muted)] hover:text-[var(--text-primary)] font-black text-[9px] capitalize tracking-[0.2em] py-2.5 rounded-xl transition-all border border-transparent hover:border-[#2a2a2a]"
  >
  Bekor qilish
  </button>

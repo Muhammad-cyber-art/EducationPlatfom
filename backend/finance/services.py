@@ -132,6 +132,8 @@ def update_attendance_based_payments(student, group, date):
                 date,
                 e,
             )
+    
+    auto_pay_from_wallet(student)
 
 
 def apply_calculated_salary_to_employee_payment(profile, month_date, emp_payment):
@@ -367,18 +369,31 @@ def generate_monthly_payments(month_date=None):
                 payment_amount = calculate_attendance_based_student_payment(
                     student, group, month_date
                 )
+                # TUZATILDI (BUG-STRING-FILTER): Discount student invoicesi uchun
+                # is_auto_discount=True belgilanadi. Bu StudentFinanceProfile.balance
+                # hisobida bu invoiceni qarzga kiritmaslik uchun ishlatiladi.
+                _, created = Payment.objects.get_or_create(
+                    student=student,
+                    group=group,
+                    month=month_date,
+                    defaults={
+                        "amount": payment_amount,
+                        "is_paid": False,
+                        "is_auto_discount": True,
+                    },
+                )
             else:
                 # negotiated, teacher_negotiated, low_income va regular: shartnoma summasi
                 payment_amount = Decimal(str(floor_amount(base_price)))
-
-            _, created = Payment.objects.get_or_create(
-                student=student,
-                group=group,
-                month=month_date,
-                defaults={"amount": payment_amount, "is_paid": False},
-            )
+                _, created = Payment.objects.get_or_create(
+                    student=student,
+                    group=group,
+                    month=month_date,
+                    defaults={"amount": payment_amount, "is_paid": False},
+                )
             if created:
                 created_count += 1
+            auto_pay_from_wallet(student)
 
     # 2. EMPLOYEE PAYMENTS
     profiles = StaffProfile.objects.select_related("user").filter(user__is_active=True)
@@ -447,45 +462,19 @@ def handle_custom_payment(request_user, data):
             branch=branch_instance,
             student=student,
             group=group,
+            student_name=student.full_name if student else None,
+            group_name=group.name if group else None,
             payer_name=final_payer,
             title=title_val,
             description=description,
         )
 
-        # Mentor oyligini qayta hisoblash
+        # Mentor oyligini qayta hisoblash keragi yo'q,
+        # chunki student_extra tranzaksiyalari (qo'shimcha to'lovlar)
+        # mentor oyligiga yoki guruh tushumiga kirmaydi.
         mentor_salary_updated = False
-        try:
-            mentor = group.mentor
-            if mentor and hasattr(mentor, "staff_profile"):
-                profile = mentor.staff_profile
-                if profile.salary_type in ["percentage", "student_count"]:
-                    payment_month = date_val.replace(day=1)
-                    emp_payment = EmployeePayment.objects.filter(
-                        employee=mentor, month=payment_month, is_paid=False
-                    ).first()
 
-                    if emp_payment:
-                        apply_calculated_salary_to_employee_payment(
-                            profile, payment_month, emp_payment
-                        )
-                        emp_payment.save()
-                    else:
-                        emp_payment, _ = EmployeePayment.objects.get_or_create(
-                            employee=mentor,
-                            month=payment_month,
-                            defaults={
-                                "salary_base": Decimal("0"),
-                                "is_paid": False,
-                                "attendance_deductions": {},
-                            },
-                        )
-                        apply_calculated_salary_to_employee_payment(
-                            profile, payment_month, emp_payment
-                        )
-                        emp_payment.save()
-                    mentor_salary_updated = True
-        except Exception as salary_err:
-            logger.error(f"Mentor salary recalculate error: {salary_err}")
+        auto_pay_from_wallet(student)
 
     return ft, mentor_salary_updated
 
@@ -565,15 +554,13 @@ def confirm_student_payment(request_user, payment, data):
         contract_amount = Decimal(str(floor_amount(base_amount)))
 
         if status == "discount":
-            # Discount: faqat davomat asosida (refund yo'q)
-            if payment.amount is None:
-                from finance.utils import calculate_attendance_based_student_payment
-
-                final_amount = calculate_attendance_based_student_payment(
-                    payment.student, payment.group, payment.month
-                )
-            else:
-                final_amount = payment.amount
+            # Discount: HAR DOIM davomat asosida hisoblash.
+            # payment.amount eskiriib qolgan bo'lishi mumkin (masalan, cancel dan keyin
+            # 400,000 ga qaytarilgan). Davomatdan yangi hisob har doim to'g'ri bo'ladi.
+            from finance.utils import calculate_attendance_based_student_payment
+            final_amount = calculate_attendance_based_student_payment(
+                payment.student, payment.group, payment.month
+            )
             payment.refund_amount = Decimal("0")
             payment.refund_ignored = True
         elif status == "negotiated":
@@ -582,11 +569,15 @@ def confirm_student_payment(request_user, payment, data):
             payment.refund_amount = Decimal("0")
             payment.refund_ignored = True
         else:
-            if pay_full_month or ignore_refund:
+            # Agar allaqachon qisman to'lov qilingan bo'lsa (davomiy to'lov), refund qayta hisoblanmaydi
+            is_continuation = payment.paid_amount and payment.paid_amount > 0
+            if pay_full_month or ignore_refund or is_continuation:
                 # To'liq oylik to'lash (ignore refund)
                 final_amount = contract_amount
-                payment.refund_amount = Decimal("0")
-                if ignore_refund:
+                # Agar oldindan refund hisoblangan bo'lmasa, nollaymiz
+                if not is_continuation or payment.refund_amount is None:
+                    payment.refund_amount = Decimal("0")
+                if ignore_refund or is_continuation:
                     payment.refund_ignored = True
             else:
                 # Jarimani aniqlash
@@ -601,23 +592,36 @@ def confirm_student_payment(request_user, payment, data):
                     str(max(Decimal("0"), contract_amount - Decimal(str(refund_val))))
                 )
 
-        # Kutilayotgan oylik summa (qarz)
-        payment.amount = final_amount
+        # MUHIM: payment.amount faqat to'liq to'lash rejimida final_amount ga o'zgartiriladi.
+        # Bo'lib to'lash (is_partial_payment=True) rejimida payment.amount ni O'ZGARTIRMAYMIZ.
+        if not is_partial_payment:
+            payment.amount = final_amount
 
         # Installment hisoblash — faqat oddiy rejimda
         if installment_amount is None:
+            # Amount umuman berilmagan — to'liq qolgan summani to'lash
+            if not is_partial_payment:
+                payment.amount = final_amount
             remaining = payment.remaining_amount
             installment_amount = remaining if remaining > 0 else final_amount
-        elif not is_partial_payment:
-            # To'liq to'lash: qolgan summani yopish
+        elif is_partial_payment:
+            # Bo'lib to'lash: foydalanuvchi kiritgan summani SAQLAYMIZ.
+            # Faqat qolgan qarz (remaining) dan oshmasligi kerak (himoya).
+            remaining = payment.remaining_amount
+            if remaining > 0 and installment_amount > remaining:
+                installment_amount = remaining
+        else:
+            # To'liq to'lash (yoki davomiy to'lovni yakunlash)
             remaining = payment.remaining_amount
             if remaining > 0:
-                installment_amount = remaining
+                # Backend o'zidan o'zi installmentni remaining'ga tenglashtirib yubormasligi kerak.
+                # Agar frontend 200,000 jo'natgan bo'lsa, o'shani olamiz (lekin remaining dan oshmasin)
+                if installment_amount > remaining:
+                    installment_amount = remaining
             else:
-                # BUG #3 FIX: Allaqachon to'liq to'langan — installment 0 bo'lsin.
-                # apply_payment ichidagi himoya (remaining==0 guard) buni to'g'ri
-                # boshqaradi va ikkinchi marta tranzaksiya yozilmaydi.
+                # Allaqachon to'liq to'langan — installment 0 bo'lsin.
                 installment_amount = Decimal("0")
+
 
     # Yangi maydonlarni extract qilamiz
     method = data.get("payment_method", "cash")
@@ -659,6 +663,9 @@ def confirm_student_payment(request_user, payment, data):
         payment.save()
         return payment
 
+    # is_full_amount ni frontend dan to'g'ridan to'g'ri olamiz (yoki fallback sifatida pay_full_month ga qaraymiz)
+    is_full_amount_flag = str(data.get("is_full_amount", pay_full_month and not is_partial_payment)).lower() in ["true", "1", "yes"]
+
     payment.apply_payment(
         request_user,
         installment_amount,
@@ -666,7 +673,7 @@ def confirm_student_payment(request_user, payment, data):
         receipt=receipt,
         notes=notes,
         is_receiptless=is_receiptless,
-        is_full_amount=pay_full_month and not is_partial_payment,
+        is_full_amount=is_full_amount_flag,
         is_custom_amount=is_custom_amount,
     )
 
@@ -697,7 +704,8 @@ def get_finance_dashboard_stats(user, month, year):
     today = timezone.localdate()
     payment_filter = Q(month__month=month, month__year=year)
     employee_filter = Q(month__month=month, month__year=year)
-    transaction_filter = Q(date__month=month, date__year=year)
+    # Tasdiqlanmagan kassa pullari global balansga kirmasligi uchun is_verified=True qo'shildi
+    transaction_filter = Q(date__month=month, date__year=year, is_verified=True)
 
     if user.role == "admin":
         payment_filter &= Q(group__branch=user.branch)
@@ -707,7 +715,7 @@ def get_finance_dashboard_stats(user, month, year):
     total_income = _to_decimal(
         FinanceTransaction.objects.filter(
             transaction_filter, transaction_type="income"
-        ).aggregate(total=Sum("amount"))["total"]
+        ).exclude(category='student_extra').aggregate(total=Sum("amount"))["total"]
     )
     total_expense = _to_decimal(
         FinanceTransaction.objects.filter(
@@ -715,15 +723,33 @@ def get_finance_dashboard_stats(user, month, year):
         ).aggregate(total=Sum("amount"))["total"]
     )
     unpaid_payments = Payment.objects.filter(payment_filter, is_paid=False)
-    total_debt = Decimal("0")
-    for p in unpaid_payments.only("amount", "paid_amount"):
-        total_debt += p.remaining_amount
+    # TUZATILDI (BUG-N1-1): Avval loop ichida har bir payment uchun alohida
+    # remaining_amount property hisoblanardi (N+1 muammo).
+    # Endi bitta aggregate so'rov bilan jami qarz hisoblanadi.
+    #
+    # MUHIM: custom_amount rejimida paid_amount > amount bo'lishi mumkin.
+    # Shuning uchun har bir payment uchun alohida max(0, amount-paid) qo'llanishi kerak.
+    # Greatest(F('amount')-F('paid_amount'), Value(0)) — bu original remaining_amount ga mos.
+    from django.db.models import ExpressionWrapper, DecimalField, Value
+    from django.db.models.functions import Greatest
+    _debt_agg = unpaid_payments.aggregate(
+        total=Sum(Greatest(
+            ExpressionWrapper(
+                F('amount') - F('paid_amount'),
+                output_field=DecimalField(max_digits=15, decimal_places=2)
+            ),
+            Value(Decimal('0'))
+        ))
+    )
+    total_debt = _to_decimal(_debt_agg['total'])
 
     branches_data = []
     if user.role == "super_admin":
         # N+1 muammosini hal qilish: barcha filiallar uchun tranzaksiyalarni bitta so'rovda guruhlab olamiz
         branch_stats_qs = (
-            FinanceTransaction.objects.filter(date__month=month, date__year=year)
+            FinanceTransaction.objects.filter(
+                date__month=month, date__year=year, is_verified=True
+            ).exclude(category='student_extra')
             .values("branch_id", "transaction_type")
             .annotate(total=Sum("amount"))
         )
@@ -768,8 +794,9 @@ def get_finance_dashboard_stats(user, month, year):
     tx_qs = FinanceTransaction.objects.filter(
         date__month=month,
         date__year=year,
-        transaction_type="income"
-    )
+        transaction_type="income",
+        is_verified=True,
+    ).exclude(category='student_extra')
     if user.role == "admin":
         tx_qs = tx_qs.filter(branch=user.branch)
     
@@ -798,13 +825,14 @@ def get_finance_dashboard_stats(user, month, year):
 
     prev_month = month - 1 if month > 1 else 12
     prev_year = year if month > 1 else year - 1
-    prev_tx_filter = Q(date__month=prev_month, date__year=prev_year)
+    # Tasdiqlanmagan kassa pullari global balansga kirmasligi uchun is_verified=True qo'shildi
+    prev_tx_filter = Q(date__month=prev_month, date__year=prev_year, is_verified=True)
     if user.role == "admin":
         prev_tx_filter &= Q(branch=user.branch)
     prev_income = _to_decimal(
         FinanceTransaction.objects.filter(
             prev_tx_filter, transaction_type="income"
-        ).aggregate(total=Sum("amount"))["total"]
+        ).exclude(category='student_extra').aggregate(total=Sum("amount"))["total"]
     )
     prev_expense = _to_decimal(
         FinanceTransaction.objects.filter(
@@ -945,8 +973,9 @@ def get_branch_finance_stats(branch_id, month, year):
             branch=branch,
             date__month=month,
             date__year=year,
-            transaction_type="income"
-        ).values("group_id").annotate(total=Sum("amount"))
+            transaction_type="income",
+            is_verified=True,
+        ).exclude(category='student_extra').values("group_id").annotate(total=Sum("amount"))
         for row in tx_income_qs:
             if row["group_id"]:
                 group_transaction_income[row["group_id"]] = _to_decimal(row["total"])
@@ -1058,6 +1087,7 @@ def get_branch_finance_stats(branch_id, month, year):
                 date__month=month,
                 date__year=year,
                 transaction_type="income",
+                is_verified=True,
             ).aggregate(total=Sum("amount"))["total"]
         )
 
@@ -1067,6 +1097,7 @@ def get_branch_finance_stats(branch_id, month, year):
                 date__month=month,
                 date__year=year,
                 transaction_type="expense",
+                is_verified=True,
             ).aggregate(total=Sum("amount"))["total"]
         )
 
@@ -1189,10 +1220,11 @@ def get_monthly_branch_trends(user, end_month, end_year, months_back=6):
     end_day = calendar.monthrange(end_year_last, end_month_last)[1]
     end_date = date(end_year_last, end_month_last, end_day)
 
+    # KASSA LOGIKASI: trend grafigi uchun ham faqat tasdiqlangan tranzaksiyalar
     tx_qs = FinanceTransaction.objects.filter(
-        branch_id__in=branch_ids, date__gte=start_date, date__lte=end_date
-    )
-
+        branch_id__in=branch_ids, date__gte=start_date, date__lte=end_date,
+        is_verified=True,
+    ).exclude(category='student_extra')
     aggregated = tx_qs.values(
         "branch_id", "date__year", "date__month", "transaction_type"
     ).annotate(total=Sum("amount"))
@@ -1227,3 +1259,86 @@ def get_monthly_branch_trends(user, end_month, end_year, months_back=6):
         month_payload.append({"month": month_label, "branches": branch_stats})
 
     return {"months": month_payload, "branches": branch_rows}
+
+
+def auto_pay_from_wallet(student):
+    """
+    (O'CHIRILGAN) Qo'shimcha to'lov va balansdan avtomatik qirqib olish logikasi to'xtatildi.
+    Bu funksiya atayin bo'sh qoldirildi, to systemni buzmaslik uchun.
+    """
+    return
+    from django.utils import timezone
+    from django.db.models import Sum, F
+    from finance.models import FinanceTransaction, Payment
+
+    extra_balance = FinanceTransaction.objects.filter(
+        student=student,
+        category="student_extra",
+        status="completed",
+        record_type__in=["payment", "reversal"]
+    ).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+
+    if extra_balance <= Decimal("0"):
+        return
+
+    unpaid_payments = Payment.objects.filter(
+        student=student,
+        is_paid=False,
+        amount__gt=F("paid_amount")
+    ).order_by("created_at")
+
+    if not unpaid_payments.exists():
+        return
+
+    with transaction.atomic():
+        for payment in unpaid_payments:
+            if extra_balance <= Decimal("0"):
+                break
+
+            remaining = payment.amount - payment.paid_amount
+            to_pay = min(extra_balance, remaining)
+
+            if to_pay <= Decimal("0"):
+                continue
+
+            real_tx = FinanceTransaction.objects.create(
+                transaction_type="income",
+                category="student_fee",
+                status="completed",
+                record_type="payment",
+                amount=to_pay,
+                date=timezone.now().date(),
+                student=student,
+                group=payment.group,
+                student_name=student.full_name if student else None,
+                group_name=payment.group.name if payment.group else None,
+                branch=student.branch or payment.group.branch,
+                title=f"Avtomatik to'lov (Hamyondan): {student.full_name}",
+                description=f"Hamyondagi mablag'dan {payment.month.strftime('%B %Y')} oyi uchun yechib olindi.",
+                is_verified=True,
+            )
+
+            FinanceTransaction.objects.create(
+                transaction_type="income",
+                category="student_extra",
+                status="completed",
+                record_type="payment",
+                amount=-to_pay,
+                date=timezone.now().date(),
+                student=student,
+                group=None,
+                student_name=student.full_name if student else None,
+                group_name=None,
+                branch=student.branch or payment.group.branch,
+                title=f"Hamyondan yechildi: {student.full_name}",
+                description=f"To'lov ({payment.month.strftime('%B %Y')}) uchun hamyondan qirqib olindi.",
+                is_verified=True,
+            )
+
+            payment.paid_amount += to_pay
+            if payment.paid_amount >= payment.amount:
+                payment.is_paid = True
+                payment.paid_at = timezone.now()
+            payment.save(update_fields=["paid_amount", "is_paid", "paid_at"])
+
+            extra_balance -= to_pay

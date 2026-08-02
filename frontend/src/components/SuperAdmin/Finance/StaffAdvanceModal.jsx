@@ -25,7 +25,7 @@ const StaffAdvanceModal = ({ isOpen, onClose, staffName, onConfirm }) => {
 
  return createPortal(
  <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
- <div className="bg-[var(--bg-void)] border border-[var(--border-glass)] rounded-[2.5rem] w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+ <div className="bg-[var(--bg-void)] border border-[#2a2a2a] rounded-[2.5rem] w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
 
  <div className="sticky top-0 z-10 h-1 w-full bg-gradient-to-r from-amber-500/50 via-amber-500 to-amber-500/50"></div>
 
@@ -59,7 +59,7 @@ const StaffAdvanceModal = ({ isOpen, onClose, staffName, onConfirm }) => {
  value={amount}
  onChange={(e) => setAmount(e.target.value)}
  placeholder="0"
- className="w-full bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-2xl py-3.5 pl-12 pr-4 text-[var(--text-primary)] focus:outline-none focus:border-amber-500/50 transition-all font-black text-lg shadow-inner"
+ className="w-full bg-[var(--bg-panel)] border border-[#2a2a2a] rounded-2xl py-3.5 pl-12 pr-4 text-[var(--text-primary)] focus:outline-none focus:border-amber-500/50 transition-all font-black text-lg shadow-inner"
  />
  </div>
  </div>
@@ -75,7 +75,7 @@ const StaffAdvanceModal = ({ isOpen, onClose, staffName, onConfirm }) => {
  onChange={(e) => setDescription(e.target.value)}
  placeholder="Sabab yoki qo'shimcha ma'lumot..."
  rows="3"
- className="w-full bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-2xl py-3.5 pl-12 pr-4 text-[var(--text-primary)] focus:outline-none focus:border-amber-500/50 transition-all font-medium text-sm shadow-inner resize-none"
+ className="w-full bg-[var(--bg-panel)] border border-[#2a2a2a] rounded-2xl py-3.5 pl-12 pr-4 text-[var(--text-primary)] focus:outline-none focus:border-amber-500/50 transition-all font-medium text-sm shadow-inner resize-none"
  />
  </div>
  </div>

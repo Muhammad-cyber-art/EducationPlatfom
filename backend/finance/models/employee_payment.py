@@ -851,21 +851,9 @@ class StaffProfile(models.Model):
             key = (p.student_id, p.group_id)
             payment_map[key] = p
 
-        # Student extra tranzaksiyalarini olamiz (optimizatsiya)
+        # Student extra tranzaksiyalarini endi mentor salary yoki guruh daromadi uchun 
+        # hisobga olmaymiz. Qo'shimcha to'lov (student_extra) faqat o'quvchi balansiga ta'sir qiladi.
         extra_map = {}
-        extra_qs = FinanceTransaction.objects.filter(
-            category="student_extra",
-            date__year=month.year,
-            date__month=month.month,
-            group_id__in=mentor_group_ids,
-        ).values("student_id", "group_id", "transaction_type", "amount")
-        for tx in extra_qs:
-            key = (tx["student_id"], tx["group_id"])
-            amt = Decimal(str(tx["amount"] or 0))
-            if tx["transaction_type"] == "income":
-                extra_map[key] = extra_map.get(key, Decimal("0")) + amt
-            else:
-                extra_map[key] = extra_map.get(key, Decimal("0")) - amt
 
         # === OPTIMIZATSIYA: lesson_dates, attendance, enrollment cache'larni bir marta qurish ===
         lesson_dates_cache = {}

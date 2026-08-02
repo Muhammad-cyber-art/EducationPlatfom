@@ -122,9 +122,9 @@ const UtilityPayments = () => {
  </div>
 
  {/* HEADER SECTION */}
- <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8 pb-6 border-b border-[var(--border-glass)]">
+ <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8 pb-6 border-b border-[#2a2a2a]">
  <div className="flex items-center gap-6">
- <button onClick={() => navigate(-1)} className="p-3 bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-xl text-[var(--gold)] hover:scale-110 transition-all shadow-inner">
+ <button onClick={() => navigate(-1)} className="p-3 bg-[var(--bg-panel)] border border-[#2a2a2a] rounded-xl text-[var(--gold)] hover:scale-110 transition-all shadow-inner">
  <ArrowLeft size={20} />
  </button>
  <div>
@@ -174,7 +174,7 @@ const UtilityPayments = () => {
  </div>
  </div>
 
- <div className="flex items-center justify-between md:justify-end w-full md:w-auto md:gap-16 border-t md:border-t-0 border-[var(--border-glass)] pt-5 md:pt-0">
+ <div className="flex items-center justify-between md:justify-end w-full md:w-auto md:gap-16 border-t md:border-t-0 border-[#2a2a2a] pt-5 md:pt-0">
  <div className="text-left md:text-right">
  <div className="flex items-center gap-2 md:justify-end text-[var(--gold)] opacity-40 mb-1">
  <MapPin size={10} />

@@ -183,23 +183,38 @@ def transfer_student_to_group(student, new_group_id, request_user, reason, from_
             new_enrollment.is_active = True
             new_enrollment.save()
 
-        # 2. To'lovni ko'chirish
-        old_payment = Payment.objects.filter(
-            student=student,
-            group=old_group,
-            month=current_month_start
-        ).first()
+        # 2. To'lovni hisoblash (Prorated)
+        old_lesson_dates = old_group.get_lesson_dates(current_month_start.year, current_month_start.month)
+        new_lesson_dates = new_group.get_lesson_dates(current_month_start.year, current_month_start.month)
+        
+        passed_old_lessons = [d for d in old_lesson_dates if d <= today]
+        remaining_new_lessons = [d for d in new_lesson_dates if d > today]
+        
+        if student.status == 'discount':
+            from finance.utils import calculate_attendance_based_student_payment
+            old_amount = calculate_attendance_based_student_payment(student, old_group, current_month_start)
+            new_amount = calculate_attendance_based_student_payment(student, new_group, current_month_start)
+        else:
+            old_daily = Decimal(str(old_group_fee)) / Decimal(str(max(1, len(old_lesson_dates))))
+            old_amount = floor_amount(old_daily * len(passed_old_lessons))
+            
+            new_daily = Decimal(str(new_group_fee)) / Decimal(str(max(1, len(new_lesson_dates))))
+            new_amount = floor_amount(new_daily * len(remaining_new_lessons))
 
-        existing_new = Payment.objects.filter(
-            student=student, group=new_group, month=current_month_start
-        ).first()
-
+        # Update Old Payment
+        old_payment = Payment.objects.filter(student=student, group=old_group, month=current_month_start).first()
+        excess_paid = Decimal("0")
+        
         if old_payment:
-            if not existing_new:
-                old_payment.group = new_group
-                old_payment.amount = new_group_fee
-                
-                if old_payment.paid_amount >= new_group_fee:
+            if old_payment.paid_amount > old_amount:
+                excess_paid = old_payment.paid_amount - old_amount
+                old_payment.paid_amount = old_amount
+                old_payment.amount = old_amount
+                old_payment.is_paid = True
+                old_payment.is_partial = False
+            else:
+                old_payment.amount = old_amount
+                if old_payment.paid_amount >= old_amount and old_amount > 0:
                     old_payment.is_paid = True
                     old_payment.is_partial = False
                 elif old_payment.paid_amount > 0:
@@ -209,82 +224,47 @@ def transfer_student_to_group(student, new_group_id, request_user, reason, from_
                     old_payment.is_paid = False
                     old_payment.is_partial = False
                     
-                old_payment.save()
-            else:
-                # Yangi guruh uchun to'lov mavjud bo'lsa
-                if old_payment.paid_amount > 0:
-                    existing_new.paid_amount += old_payment.paid_amount
-                    if old_payment.paid_at and (not existing_new.paid_at or old_payment.paid_at > existing_new.paid_at):
-                        existing_new.paid_at = old_payment.paid_at
-                        existing_new.marked_by = old_payment.marked_by
-                
-                existing_new.amount = new_group_fee
-                
-                if existing_new.paid_amount >= new_group_fee:
-                    existing_new.is_paid = True
-                    existing_new.is_partial = False
-                elif existing_new.paid_amount > 0:
-                    existing_new.is_paid = False
-                    existing_new.is_partial = True
-                else:
-                    existing_new.is_paid = False
-                    existing_new.is_partial = False
-                
-                existing_new.save()
-                old_payment.delete()
+            old_payment.save()
         else:
-            p_obj, p_created = Payment.objects.get_or_create(
-                student=student,
-                group=new_group,
-                month=current_month_start,
-                defaults={'amount': new_group_fee, 'is_paid': False}
-            )
-            if not p_created and not p_obj.is_paid:
-                p_obj.amount = new_group_fee
-                p_obj.save()
+            if old_amount > 0:
+                Payment.objects.create(
+                    student=student, group=old_group, month=current_month_start,
+                    amount=old_amount, is_paid=False, is_partial=False
+                )
 
-        # 3. Davomat (Attendance) records'ni yangilash:
-        # BUG #3 FIX: Faqat JORIY OY davomati ko'chiriladi.
-        # Avval barcha davomat filter(student, old_group) bilan ko'chirilardi —
-        # o'tgan oylar davomati ham yangi guruhga o'tar, tarixiy hisobotlar buzilardi.
-        Attendance.objects.filter(
-            student=student,
-            group=old_group,
-            date__year=current_month_start.year,
-            date__month=current_month_start.month,
-        ).update(group=new_group)
-
-        # 3a. 'discount' (davomatga asosli) o'quvchi uchun to'lovni qayta hisoblash.
-        # Davomat yangi guruhga o'tkazilgandan KEYIN chaqiriladi, chunki
-        # calculate_attendance_based_student_payment yangi guruh davomatiga qaraydi.
-        if student.status == 'discount':
-            from finance.utils import calculate_attendance_based_student_payment
-            recalculated_amount = calculate_attendance_based_student_payment(
-                student, new_group, current_month_start
-            )
-            # Ko'chirilgan (yoki yangi yaratilgan) to'lovni yangilash
-            updated_payment = Payment.objects.filter(
-                student=student, group=new_group, month=current_month_start
-            ).first()
-            if updated_payment and not updated_payment.is_paid:
-                updated_payment.amount = recalculated_amount
-                updated_payment.save()
-            logger.debug(
-                f"[Transfer] discount student {student.full_name} "
-                f"uchun to'lov qayta hisoblandi: {recalculated_amount}"
-            )
-
-        # 4. HomeworkSubmission va MockTestResult: Ular Homework/MockTest bilan bog'langan, ular esa o'z guruhlari bilan qoladi
-        #    (chunki ular o'tgan darslar uchun, guruh o'zgarganda esa bu tarixiy ma'lumotlar saqlanishi kerak)
+        # Update New Payment
+        existing_new = Payment.objects.filter(student=student, group=new_group, month=current_month_start).first()
         
-        # 5. FinanceTransaction'larni yangi guruhga o'tkazish
-        from finance.models import FinanceTransaction
-        FinanceTransaction.objects.filter(
-            student=student, 
-            group=old_group,
-            date__year=current_month_start.year,
-            date__month=current_month_start.month
-        ).update(group=new_group)
+        if existing_new:
+            existing_new.amount = new_amount
+            existing_new.paid_amount += excess_paid
+            if existing_new.paid_amount >= new_amount and new_amount > 0:
+                existing_new.is_paid = True
+                existing_new.is_partial = False
+            elif existing_new.paid_amount > 0:
+                existing_new.is_paid = False
+                existing_new.is_partial = True
+            else:
+                existing_new.is_paid = False
+                existing_new.is_partial = False
+            existing_new.save()
+        else:
+            p_obj = Payment(
+                student=student, group=new_group, month=current_month_start,
+                amount=new_amount, paid_amount=excess_paid
+            )
+            if p_obj.paid_amount >= new_amount and new_amount > 0:
+                p_obj.is_paid = True
+                p_obj.is_partial = False
+            elif p_obj.paid_amount > 0:
+                p_obj.is_paid = False
+                p_obj.is_partial = True
+            else:
+                p_obj.is_paid = False
+                p_obj.is_partial = False
+            p_obj.save()
+
+        # 3. Davomat, Uy vazifalari va Tranzaksiyalar o'z guruhida qoladi (Tarix saqlanishi uchun)
         
         # 6. Transfer log
         GroupTransfer.objects.create(

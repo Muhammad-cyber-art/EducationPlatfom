@@ -150,11 +150,243 @@ class StudentPaymentViewSet(viewsets.ModelViewSet):
         updated_instance = serializer.save()
         
         if old_is_paid and updated_instance.is_paid and old_amount != updated_instance.amount:
-            related_id = f"STP-{updated_instance.id}"
-            FinanceTransaction.objects.filter(related_id=related_id).update(
-                amount=updated_instance.amount,
-                description=f"Tahrirlandi: {updated_instance.student.full_name} to'lovi ({updated_instance.month})"
+            # BUG-3 FIX: related_id format "STP-{id}-INS-{uuid}" bo'ladi,
+            # shuning uchun exact match o'rniga startswith filter ishlatiladi.
+            related_id_prefix = f"STP-{updated_instance.id}-INS-"
+            _student_name = (
+                updated_instance.student_full_name
+                or (updated_instance.student.full_name if updated_instance.student else "Noma'lum o'quvchi")
             )
+            # Tahrirlashda aslida yangi reversal yaratib yangi payment qilish Ledger tamoyiliga to'g'ri keladi,
+            # Ammo hozircha update qilish logikasini update qilib qoldiramiz yoki qisman to'g'rilaymiz.
+            # Lekin user so'roviga asosan bu yerda ham bekor qilish bo'lishi kerak. Biz hozir amountni shunchaki o'zgartirib qo'yyapmiz.
+            FinanceTransaction.objects.filter(
+                related_id__startswith=related_id_prefix,
+                status='completed'
+            ).update(
+                amount=updated_instance.amount,
+                description=f"Tahrirlandi: {_student_name} to'lovi ({updated_instance.month})"
+            )
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        To'lovni bekor qilish.
+
+        LEDGER TAMOYILI:
+        - Original income tranzaksiyasi 'cancelled' ga o'tkaziladi.
+        - Reversal tranzaksiyasi XUDDI SHU 'income' kategoriyasida,
+          LEKIN MANFIY summa bilan yoziladi.
+        - Bu 'total_paid_all_time' (income yig'indisi) dan avtomatik ayiriladi
+          va balans to'g'ri hisob qiladi.
+        - Payment.amount SAQLANIB QOLADI (tarix uchun), lekin paid_amount=0 va
+          is_paid=False bo'ladi, shu sababli balance hisobida 'total_billed'
+          ushbu bekor qilingan invoice'ni hisobga olmaydi.
+        """
+        from django.db import transaction as db_transaction
+        from django.utils import timezone
+        import uuid
+
+        payment = self.get_object()
+
+        # Super admin tasdiqlagan to'lovni HECH KIM o'chira olmaydi
+        if payment.is_verified:
+            return Response(
+                {"detail": "Super admin tomonidan tasdiqlangan to'lovni o'chirib bo'lmaydi."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        related_id_prefix = f"STP-{payment.id}-INS-"
+        transactions = FinanceTransaction.objects.filter(
+            related_id__startswith=related_id_prefix,
+            status='completed'
+        )
+
+        with db_transaction.atomic():
+            for tx in transactions:
+                # 1. Original tranzaksiyani 'cancelled' qilish
+                tx.status = 'cancelled'
+                tx.cancelled_by = request.user
+                tx.cancelled_at = timezone.now()
+                tx.save(update_fields=['status', 'cancelled_by', 'cancelled_at'])
+
+                # 2. Reversal yozish: XUDDI income kategoriyasida, MANFIY summa bilan.
+                #    total_paid_all_time faqat income tranzaksiyalarni yig'adi,
+                #    shu sababli manfiy income reversal avtomatik ayiriladi.
+                #    KASSA LOGIKASI: Reversal ning is_verified holati original tx ga mos bo'lishi kerak.
+                #    Original tasdiqlangan bo'lsa → reversal ham tasdiqlangan (balansdan ayiriladi).
+                #    Original hali tasdiqlanmagan bo'lsa → reversal ham tasdiqlanmagan.
+                FinanceTransaction.objects.create(
+                    transaction_type='income',          # income — balance hisobi uchun muhim!
+                    category=tx.category,
+                    status='completed',
+                    record_type='reversal',
+                    related_transaction=tx,
+                    amount=-abs(tx.amount),             # Manfiy: to'langan summa ayiriladi
+                    date=timezone.now().date(),
+                    student=tx.student,
+                    group=tx.group,
+                    student_name=tx.student_name,
+                    group_name=tx.group_name,
+                    branch=tx.branch,
+                    marked_by=request.user,
+                    title=f"Bekor qilindi: {tx.title}",
+                    description=f"Original tranzaksiya bekor qilindi. {tx.description}",
+                    related_id=f"REV-{tx.id}-{uuid.uuid4().hex[:8]}",
+                    is_verified=tx.is_verified,
+                    verified_by=tx.verified_by,
+                    verified_at=tx.verified_at,
+                )
+
+            # 3. Invoice'ni reset qilish (o'chirmaymiz — tarix saqlanib qolsin)
+            # TUZATILDI (BUG-DESTROY-1): payment.student SET_NULL tufayli None bo'lishi mumkin.
+            # Avvalgi kodda payment.student.status → AttributeError → server 500 xatosi.
+            # Endi student None bo'lsa snapshot (payment.amount) yoki group narxidan foydalanamiz.
+            _student = payment.student
+            _group = payment.group
+
+            if _student is not None and _student.status == "discount":
+                from finance.utils import calculate_attendance_based_student_payment, normalize_month
+                base_amount = calculate_attendance_based_student_payment(
+                    _student, _group,
+                    normalize_month(payment.month)
+                )
+            elif _student is not None and _student.status in ["low_income", "negotiated", "teacher_negotiated"]:
+                base_amount = (
+                    _student.custom_fee
+                    if _student.custom_fee is not None
+                    else (_group.monthly_price if _group else payment.amount or 0)
+                )
+            elif _student is None:
+                # Student o'chirilgan — snapshot yoki group narxidan foydalanamiz
+                base_amount = (
+                    _group.monthly_price if _group else payment.amount or 0
+                )
+            else:
+                base_amount = _group.monthly_price if _group else payment.amount or 0
+
+            payment.amount = base_amount
+            payment.refund_amount = 0
+            payment.refund_ignored = False
+            payment.paid_amount = 0
+            payment.is_paid = False
+            payment.is_partial = False
+            payment.save(update_fields=['paid_amount', 'is_paid', 'is_partial', 'amount', 'refund_amount', 'refund_ignored'])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+    @action(detail=False, methods=['get'], url_path='pending')
+    def pending(self, request):
+        """
+        Kassada tasdiq kutayotgan to'lovlar ro'yxati (Super Admin uchun).
+        """
+        if request.user.role != 'super_admin':
+            return Response({"detail": "Faqat super admin ko'ra oladi"}, status=status.HTTP_403_FORBIDDEN)
+        
+        # is_verified=False va qandaydir to'lov qilingan bo'lishi kerak
+        qs = self.get_queryset().filter(
+            is_verified=False
+        ).filter(
+            Q(is_paid=True) | Q(paid_amount__gt=0)
+        ).order_by('-paid_at')
+        
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+            
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+
+    @action(detail=True, methods=['post'], url_path='refund-money')
+    def refund_money(self, request, pk=None):
+        """
+        O'quvchiga pulni haqiqatda qaytarish (Refund).
+        Balansni manfiy summa bilan kamaytiradi.
+
+        TUZATILDI (BUG-REFUND-1):
+        - is_verified=True qo'shildi: refund real pul chiqimi bo'lib, darhol
+          global balansga va StudentFinanceProfile.total_refunded ga aks etishi kerak.
+          Ilgari is_verified=False qoldirilgan, shuning uchun refund balansda
+          ko'rinmasdi va o'quvchi qarzi noto'g'ri ko'rsatilardi.
+        - payment.student / payment.group None bo'lsa himoya qo'shildi.
+        """
+        from django.db import transaction as db_transaction
+        from django.utils import timezone
+        from decimal import Decimal
+        import uuid
+        
+        payment = self.get_object()
+        refund_amount = Decimal(str(request.data.get('amount', '0')))
+        
+        if refund_amount <= 0:
+            return Response({"detail": "Refund summasi 0 dan katta bo'lishi kerak."}, status=400)
+            
+        if payment.paid_amount < refund_amount:
+            return Response({"detail": "Refund summasi to'langan summadan oshmasligi kerak."}, status=400)
+
+        # MUHIM: Branch tekshiruvi atomic blokdan OLDIN bajariladi.
+        # Aks holda: payment.save() atomic blok ichida bajariladi, keyin branch
+        # topilmasa return Response(400) chiqariladi — lekin bu rollback QILMAYDI!
+        # Django atomic() faqat exception ko'tarilganda rollback qiladi.
+        _student = payment.student
+        _group = payment.group
+        _branch = (
+            (_group.branch if _group else None)
+            or (_student.branch if _student else None)
+        )
+        if _branch is None:
+            logger.error(
+                "refund_money: branch aniqlanmadi, payment_id=%s", payment.id
+            )
+            return Response(
+                {"detail": "Filial aniqlanmadi, refund bajarib bo'lmadi."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        _title = (
+            f"Refund: {_student.full_name}"
+            if _student
+            else "Refund: " + (payment.student_full_name or "Noma'lum o'quvchi")
+        )
+
+        with db_transaction.atomic():
+            payment.paid_amount -= refund_amount
+            if payment.paid_amount <= 0:
+                payment.paid_amount = 0
+                payment.is_paid = False
+                payment.is_partial = False
+            else:
+                payment.is_paid = False
+                payment.is_partial = True
+            payment.save()
+
+            now = timezone.now()
+            # TUZATILDI (BUG-REFUND-1): is_verified=True — refund real pul chiqimi,
+            # darhol global balansga aks etishi kerak.
+            # total_refunded() faqat is_verified=True larni hisoblaydi.
+            FinanceTransaction.objects.create(
+                transaction_type='expense',
+                category='refund',
+                status='completed',
+                record_type='refund',
+                amount=-refund_amount,  # Manfiy summa
+                date=now.date(),
+                student=_student,
+                group=_group,
+                student_name=payment.student_full_name or (_student.full_name if _student else None),
+                group_name=payment.group_name or (_group.name if _group else None),
+                branch=_branch,
+                marked_by=request.user,
+                title=_title,
+                description=f"Pul qaytarildi. Sabab: {request.data.get('reason', '')}",
+                related_id=f"STP-{payment.id}-REFUND-{uuid.uuid4().hex[:8]}",
+                is_verified=True,
+                verified_by=request.user,
+                verified_at=now,
+            )
+            
+        return Response({"status": "success", "message": "Pul muvaffaqiyatli qaytarildi."})
 
 
     @action(detail=False, methods=['post'], url_path='custom-payment')
@@ -173,7 +405,10 @@ class StudentPaymentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='confirm')
     def confirm(self, request, pk=None):
         payment = self.get_object()
-        if payment.is_paid:
+        # BUG-12 FIX: Agar custom_amount (qo'shimcha to'lov) bo'lsa, to'liq
+        # to'langan bo'lsa ham qabul qilinadi.
+        is_custom = str(request.data.get('is_custom_amount', 'false')).lower() in ['true', '1', 'yes']
+        if payment.is_paid and not is_custom:
             return Response({"detail": "Ushbu to'lov allaqachon to'liq amalga oshirilgan"}, status=400)
 
         try:
@@ -195,36 +430,142 @@ class StudentPaymentViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='verify')
     def verify(self, request, pk=None):
-        payment = self.get_object()
-        if not payment.is_paid:
-            return Response({"detail": "Faqat to'langan to'lovlarni tasdiqlash mumkin"}, status=400)
-        
+        """
+        Kassa tasdiqlash: Super Admin o'quvchi to'lovini tasdiqlaydi.
+        """
+        from django.db import transaction as db_transaction
+        from .services import apply_calculated_salary_to_employee_payment
+        from django.http import Http404
+        from finance.models import FinanceTransaction, EmployeePayment
+
         if request.user.role != 'super_admin':
             return Response({"detail": "Faqat super admin tasdiqlay oladi"}, status=403)
-            
-        payment.is_verified = True
-        payment.verified_by = request.user
-        payment.verified_at = timezone.now()
-        payment.save()
-        
+
+        payment = None
+        try:
+            payment = self.get_object()
+        except Http404:
+            pass
+
+        related_id_prefix = f"STP-{pk}-INS-"
+        ft = FinanceTransaction.objects.filter(related_id__startswith=related_id_prefix, status='completed').first()
+
+        if not payment and not ft:
+            return Response(
+                {"detail": "To'lov topilmadi yoki tranzaksiya mavjud emas."},
+                status=404
+            )
+
+        if payment:
+            if not payment.is_paid and payment.paid_amount <= 0:
+                return Response(
+                    {"detail": "To'lov hali amalga oshirilmagan — tasdiqlab bo'lmaydi."},
+                    status=400
+                )
+            if payment.is_verified:
+                return Response(
+                    {"detail": "Bu to'lov allaqachon tasdiqlangan."},
+                    status=400
+                )
+        else:
+            if ft and ft.is_verified:
+                return Response(
+                    {"detail": "Bu to'lov allaqachon tasdiqlangan."},
+                    status=400
+                )
+
+        with db_transaction.atomic():
+            now = timezone.now()
+
+            # 1. Payment darajasida tasdiqlash (agar mavjud bo'lsa)
+            if payment:
+                payment.is_verified = True
+                payment.verified_by = request.user
+                payment.verified_at = now
+                payment.save(update_fields=['is_verified', 'verified_by', 'verified_at'])
+
+            # 2. Barcha bog'liq tranzaksiyalarni tasdiqlash → global balansga tushadi
+            updated_count = FinanceTransaction.objects.filter(
+                related_id__startswith=related_id_prefix,
+                status='completed',
+                is_verified=False,
+            ).update(
+                is_verified=True,
+                verified_by=request.user,
+                verified_at=now,
+            )
+
+            # 3. Mentor maoshini real-time qayta hisoblash (tasdiqdan keyin)
+            mentor_updated = False
+            try:
+                group = payment.group if payment else (ft.group if ft else None)
+                mentor = group.mentor if group else None
+                if mentor and hasattr(mentor, 'staff_profile'):
+                    profile = mentor.staff_profile
+                    if profile.salary_type in ['percentage', 'student_count']:
+                        raw_month = payment.month if payment else (ft.date if ft else None)
+                        payment_month = raw_month.replace(day=1) if raw_month else None
+                        if payment_month:
+                            emp_payment = EmployeePayment.objects.filter(
+                                employee=mentor,
+                                month=payment_month,
+                                is_paid=False
+                            ).first()
+                            if emp_payment:
+                                apply_calculated_salary_to_employee_payment(
+                                    profile, payment_month, emp_payment
+                                )
+                                emp_payment.save()
+                                mentor_updated = True
+            except Exception as mentor_err:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Verify: mentor salary recalculate error: {mentor_err}")
+
+            # update in ArchivedStudent if applicable
+            if not payment:
+                from archivebase.models import ArchivedStudent
+                archives = ArchivedStudent.objects.all()
+                for arch in archives:
+                    if arch.metadata and 'payments' in arch.metadata:
+                        updated = False
+                        for p in arch.metadata['payments']:
+                            if p.get('id') == int(pk):
+                                p['is_verified'] = True
+                                updated = True
+                        if updated:
+                            arch.save(update_fields=['metadata'])
+
         return Response({
             "status": "success",
-            "message": "To'lov muvaffaqiyatli tasdiqlandi (imzo qo'yildi)",
-            "data": PaymentSerializer(payment).data
+            "message": (
+                f"To'lov muvaffaqiyatli tasdiqlandi. "
+                f"{updated_count} ta tranzaksiya global balansga qo'shildi."
+            ),
+            "transactions_verified": updated_count,
+            "mentor_salary_updated": mentor_updated,
+            "data": PaymentSerializer(payment).data if payment else {"original_payment_id": pk, "is_verified": True}
         })
 
     @action(detail=False, methods=['get'], url_path='student-history/(?P<student_id>[^/.]+)')
     def student_history(self, request, student_id=None):
-        student = get_object_or_404(Student, id=student_id)
+        # BUG-9 FIX: Admin o'ziga tegishli bo'lmagan filialdagi o'quvchining
+        # moliya tarixini ko'rolmasligini ta'minlash.
+        if request.user.role == 'admin' and request.user.branch_id:
+            student = get_object_or_404(Student, id=student_id, branch_id=request.user.branch_id)
+        else:
+            student = get_object_or_404(Student, id=student_id)
         payments = Payment.objects.filter(student=student).order_by('-month')
         extras = FinanceTransaction.objects.filter(student=student, category='student_extra').order_by('-date')
         refunds = FinanceTransaction.objects.filter(student=student, category='refund').order_by('-date')
+        ledger = FinanceTransaction.objects.filter(student=student).order_by('-date', '-created_at')
         
         return Response({
             "student": {"id": student.id, "name": student.full_name},
             "monthly_payments": PaymentSerializer(payments, many=True).data,
             "extra_transactions": FinanceTransactionSerializer(extras, many=True).data,
-            "refunds": FinanceTransactionSerializer(refunds, many=True).data
+            "refunds": FinanceTransactionSerializer(refunds, many=True).data,
+            "ledger_transactions": FinanceTransactionSerializer(ledger, many=True).data
         })
 
 class EmployeePaymentViewSet(viewsets.ModelViewSet):
@@ -600,28 +941,36 @@ class StaffProfileViewSet(viewsets.ModelViewSet):
 
 class FinanceTransactionViewSet(viewsets.ModelViewSet):
     """Markaziy moliya daftari (Ledger)"""
-    queryset = FinanceTransaction.objects.select_related('marked_by', 'branch').all()
+    queryset = FinanceTransaction.objects.select_related(
+        'marked_by', 'branch', 'cancelled_by', 'student', 'group'
+    ).all()
     serializer_class = FinanceTransactionSerializer
     permission_classes = [IsAuthenticated, HasModulePermission]
     module_name = 'finance'
     pagination_class = StandardResultsSetPagination
-    
+
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = {
         'transaction_type': ['exact'],
         'category': ['exact'],
         'branch': ['exact'],
+        'status': ['exact'],           # NEW: cancelled / completed filter
+        'record_type': ['exact'],      # NEW: payment / reversal / refund filter
         'date': ['exact', 'gte', 'lte']
     }
     search_fields = ['title', 'description', 'payer_name']
 
     def get_queryset(self):
         # Moliya bo'limiga faqat super_admin kira oladi, shuning uchun barcha filiallarni ko'radi
-        return self.queryset
+        qs = self.queryset
+        if self.request.query_params.get('exclude_reversals') == 'true':
+            qs = qs.exclude(record_type='reversal')
+        return qs
 
     def perform_create(self, serializer):
         branch = serializer.validated_data.get('branch') or self.request.user.branch
         serializer.save(marked_by=self.request.user, branch=branch)
+
 
 class EmployeeAdvanceViewSet(viewsets.ModelViewSet):
     """Xodimlar uchun avanslar"""
@@ -660,6 +1009,7 @@ class FinanceDashboardView(APIView):
                 "total_expense": 0.0,
                 "net_profit": 0.0,
                 "total_debt": 0.0,
+                "pending_income": 0.0,
                 "total_attendance_refunds": 0.0,
                 "total_attendance_refunds_paid": 0.0,
                 "refund_share_percent": 0.0,
@@ -702,6 +1052,7 @@ class BranchFinanceDetailView(APIView):
                 },
                 "finance": {
                     "expected_income": 0.0, "received_income": 0.0,
+                    "pending_income": 0.0,
                     "refunds": 0.0, "attendance_refunds": 0.0,
                     "attendance_refunds_paid": 0.0, "refund_share_percent": 0.0,
                     "real_revenue": 0.0, "expenses": 0.0, "net_profit": 0.0
@@ -1100,6 +1451,10 @@ class SpecialStudentsDashboardAPIView(APIView):
         responses=SpecialStudentDashboardResponseSerializer
     )
     def get(self, request, branch_id):
+        # BUG-11 FIX: Admin uchun branch ruxsatini tekshirish
+        if request.user.role == 'admin' and str(request.user.branch_id) != str(branch_id):
+            return Response({"detail": "Siz faqat o'z filialingiz ma'lumotlarini ko'ra olasiz"}, status=403)
+
         try:
             year = int(request.query_params.get('year', timezone.now().year))
             month = int(request.query_params.get('month', timezone.now().month))
@@ -1111,28 +1466,54 @@ class SpecialStudentsDashboardAPIView(APIView):
         if status_filter and status_filter in statuses:
             statuses = [status_filter]
             
+        from django.db.models import Prefetch
+        # BUG-5 FIX: N+1 muammosini hal qilish uchun kerakli barcha ma'lumotlarni Prefetch qilamiz
         students = Student.objects.filter(
             branch_id=branch_id,
             status__in=statuses,
             is_active=True
-        ).prefetch_related('enrollments__group', 'finance_profile', 'payments')
+        ).prefetch_related(
+            Prefetch('enrollments', queryset=GroupEnrollment.objects.filter(is_active=True).select_related('group'), to_attr='active_enrollments'),
+            Prefetch('payments', queryset=Payment.objects.filter(month__year=year, month__month=month), to_attr='current_payments'),
+            Prefetch('attendances', queryset=Attendance.objects.filter(date__year=year, date__month=month, is_present=True, marked_by__isnull=False), to_attr='monthly_attendances'),
+            'finance_profile'
+        )
 
         data = []
         total_expected = Decimal(0)
         total_paid = Decimal(0)
         total_debt = Decimal(0)
         
+        group_lesson_dates_cache = {}
+        today = timezone.localdate()
+        from finance.utils import floor_amount
+        
         for student in students:
-            # Har bir o'quvchining aktiv guruhlarini topamiz
-            active_enrollments = student.enrollments.filter(is_active=True)
-            for enr in active_enrollments:
+            # InMemory prefetch orqali (DB ga bormaydi)
+            for enr in student.active_enrollments:
                 group = enr.group
-                # Dinamik qarz hisoblash
-                expected = student.calculate_accrued_amount(year, month, group=group)
                 
-                # Payment orqali to'langan qismini aniqlaymiz
-                payments = [p for p in student.payments.all() if p.group_id == group.id and p.month and p.month.year == year and p.month.month == month]
-                paid_amt = Decimal(sum([p.paid_amount for p in payments])) if payments else Decimal(0)
+                # Dinamik qarz hisoblash (InMemory)
+                expected = Decimal(0)
+                if student.status != "teacher_negotiated":
+                    if group.id not in group_lesson_dates_cache:
+                        group_lesson_dates_cache[group.id] = group.get_lesson_dates(year, month)
+                    lesson_dates = group_lesson_dates_cache[group.id]
+                    
+                    total_lessons_count = len(lesson_dates)
+                    if total_lessons_count > 0:
+                        base_price = student.custom_fee if student.custom_fee is not None else group.monthly_price
+                        raw_daily = Decimal(str(base_price)) / Decimal(str(total_lessons_count))
+                        
+                        active_lesson_dates = set(d for d in lesson_dates if d <= today)
+                        present_count = sum(1 for att in student.monthly_attendances if att.group_id == group.id and att.date in active_lesson_dates)
+                        expected = floor_amount(raw_daily * Decimal(str(present_count)))
+                        
+                        if expected > Decimal(str(base_price)):
+                            expected = Decimal(str(base_price))
+                
+                # Payment orqali to'langan qismini aniqlaymiz (InMemory)
+                paid_amt = sum((p.paid_amount for p in student.current_payments if p.group_id == group.id), Decimal(0))
                 
                 debt = max(Decimal(0), expected - paid_amt)
                 

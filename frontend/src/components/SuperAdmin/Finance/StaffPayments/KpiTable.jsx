@@ -25,7 +25,7 @@ const KpiTable = ({
     
     return (
       <div className={`bg-[var(--bg-panel)] border ${isSCT ? 'border-blue-500/10' : 'border-emerald-500/10'} rounded-2xl overflow-hidden shadow-xl mt-4`}>
-        <div className={`px-5 py-4 border-b border-[var(--border-glass)] flex items-center justify-between ${isSCT ? 'bg-blue-500/5' : 'bg-emerald-500/5'}`}>
+        <div className={`px-5 py-4 border-b border-[#2a2a2a] flex items-center justify-between ${isSCT ? 'bg-blue-500/5' : 'bg-emerald-500/5'}`}>
           <div className={`flex items-center gap-2 ${isSCT ? 'text-blue-400' : 'text-emerald-400'}`}>
             <Users size={16} />
             <span className="text-[11px] font-black capitalize tracking-widest">{isSCT ? "O'quvchilar tahlili" : "Guruhlar tahlili"}</span>
@@ -39,7 +39,7 @@ const KpiTable = ({
         <div className="p-2 overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="border-b border-[var(--border-glass)]">
+              <tr className="border-b border-[#2a2a2a]">
                 <th className="px-4 py-3 text-[8px] font-black text-[var(--text-muted)] capitalize tracking-widest">Guruh & Narx</th>
                 <th className="px-4 py-3 text-[8px] font-black text-[var(--text-muted)] capitalize tracking-widest text-center">Talaba</th>
                 <th className="px-4 py-3 text-[8px] font-black text-[var(--text-muted)] capitalize tracking-widest text-right">Tushum (Real/Max)</th>
@@ -49,7 +49,7 @@ const KpiTable = ({
                 <th className="px-4 py-3 text-[8px] font-black text-[var(--text-muted)] capitalize tracking-widest text-center">Holat</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[var(--border-glass)]">
+            <tbody className="divide-y divide-[#2a2a2a]">
               {data.mentor_groups?.map((group) => {
                 const config = getGroupConfig(group.id);
                 

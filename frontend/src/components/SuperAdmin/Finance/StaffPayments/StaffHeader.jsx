@@ -6,11 +6,11 @@ const StaffHeader = ({ branches, activeBranch, setActiveBranch }) => {
  const navigate = useNavigate();
 
  return (
- <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-8 pb-6 border-b border-[var(--border-glass)]">
+ <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-8 pb-6 border-b border-[#2a2a2a]">
  <div className="flex items-center gap-6">
  <button 
  onClick={() => navigate(-1)} 
- className="p-3 bg-[var(--bg-void)] border border-[var(--border-glass)] rounded-xl text-[var(--gold)] hover:scale-110 transition-all shadow-lg"
+ className="p-3 bg-[var(--bg-void)] border border-[#2a2a2a] rounded-xl text-[var(--gold)] hover:scale-110 transition-all shadow-lg"
  >
  <ArrowLeft size={20} />
  </button>
@@ -23,7 +23,7 @@ const StaffHeader = ({ branches, activeBranch, setActiveBranch }) => {
  </div>
 
  {/* BRANCH TABS */}
- <div className="flex flex-wrap gap-2 p-1.5 bg-black/40 border border-[var(--border-glass)] rounded-2xl shadow-inner max-w-full overflow-x-auto scrollbar-hide">
+ <div className="flex flex-wrap gap-2 p-1.5 bg-black/40 border border-[#2a2a2a] rounded-2xl shadow-inner max-w-full overflow-x-auto scrollbar-hide">
  {branches.map((b) => (
  <button
  key={b.id}

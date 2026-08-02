@@ -73,6 +73,7 @@ class FinanceModelTests(TestCase):
             group=self.group,
             month=self.payment_month,
             amount=self.group.monthly_price,
+            paid_amount=self.group.monthly_price,
             is_paid=True,
             marked_by=self.super_admin
         )
@@ -171,14 +172,15 @@ class FinanceAPITests(APITestCase):
         self.assertEqual(ft_refund, 0)
 
     def test_duplicate_payment_restriction(self):
-        # Already have one payment in setUp. Try to create another same one.
-        with self.assertRaises(Exception):
-            Payment.objects.create(
-                student=self.student,
-                group=self.group,
-                month=self.month,
-                amount=self.group.monthly_price
-            )
+        # We removed unique_together to support soft-deleted students.
+        # So we just verify that we can create a second payment without IntegrityError.
+        p2 = Payment.objects.create(
+            student=self.student,
+            group=self.group,
+            month=self.month,
+            amount=self.group.monthly_price
+        )
+        self.assertIsNotNone(p2.id)
 
 
 class FinanceAttendanceStatsTests(TestCase):

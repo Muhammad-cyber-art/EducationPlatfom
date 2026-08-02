@@ -24,7 +24,7 @@ const PaymentHeader = ({
                 <span className="text-[9px] font-black capitalize tracking-[0.2em]">Orqaga</span>
             </button>
 
-            <div className="w-full flex flex-col sm:flex-row items-center justify-between p-3 px-6 bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-2xl backdrop-blur-xl gap-3">
+            <div className="w-full flex flex-col sm:flex-row items-center justify-between p-3 px-6 bg-[var(--bg-panel)] border border-[#2a2a2a] rounded-2xl backdrop-blur-xl gap-3">
                 <div className="flex items-center gap-3">
                     <div className="p-2 bg-[var(--gold)]/10 rounded-lg text-[var(--gold)]">
                         <Settings size={16} />
@@ -54,7 +54,7 @@ const PaymentHeader = ({
                     </div>
 
                     <div className="flex items-center gap-2">
-                        <button onClick={() => isSuperAdmin ? dispatch(setEditModal(true)) : toast.error("Ruxsat yo'q")} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-[var(--bg-panel)] hover:bg-[var(--gold)]/10 border border-[var(--border-glass)] hover:border-[var(--gold)]/50 rounded-xl text-[9px] font-black capitalize tracking-widest transition-all text-[var(--text-secondary)] hover:text-[var(--gold)]">
+                        <button onClick={() => isSuperAdmin ? dispatch(setEditModal(true)) : toast.error("Ruxsat yo'q")} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-[var(--bg-panel)] hover:bg-[var(--gold)]/10 border border-[#2a2a2a] hover:border-[var(--gold)]/50 rounded-xl text-[9px] font-black capitalize tracking-widest transition-all text-[var(--text-secondary)] hover:text-[var(--gold)]">
                             <Edit3 size={12} /> <span className="hidden md:inline">Tahrirlash</span>
                         </button>
 

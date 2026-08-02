@@ -147,7 +147,7 @@ const AllPayments = () => {
       {/* Background removed as per request */}
 
       {/* HEADER ACTION AREA */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-3 sm:p-4 bg-[var(--bg-panel)]/40 border border-[var(--border-glass)] rounded-2xl mb-8">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-3 sm:p-4 bg-[var(--bg-panel)]/40 border border-[#2a2a2a] rounded-2xl mb-8">
         <div className="flex items-center gap-3 min-w-0 shrink-0">
           <div className="w-1.5 h-8 bg-[var(--gold)] rounded-full shrink-0" />
           <div className="min-w-0">
@@ -159,7 +159,7 @@ const AllPayments = () => {
         </div>
         <div className="w-full lg:w-auto min-w-0 flex flex-nowrap items-center gap-1 sm:gap-1.5 overflow-x-auto no-scrollbar py-0.5 -mx-0.5 px-0.5">
           <div
-            className="flex shrink-0 items-center gap-1 h-8 pl-1.5 pr-1 bg-[var(--bg-void)] border border-[var(--border-glass)] rounded-lg"
+            className="flex shrink-0 items-center gap-1 h-8 pl-1.5 pr-1 bg-[var(--bg-void)] border border-[#2a2a2a] rounded-lg"
             title="Oy va yil"
           >
             <Calendar size={11} className="text-[var(--gold)] opacity-60 shrink-0" />
@@ -228,9 +228,9 @@ const AllPayments = () => {
       {!loading && statistics ? (
         <div className="lux-card !p-6 mb-8">
           {/* HEADER ROW */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6 pb-6 border-b border-[var(--border-glass)]">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6 pb-6 border-b border-[#2a2a2a]">
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-[var(--bg-void)] border border-[var(--border-glass)] flex items-center justify-center text-[var(--gold)] shadow-inner">
+              <div className="w-14 h-14 rounded-2xl bg-[var(--bg-void)] border border-[#2a2a2a] flex items-center justify-center text-[var(--gold)] shadow-inner">
                 <Wallet size={28} strokeWidth={1.5} />
               </div>
               <div>
@@ -316,7 +316,7 @@ const AllPayments = () => {
 
           {/* VISUAL CHART */}
           {trendData && trendData.length > 0 && trendBranches && trendBranches.length > 0 && (
-            <div className="mt-8 pt-6 border-t border-[var(--border-glass)]">
+            <div className="mt-8 pt-6 border-t border-[#2a2a2a]">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
                 <h4 className="text-[9px] font-black text-[var(--text-muted)] capitalize tracking-[0.2em]">
                   Filiallar bo‘yicha oylik {activeMetric === 'income' ? 'tushum' : 'chiqim'} trendi (UZS)
@@ -326,7 +326,7 @@ const AllPayments = () => {
                     onClick={() => setActiveMetric('income')}
                     className={`h-8 px-4 rounded-lg text-[9px] font-black tracking-widest border transition-all ${activeMetric === 'income'
                         ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                        : 'bg-[var(--bg-void)] text-[var(--text-muted)] border-[var(--border-glass)] hover:border-emerald-500/20'
+                        : 'bg-[var(--bg-void)] text-[var(--text-muted)] border-[#2a2a2a] hover:border-emerald-500/20'
                       }`}
                   >
                     Tushum
@@ -335,7 +335,7 @@ const AllPayments = () => {
                     onClick={() => setActiveMetric('expense')}
                     className={`h-8 px-4 rounded-lg text-[9px] font-black tracking-widest border transition-all ${activeMetric === 'expense'
                         ? 'bg-red-500/15 text-red-400 border-red-500/30'
-                        : 'bg-[var(--bg-void)] text-[var(--text-muted)] border-[var(--border-glass)] hover:border-red-500/20'
+                        : 'bg-[var(--bg-void)] text-[var(--text-muted)] border-[#2a2a2a] hover:border-red-500/20'
                       }`}
                   >
                     Chiqim
@@ -392,7 +392,7 @@ const AllPayments = () => {
         </div>
 
       ) : (
-        <div className="h-[250px] bg-[var(--bg-panel)]/40 border border-[var(--border-glass)] rounded-[2rem] mb-8" />
+        <div className="h-[250px] bg-[var(--bg-panel)]/40 border border-[#2a2a2a] rounded-[2rem] mb-8" />
       )}
 
       {/* OPERATIONS GRID */}
@@ -434,9 +434,9 @@ const AllPayments = () => {
 
         {/* REGIONAL NODES LIST */}
         <div className="lg:col-span-9 space-y-4">
-          <div className="flex justify-between items-end pb-3 border-b border-[var(--border-glass)]">
+          <div className="flex justify-between items-end pb-3 border-b border-[#2a2a2a]">
             <h3 className="text-xl font-bold text-[var(--text-primary)] capitalize tracking-tight">Hududiy Filiallar</h3>
-            <div className="flex items-center gap-2 px-2 py-0.5 bg-[var(--bg-panel)]/40 border border-[var(--border-glass)] rounded">
+            <div className="flex items-center gap-2 px-2 py-0.5 bg-[var(--bg-panel)]/40 border border-[#2a2a2a] rounded">
               <span className="text-[9px] font-bold text-[var(--text-primary)] capitalize tracking-tight">{branches.length} Filial</span>
             </div>
           </div>
@@ -450,7 +450,7 @@ const AllPayments = () => {
               >
                 <div className="flex justify-between items-start mb-6">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-[var(--bg-void)] border border-[var(--border-glass)] flex items-center justify-center text-[var(--text-muted)]">
+                    <div className="w-10 h-10 rounded-xl bg-[var(--bg-void)] border border-[#2a2a2a] flex items-center justify-center text-[var(--text-muted)]">
                       <Building2 size={20} />
                     </div>
                     <div className="min-w-0">
@@ -463,14 +463,14 @@ const AllPayments = () => {
                   <ArrowUpRight size={16} className="text-[var(--text-muted)] opacity-20" />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 p-3 bg-[var(--bg-void)]/40 rounded-xl border border-[var(--border-glass)]">
+                <div className="grid grid-cols-2 gap-3 p-3 bg-[var(--bg-void)]/40 rounded-xl border border-[#2a2a2a]">
                   <div>
                     <p className="text-[8px] font-bold text-[var(--text-muted)] capitalize mb-1">Tushum</p>
                     <p className="text-sm font-bold text-[var(--text-primary)] tracking-tight capitalize tabular-nums">
                       {formatNumber(branch.finance?.income)} <span className="text-[8px] text-[var(--text-muted)] font-bold capitalize ml-1">UZS</span>
                     </p>
                   </div>
-                  <div className="border-l border-[var(--border-glass)] pl-3">
+                  <div className="border-l border-[#2a2a2a] pl-3">
                     <p className="text-[8px] font-bold text-[var(--text-muted)] capitalize mb-1">Xodimlar</p>
                     <p className="text-sm font-bold text-[var(--text-muted)] tracking-tight tabular-nums">
                       {(branch.mentors_count || 0) + (branch.admins_count || 0)} <span className="text-[8px] font-bold capitalize ml-1">Jami</span>
@@ -487,7 +487,7 @@ const AllPayments = () => {
 };
 
 const StatMetric = ({ label, value, icon, color, bg, trend }) => (
-  <div className="flex items-center p-4 bg-[var(--bg-void)]/40 rounded-2xl border border-[var(--border-glass)] group hover:border-[var(--gold)]/30 transition-colors">
+  <div className="flex items-center p-4 bg-[var(--bg-void)]/40 rounded-2xl border border-[#2a2a2a] group hover:border-[var(--gold)]/30 transition-colors">
     <div className={`p-3 rounded-xl border mr-4 ${bg} ${color} shadow-inner group-hover:scale-110 transition-transform duration-300`}>
       {icon}
     </div>
@@ -498,7 +498,7 @@ const StatMetric = ({ label, value, icon, color, bg, trend }) => (
         <span className="text-[9px] font-black text-[var(--text-muted)] capitalize">UZS</span>
       </div>
     </div>
-    <div className={`text-right flex items-center justify-center p-2 rounded bg-[var(--bg-panel)] border border-[var(--border-glass)] min-w-[48px]`}>
+    <div className={`text-right flex items-center justify-center p-2 rounded bg-[var(--bg-panel)] border border-[#2a2a2a] min-w-[48px]`}>
       <p className={`text-[10px] font-black ${color} tracking-widest`}>{trend}</p>
     </div>
   </div>

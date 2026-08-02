@@ -112,7 +112,7 @@ const StudentDossier = ({ studentData, canConfirmPayment, dispatch }) => {
             }
           />
         </div>
-
+        {/* (O'CHIRILGAN) Qo'shimcha summa kiritish butoni 
         {canConfirmPayment && studentData?.status !== "discount" && (
           <button
             onClick={() =>
@@ -123,6 +123,7 @@ const StudentDossier = ({ studentData, canConfirmPayment, dispatch }) => {
             <Save size={14} /> Qo'shimcha summa kiritish
           </button>
         )}
+        */}
       </div>
     </div>
   );

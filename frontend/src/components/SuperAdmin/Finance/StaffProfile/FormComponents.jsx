@@ -14,7 +14,7 @@ export const RoleSelector = ({ selectedRole, setSelectedRole, loading }) => (
                     type="button"
                     onClick={() => setSelectedRole(role)}
                     disabled={loading}
-                    className={`rounded-xl px-4 py-3 text-[11px] font-black capitalize tracking-widest transition-all ${selectedRole === role ? 'bg-[var(--gold)] text-black shadow-[0_0_20px_rgba(184,134,11,0.3)] scale-[1.02]' : 'bg-[var(--bg-panel)] border border-[var(--border-glass)] text-[var(--text-secondary)] hover:border-[var(--gold)]/50'}`}
+                    className={`rounded-xl px-4 py-3 text-[11px] font-black capitalize tracking-widest transition-all ${selectedRole === role ? 'bg-[var(--gold)] text-black shadow-[0_0_20px_rgba(184,134,11,0.3)] scale-[1.02]' : 'bg-[var(--bg-panel)] border border-[#2a2a2a] text-[var(--text-secondary)] hover:border-[var(--gold)]/50'}`}
                 >
                     {role === 'admin' ? 'Admin' : 'Mentor'}
                 </button>
@@ -29,7 +29,7 @@ export const UserSelector = ({ formData, setFormData, availableUsers, loadingUse
             <User size={12} className="text-[var(--gold)]" /> Xodimni Tanlang
         </label>
         <select
-            className="w-full bg-[var(--bg-panel)] border border-[var(--border-glass)] text-[var(--text-primary)] rounded-xl px-4 py-3.5 text-xs font-bold capitalize focus:outline-none focus:border-[var(--gold)]/50 transition-all appearance-none cursor-pointer shadow-inner"
+            className="w-full bg-[var(--bg-panel)] border border-[#2a2a2a] text-[var(--text-primary)] rounded-xl px-4 py-3.5 text-xs font-bold capitalize focus:outline-none focus:border-[var(--gold)]/50 transition-all appearance-none cursor-pointer shadow-inner"
             value={formData.user}
             onChange={(e) => setFormData({ ...formData, user: e.target.value })}
             required
@@ -58,7 +58,7 @@ export const SalaryTypeSelector = ({ salaryType, setSalaryType, loading, selecte
                 type="button"
                 onClick={() => setSalaryType('fixed')}
                 disabled={loading}
-                className={`rounded-xl px-4 py-3 text-[10px] font-black capitalize tracking-widest transition-all ${salaryType === 'fixed' ? 'bg-[var(--bg-panel)] text-[var(--gold)] border border-[var(--gold)] shadow-[inset_0_0_20px_rgba(184,134,11,0.1)]' : 'bg-[var(--bg-panel)] border border-[var(--border-glass)] text-[var(--text-muted)]'}`}
+                className={`rounded-xl px-4 py-3 text-[10px] font-black capitalize tracking-widest transition-all ${salaryType === 'fixed' ? 'bg-[var(--bg-panel)] text-[var(--gold)] border border-[var(--gold)] shadow-[inset_0_0_20px_rgba(184,134,11,0.1)]' : 'bg-[var(--bg-panel)] border border-[#2a2a2a] text-[var(--text-muted)]'}`}
             >
                 <div className="flex items-center justify-center gap-2"><DollarSign size={14} /> <span>Belgilangan</span></div>
             </button>
@@ -66,7 +66,7 @@ export const SalaryTypeSelector = ({ salaryType, setSalaryType, loading, selecte
                 type="button"
                 onClick={() => setSalaryType('percentage')}
                 disabled={loading}
-                className={`rounded-xl px-4 py-3 text-[10px] font-black capitalize tracking-widest transition-all ${salaryType === 'percentage' ? 'bg-[var(--bg-panel)] text-[var(--gold)] border border-[var(--gold)] shadow-[inset_0_0_20px_rgba(184,134,11,0.1)]' : 'bg-[var(--bg-panel)] border border-[var(--border-glass)] text-[var(--text-muted)]'}`}
+                className={`rounded-xl px-4 py-3 text-[10px] font-black capitalize tracking-widest transition-all ${salaryType === 'percentage' ? 'bg-[var(--bg-panel)] text-[var(--gold)] border border-[var(--gold)] shadow-[inset_0_0_20px_rgba(184,134,11,0.1)]' : 'bg-[var(--bg-panel)] border border-[#2a2a2a] text-[var(--text-muted)]'}`}
             >
                 <div className="flex items-center justify-center gap-2"><Percent size={14} /> <span>Foiz Asosida</span></div>
             </button>
@@ -75,7 +75,7 @@ export const SalaryTypeSelector = ({ salaryType, setSalaryType, loading, selecte
                     type="button"
                     onClick={() => setSalaryType('student_count')}
                     disabled={loading}
-                    className={`rounded-xl px-4 py-3 text-[10px] font-black capitalize tracking-widest transition-all ${salaryType === 'student_count' ? 'bg-[var(--bg-panel)] text-[var(--gold)] border border-[var(--gold)] shadow-[inset_0_0_20px_rgba(184,134,11,0.1)]' : 'bg-[var(--bg-panel)] border border-[var(--border-glass)] text-[var(--text-muted)]'}`}
+                    className={`rounded-xl px-4 py-3 text-[10px] font-black capitalize tracking-widest transition-all ${salaryType === 'student_count' ? 'bg-[var(--bg-panel)] text-[var(--gold)] border border-[var(--gold)] shadow-[inset_0_0_20px_rgba(184,134,11,0.1)]' : 'bg-[var(--bg-panel)] border border-[#2a2a2a] text-[var(--text-muted)]'}`}
                 >
                     <div className="flex items-center justify-center gap-2"><Users size={14} /> <span>O'quvchi Boshi</span></div>
                 </button>

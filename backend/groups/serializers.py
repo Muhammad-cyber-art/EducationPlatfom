@@ -227,11 +227,22 @@ class StudentSerializer(serializers.ModelSerializer):
 
     def get_current_payment_status(self, obj) -> bool:
         """O'quvchining shu oydagi to'lov holati (True/False)"""
+        # 1. Global balansni tekshirish
+        try:
+            finance_profile = getattr(obj, 'finance_profile', None)
+            if finance_profile and finance_profile.balance >= 0:
+                return True
+        except Exception:
+            pass
+
         today = timezone.now().date()
         first_day_of_month = today.replace(day=1)
 
         # Payment modelidan shu o'quvchi va shu oyga tegishlisini qidiramiz
         payment = Payment.objects.filter(student=obj, month=first_day_of_month).first()
+
+        if payment and payment.amount == Decimal('0'):
+            return True
 
         return payment.is_paid if payment else False
 
@@ -547,6 +558,7 @@ class StudentNestedSerializer(serializers.ModelSerializer):
     # Endi faqat is_active=True bo'lgan guruhlar qaytariladi.
     groups = serializers.SerializerMethodField()
     branch_id = serializers.IntegerField(source="group.branch.id", read_only=True)
+    finance_profile = serializers.SerializerMethodField()
 
     class Meta:
         model = Student
@@ -570,6 +582,7 @@ class StudentNestedSerializer(serializers.ModelSerializer):
             "custom_fee",
             "joined_at",
             "include_in_mentor_salary",
+            "finance_profile",
         )
         read_only_fields = ("joined_at",)
 
@@ -582,6 +595,24 @@ class StudentNestedSerializer(serializers.ModelSerializer):
         ).values_list('group_id', flat=True)
         active_groups = Group.objects.filter(id__in=active_group_ids)
         return GroupNestedSerializer(active_groups, many=True, context=self.context).data
+
+    @extend_schema_field(serializers.DictField())
+    def get_finance_profile(self, obj) -> dict:
+        try:
+            profile = obj.finance_profile
+            return {
+                "total_paid_all_time": profile.total_paid_all_time,
+                "total_refunded": profile.total_refunded,
+                "last_payment_date": profile.last_payment_date,
+                "balance": profile.balance
+            }
+        except Exception:
+            return {
+                "total_paid_all_time": 0,
+                "total_refunded": 0,
+                "last_payment_date": None,
+                "balance": 0
+            }
 
 
 from django.db.models import Q
@@ -674,7 +705,7 @@ class GroupSerializer(serializers.ModelSerializer):
         )
         students_qs = Student.objects.filter(
             id__in=active_student_ids, is_archived=False, is_active=True
-        ).select_related("group", "branch")
+        ).select_related("group", "branch", "finance_profile")
 
         today = timezone.now().date()
         month_start = today.replace(day=1)
@@ -697,6 +728,21 @@ class GroupSerializer(serializers.ModelSerializer):
             # Iso formatda chiroyli ko'rinishga keltirish (Frontend split('T')[0] uchun)
             joined_at_str = joined_at.isoformat() if joined_at else None
 
+            # Balansni tekshiramiz
+            is_paid_status = False
+            try:
+                finance_profile = getattr(student, 'finance_profile', None)
+                if finance_profile and finance_profile.balance >= 0:
+                    is_paid_status = True
+                elif payment_info:
+                    if payment_info["amount"] == Decimal('0'):
+                        is_paid_status = True
+                    else:
+                        is_paid_status = payment_info["is_paid"]
+            except Exception:
+                if payment_info:
+                    is_paid_status = payment_info["amount"] == Decimal('0') or payment_info["is_paid"]
+
             result.append(
                 {
                     "id": student.id,
@@ -709,9 +755,7 @@ class GroupSerializer(serializers.ModelSerializer):
                     "custom_fee": student.custom_fee,
                     "telegram_id": student.telegram_id,
                     "parent_telegram_id": student.parent_telegram_id,
-                    "current_payment_status": payment_info["is_paid"]
-                    if payment_info
-                    else False,
+                    "current_payment_status": is_paid_status,
                     "current_payment_id": payment_info["id"] if payment_info else None,
                     "joined_at": joined_at_str,
                 }

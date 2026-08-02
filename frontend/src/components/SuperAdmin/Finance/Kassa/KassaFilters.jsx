@@ -3,7 +3,7 @@ import { Search, Calendar, CreditCard, Building2, ChevronRight, FilterX, PlusCir
 
 const KassaFilters = ({ filters, setFilters, branches, clearFilters, setToday, activeTab, setActiveTab, paymentsCount, withdrawalsCount }) => (
     <>
-        <div className="flex flex-col lg:flex-row gap-4 p-4 bg-[var(--bg-panel)]/30 border border-[var(--border-glass)] rounded-[2rem] backdrop-blur-md">
+        <div className="flex flex-col lg:flex-row gap-4 p-4 bg-[var(--bg-panel)]/30 border border-[#333] rounded-2xl backdrop-blur-md">
             <div className="flex-1 relative group">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)] group-focus-within:text-[var(--gold)] transition-colors" size={16} />
                 <input
@@ -11,7 +11,7 @@ const KassaFilters = ({ filters, setFilters, branches, clearFilters, setToday, a
                     placeholder="Qidiruv (Ism, tel, guruh)..."
                     value={filters.search}
                     onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-                    className="w-full h-12 bg-[#0a0a0a] border border-[var(--border-glass)] rounded-xl pl-12 pr-4 text-[13px] font-bold text-white placeholder:text-gray-600 outline-none focus:border-[var(--gold)]/50 transition-all"
+                    className="w-full h-12 bg-[#0a0a0a] border border-[#333] rounded-xl pl-12 pr-4 text-[13px] font-bold text-white placeholder:text-gray-600 outline-none focus:border-[var(--gold)]/50 transition-all"
                 />
             </div>
 
@@ -22,7 +22,7 @@ const KassaFilters = ({ filters, setFilters, branches, clearFilters, setToday, a
                         type="date"
                         value={filters.date}
                         onChange={(e) => setFilters(prev => ({ ...prev, date: e.target.value }))}
-                        className="w-full h-12 bg-[#0a0a0a] border border-[var(--border-glass)] rounded-xl pl-10 pr-3 text-[12px] font-black text-[var(--gold)] outline-none focus:border-[var(--gold)]/50 transition-all"
+                        className="w-full h-12 bg-[#0a0a0a] border border-[#333] rounded-xl pl-10 pr-3 text-[12px] font-black text-[var(--gold)] outline-none focus:border-[var(--gold)]/50 transition-all"
                     />
                 </div>
 
@@ -31,7 +31,7 @@ const KassaFilters = ({ filters, setFilters, branches, clearFilters, setToday, a
                     <select
                         value={filters.branch}
                         onChange={(e) => setFilters(prev => ({ ...prev, branch: e.target.value }))}
-                        className="w-full h-12 bg-[#0a0a0a] border border-[var(--border-glass)] rounded-xl pl-10 pr-8 text-[11px] font-black text-white outline-none focus:border-[var(--gold)]/50 transition-all appearance-none cursor-pointer"
+                        className="w-full h-12 bg-[#0a0a0a] border border-[#333] rounded-xl pl-10 pr-8 text-[11px] font-black text-white outline-none focus:border-[var(--gold)]/50 transition-all appearance-none cursor-pointer"
                     >
                         <option value="" className="bg-[#0a0a0a]">Filiallar</option>
                         {branches.map(b => (
@@ -46,7 +46,7 @@ const KassaFilters = ({ filters, setFilters, branches, clearFilters, setToday, a
                     <select
                         value={filters.method}
                         onChange={(e) => setFilters(prev => ({ ...prev, method: e.target.value }))}
-                        className="w-full h-12 bg-[#0a0a0a] border border-[var(--border-glass)] rounded-xl pl-10 pr-8 text-[11px] font-black text-white outline-none focus:border-[var(--gold)]/50 transition-all appearance-none cursor-pointer"
+                        className="w-full h-12 bg-[#0a0a0a] border border-[#333] rounded-xl pl-10 pr-8 text-[11px] font-black text-white outline-none focus:border-[var(--gold)]/50 transition-all appearance-none cursor-pointer"
                     >
                         <option value="" className="bg-[#0a0a0a]">Metodlar</option>
                         <option value="cash" className="bg-[#0a0a0a]">Naqd (Cash)</option>
@@ -67,24 +67,24 @@ const KassaFilters = ({ filters, setFilters, branches, clearFilters, setToday, a
 
                 <button
                     onClick={setToday}
-                    className={`px-4 h-12 flex items-center justify-center border rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${filters.date === new Date().toISOString().split('T')[0] ? 'bg-[var(--gold)] text-black border-[var(--gold)]' : 'bg-white/5 text-[var(--gold)] border-[var(--gold)]/20 hover:bg-white/10'}`}
+                    className={`px-4 h-12 flex items-center justify-center border rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${filters.date === new Date().toISOString().split('T')[0] ? 'bg-[var(--gold)] text-black border-[var(--gold)]' : 'bg-[#0a0a0a] text-[var(--gold)] border-[#333] hover:border-[var(--gold)]/50'}`}
                 >
                     Bugun
                 </button>
             </div>
         </div>
 
-        <div className="flex items-center gap-2 p-1.5 bg-[var(--bg-panel)]/30 border border-[var(--border-glass)] rounded-[1.25rem] w-full sm:w-fit overflow-x-auto no-scrollbar">
+        <div className="flex items-center gap-2 p-1.5 bg-[#0a0a0a] border border-[#333] rounded-xl w-full sm:w-fit overflow-x-auto no-scrollbar">
             <button
                 onClick={() => setActiveTab("incomes")}
-                className={`flex-1 sm:flex-none whitespace-nowrap px-6 xl:px-10 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 ${activeTab === 'incomes' ? 'bg-[var(--gold)] text-black shadow-[0_8px_20px_rgba(184,134,11,0.3)] scale-105 z-10' : 'text-[var(--text-muted)] hover:text-white hover:bg-white/5'}`}
+                className={`flex-1 sm:flex-none whitespace-nowrap px-6 xl:px-10 py-3 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 ${activeTab === 'incomes' ? 'bg-[var(--gold)] text-black shadow-lg scale-100 z-10' : 'text-[var(--text-muted)] hover:text-white hover:bg-white/5'}`}
             >
                 <PlusCircle size={14} />
                 Tushumlar <span className="opacity-50 text-[8px]">({paymentsCount})</span>
             </button>
             <button
                 onClick={() => setActiveTab("expenses")}
-                className={`flex-1 sm:flex-none whitespace-nowrap px-6 xl:px-10 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 ${activeTab === 'expenses' ? 'bg-red-600 text-white shadow-[0_8px_20px_rgba(220,38,38,0.3)] scale-105 z-10' : 'text-[var(--text-muted)] hover:text-white hover:bg-white/5'}`}
+                className={`flex-1 sm:flex-none whitespace-nowrap px-6 xl:px-10 py-3 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 ${activeTab === 'expenses' ? 'bg-red-600 text-white shadow-lg scale-100 z-10' : 'text-[var(--text-muted)] hover:text-white hover:bg-white/5'}`}
             >
                 <TrendingDown size={14} />
                 Chiqimlar <span className="opacity-50 text-[8px]">({withdrawalsCount})</span>

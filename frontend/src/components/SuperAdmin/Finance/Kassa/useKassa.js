@@ -17,6 +17,13 @@ const getDateRange = (dateFilter) => {
     const end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
     return { date_gte: start, date_lte: end };
 };
+const getTodayDate = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
 
 const initialState = {
     payments: [],
@@ -33,7 +40,7 @@ const initialState = {
         branch: "",
         method: "",
         search: "",
-        date: ""
+        date: getTodayDate()
     }
 };
 
@@ -101,6 +108,7 @@ export const useKassa = () => {
             const params = {
                 transaction_type: 'income',
                 category: 'student_fee',
+                exclude_reversals: 'true',
                 search: filters.search || undefined,
                 branch: filters.branch || undefined
             };
@@ -198,15 +206,18 @@ export const useKassa = () => {
             const res = await api.post(`/finance/student-payments/${paymentId}/verify/`);
             if (res.data.status === 'success') {
                 toast.success("To'lov muvaffaqiyatli tasdiqlandi!");
-                dispatch({ type: 'VERIFY_PAYMENT_SUCCESS', payload: paymentId });
+                // BUG #2 FIX: VERIFY_PAYMENT_SUCCESS reducer FinanceTransaction.id va
+                // Payment.id ni noto'g'ri taqqoslab, UI ni yangilamasdi.
+                // To'g'ri yechim: fresh ma'lumotlarni qayta yuklash.
+                fetchKassaData();
             }
         } catch (error) {
             toast.error(error.response?.data?.detail || "Tasdiqlashda xatolik");
         }
-    }, []);
+    }, [fetchKassaData]);
 
-    const totalToday = useMemo(() => payments.reduce((sum, p) => sum + Number(p.amount), 0), [payments]);
-    const totalVerified = useMemo(() => payments.filter(p => p.payment_details?.is_verified).reduce((sum, p) => sum + Number(p.amount), 0), [payments]);
+    const totalToday = useMemo(() => payments.reduce((sum, p) => p.status === 'cancelled' ? sum : sum + Number(p.amount), 0), [payments]);
+    const totalVerified = useMemo(() => payments.filter(p => p.payment_details?.is_verified && p.status !== 'cancelled').reduce((sum, p) => sum + Number(p.amount), 0), [payments]);
     const totalWithdrawn = useMemo(() => withdrawals.reduce((sum, w) => sum + Number(w.amount), 0), [withdrawals]);
 
     const clearFilters = useCallback(() => {

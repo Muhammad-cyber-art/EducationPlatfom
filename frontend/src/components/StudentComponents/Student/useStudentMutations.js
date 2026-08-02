@@ -41,7 +41,8 @@ export const useStudentMutations = (student_id, dispatch, navigate) => {
       is_receiptless,
       pay_full_month,
       is_partial_payment,
-      is_custom_amount, // ← Bu maydon avval yo'q edi — asosiy bug!
+      is_full_amount,
+      is_custom_amount,
     }) => {
       const formData = new FormData();
       // amount: faqat 0 dan katta bo'lsa qo'shamiz
@@ -61,6 +62,8 @@ export const useStudentMutations = (student_id, dispatch, navigate) => {
         formData.append("pay_full_month", String(pay_full_month));
       if (is_partial_payment !== undefined)
         formData.append("is_partial_payment", String(is_partial_payment));
+      // is_full_amount — MAJBURIY: backend bu flag orqali is_paid=True belgilaydi
+      formData.append("is_full_amount", String(is_full_amount === true));
       // is_custom_amount — MAJBURIY: yo'q bo'lsa backend shartnoma narxini yozadi
       formData.append("is_custom_amount", String(is_custom_amount === true));
       return await api.post(

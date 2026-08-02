@@ -25,7 +25,7 @@ export default function BranchFinance() {
   const today = new Date();
   const periodControls = (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="flex items-center gap-2 h-9 px-2 bg-[var(--bg-void)]/40 border border-[var(--border-glass)] rounded-lg">
+      <div className="flex items-center gap-2 h-9 px-2 bg-[var(--bg-void)]/40 border border-[#2a2a2a] rounded-lg">
         <Calendar size={12} className="text-[var(--gold)] opacity-60 shrink-0" />
         <select
           value={selectedMonth}

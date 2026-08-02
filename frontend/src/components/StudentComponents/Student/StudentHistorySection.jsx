@@ -31,7 +31,7 @@ const StudentHistorySection = ({
           <div className="flex items-center gap-3">
             <History size={18} className="text-[var(--gold)]" />
             <span className="text-[10px] font-black text-[var(--text-primary)] uppercase tracking-[0.2em]">
-              To'lovlar Tarixi
+              To'lovlar
             </span>
           </div>
         </div>
@@ -175,7 +175,7 @@ const StudentHistorySection = ({
                           </div>
                         )}
 
-                        {(userRole === "super_admin" || userRole === "admin") && (
+                        {(userRole === "super_admin" || userRole === "admin") && !p.is_verified && (
                           <button
                             onClick={() => handleDeleteHistory(p.id)}
                             className="p-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition-all"
@@ -183,6 +183,14 @@ const StudentHistorySection = ({
                           >
                             <Trash2 size={16} />
                           </button>
+                        )}
+                        {p.is_verified && (
+                          <div
+                            className="p-2 bg-emerald-500/10 text-emerald-500 rounded-lg cursor-not-allowed"
+                            title="Super admin tasdiqlagan — o'chirib bo'lmaydi"
+                          >
+                            <CheckCircle2 size={16} />
+                          </div>
                         )}
                       </div>
                     </div>
@@ -192,64 +200,8 @@ const StudentHistorySection = ({
             </div>
           ) : null}
 
-          {extraTransactions?.length > 0 && (
-            <div
-              className={`${payments.length > 0 ? "border-t-2 border-[var(--border-glass)]" : ""} bg-[var(--bg-void)]/20`}
-            >
-              <div className="px-5 py-3 bg-[var(--bg-panel)]/50 border-b border-[var(--border-glass)]">
-                <h4 className="text-[8px] font-black text-[var(--gold)] uppercase tracking-[0.2em]">
-                  Qo'shimcha Tushumlar
-                </h4>
-              </div>
-              <div className="divide-y divide-[var(--border-glass)]/10">
-                {extraTransactions?.map((tx, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between p-4 sm:p-5 hover:bg-[var(--bg-void)]/40 transition-all"
-                  >
-                    <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
-                      <div
-                        className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shrink-0 ${tx.transaction_type === "income" ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"}`}
-                      >
-                        {tx.transaction_type === "income" ? (
-                          <ArrowUpRight size={18} />
-                        ) : (
-                          <ArrowDownRight size={18} />
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[11px] font-black text-[var(--text-primary)] uppercase tracking-tight truncate">
-                          {tx.title}
-                        </p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <p className="text-[8px] font-bold text-[var(--text-muted)] uppercase tracking-widest">
-                            {tx.date}
-                          </p>
-                          <span className="w-1 h-1 rounded-full bg-[var(--border-glass)]"></span>
-                          <p className="text-[8px] font-bold text-[var(--gold)]/60 uppercase tracking-widest">
-                            {tx.marked_by_name}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p
-                        className={`text-xs sm:text-sm font-black tabular-nums tracking-tighter ${tx.transaction_type === "income" ? "text-emerald-500" : "text-red-500"}`}
-                      >
-                        {tx.transaction_type === "income" ? "+" : "-"}
-                        {Number(tx.amount).toLocaleString()}
-                      </p>
-                      <p className="text-[7px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5 opacity-40">
-                        PORTAL
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
-          {payments.length === 0 && extraTransactions.length === 0 && (
+          {payments.length === 0 && (
             <div className="py-16 text-center opacity-30">
               <History size={40} className="mx-auto mb-3" />
               <p className="text-[9px] font-black uppercase tracking-[0.2em]">

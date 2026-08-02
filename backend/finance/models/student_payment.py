@@ -66,6 +66,20 @@ class Payment(models.Model):
     is_full_amount = models.BooleanField(default=False, verbose_name="To'liq oylik to'langan")
     notes = models.TextField(blank=True, null=True)
 
+    # TUZATILDI (BUG-STRING-FILTER): Avval StudentFinanceProfile.balance da
+    # notes="Avtomatik imtiyozli to'lov" string literal bilan filter qilinardi.
+    # Bu fragile yondashuv — notes matnini o'zgartirish barcha imtiyozli
+    # invoicelarni qarzga aylantirishi mumkin edi.
+    # Endi dedicated boolean field ishlatiladi.
+    is_auto_discount = models.BooleanField(
+        default=False,
+        verbose_name="Imtiyozli (avtomatik) invoice",
+        help_text=(
+            "True bo'lsa, bu invoice discount o'quvchi uchun avtomatik "
+            "yaratilgan va StudentFinanceProfile.balance hisobiga kiritilmaydi."
+        )
+    )
+
     # Super Admin tasdig'i (Verification)
     is_verified = models.BooleanField(default=False, verbose_name="Tasdiqlangan")
     verified_by = models.ForeignKey(
@@ -126,6 +140,9 @@ class Payment(models.Model):
         from django.db import transaction as db_transaction
         from finance.models import FinanceTransaction
 
+        if self.student and self.student.status == 'discount':
+            raise ValueError("Imtiyozli (discount) o'quvchilardan qo'lda pul qabul qilib bo'lmaydi.")
+
         installment = Decimal(str(installment_amount))
         if installment <= 0:
             raise ValueError("To'lov summasi 0 dan katta bo'lishi kerak")
@@ -152,7 +169,7 @@ class Payment(models.Model):
             else:
                 # Oddiy rejim: expected dan oshmasin
                 remaining = max(Decimal('0'), expected - current_paid)
-
+                
                 # BUG #3 FIX + BUG #7 FIX:
                 # Agar allaqachon to'liq to'langan bo'lsa (remaining == 0),
                 # installmentni 0 ga tushuramiz — ikkinchi marta yozmaymiz.
@@ -174,9 +191,13 @@ class Payment(models.Model):
                 if notes:
                     self.notes = notes
 
-                # BUG #7 FIX: expected == 0 holat (discount student, hali dars yo'q)
+                # BUG #7 FIX: expected == 0 holat (hali dars yo'q, lekin to'ladi)
                 # Bu holda pul qabul qilindi, lekin "to'liq to'landi" deb belgilab bo'lmaydi.
-                if expected == 0 and self.paid_amount > 0:
+                # BUG #1 FIX (is_paid): is_full_amount=True bo'lganda to'g'ridan-to'g'ri is_paid=True.
+                if is_full_amount and self.paid_amount > 0:
+                    self.is_paid = True
+                    self.is_partial = False
+                elif expected == 0 and self.paid_amount > 0:
                     self.is_paid = False
                     self.is_partial = True
                 elif expected > 0 and self.paid_amount >= expected:
@@ -196,25 +217,68 @@ class Payment(models.Model):
                 payment_type_str = "To'liq" if self.is_full_amount else "Bo'lib" if self.is_partial else "Davomat"
                 receiptless_str = "(Cheksiz)" if self.is_receiptless else ""
                 notes_str = self.notes or ""
-                
-                FinanceTransaction.objects.create(
-                    related_id=f"STP-{self.id}-INS-{uuid.uuid4().hex[:12]}",
-                    transaction_type='income',
-                    category='student_fee',
-                    amount=installment,
-                    date=self.paid_at.date(),
-                    marked_by=admin_user,
-                    branch=self.student.branch or (self.group.branch if self.group else None),
-                    student=self.student,
-                    group=self.group,
-                    title=f"To'lov: {self.student.full_name}",
-                    description=(
-                        f"{self.group.name} ({payment_type_str}) "
-                        f"{self.month.strftime('%Y-%m')} — {installment} UZS. "
-                        f"Usul: {self.get_payment_method_display()}. "
-                        f"{receiptless_str} {notes_str}"
-                    ).strip(),
+
+                # BUG-1 FIX: student yoki group None bo'lsa (SET_NULL holatida)
+                # snapshot fieldlardan (student_full_name, group_name) foydalanamiz
+                _student_name = (
+                    self.student_full_name
+                    or (self.student.full_name if self.student else "Noma'lum o'quvchi")
                 )
+                _group_name = (
+                    self.group_name
+                    or (self.group.name if self.group else "Noma'lum guruh")
+                )
+                _branch = (
+                    (self.student.branch if self.student else None)
+                    or (self.group.branch if self.group else None)
+                )
+
+                if _branch is None:
+                    # Branch aniqlanmasa tranzaksiya yaratmaymiz — AttributeError dan saqlaymiz
+                    import logging as _logging
+                    _logging.getLogger(__name__).error(
+                        "apply_payment: branch aniqlanmadi, tranzaksiya yaratilmadi. "
+                        "Payment id=%s, student_full_name=%s",
+                        self.id, _student_name
+                    )
+                else:
+                    # KASSA LOGIKASI:
+                    # Super Admin to'lovni o'zi qilsa — darhol tasdiqlanadi (is_verified=True).
+                    # Filial admin (admin) to'lov kiritsa — kassa rejimida (is_verified=False),
+                    # ya'ni o'quvchi qarzi yopiladi, lekin global balansga HALI qo'shilmaydi.
+                    _user_role = getattr(admin_user, 'role', None)
+                    _is_discount = (self.student.status == 'discount') if self.student else False
+                    
+                    # Barcha to'lovlar kassa orqali tasdiqlanishi shart (avtomat tasdiqlash o'chirildi)
+                    _is_auto_verified = False
+                    _verified_at = None
+
+                    FinanceTransaction.objects.create(
+                        related_id=f"STP-{self.id}-INS-{uuid.uuid4().hex[:12]}",
+                        transaction_type='income',
+                        category='student_fee',
+                        status='completed',
+                        record_type='payment',
+                        amount=installment,
+                        date=self.paid_at.date(),
+                        marked_by=admin_user,
+                        branch=_branch,
+                        student=self.student,
+                        group=self.group,
+                        student_name=_student_name,
+                        group_name=_group_name,
+                        payment_method=self.payment_method,
+                        title=_student_name,
+                        description=(
+                            f"{_group_name} ({payment_type_str}) "
+                            f"{self.month.strftime('%Y-%m')} — {installment} UZS. "
+                            f"Usul: {self.get_payment_method_display()}. "
+                            f"{receiptless_str} {notes_str}"
+                        ).strip(),
+                        is_verified=_is_auto_verified,
+                        verified_by=admin_user if _is_auto_verified else None,
+                        verified_at=_verified_at,
+                    )
 
         return self
 

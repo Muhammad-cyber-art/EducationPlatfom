@@ -23,8 +23,8 @@ const PaymentHistory = ({
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-2xl overflow-hidden shadow-lg">
-                <div className="px-5 py-3 border-b border-[var(--border-glass)] flex items-center justify-between bg-[var(--bg-void)]/30">
+            <div className="bg-[var(--bg-panel)] border border-[#2a2a2a] rounded-2xl overflow-hidden shadow-lg">
+                <div className="px-5 py-3 border-b border-[#2a2a2a] flex items-center justify-between bg-[var(--bg-void)]/30">
                     <div className="flex items-center gap-2">
                         <History size={14} className="text-[var(--gold)]" />
                         <span className="text-[10px] font-black text-[var(--text-primary)] capitalize tracking-widest">To'lov Tarixi</span>
@@ -33,7 +33,7 @@ const PaymentHistory = ({
 
                 <div className="max-h-[220px] overflow-y-auto custom-scrollbar">
                     <table className="w-full text-left">
-                        <tbody className="divide-y divide-[var(--border-glass)]">
+                        <tbody className="divide-y divide-[#2a2a2a]">
                             {data.payment_history?.map((item) => {
                                 const isActive = parseInt(staff_id) === item.id;
                                 return (
@@ -86,7 +86,7 @@ const PaymentHistory = ({
                 </div>
             </div>
 
-            <div className="bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-2xl overflow-hidden shadow-lg p-5">
+            <div className="bg-[var(--bg-panel)] border border-[#2a2a2a] rounded-2xl overflow-hidden shadow-lg p-5">
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
                         <Bookmark size={14} className="text-[var(--gold)]" />
