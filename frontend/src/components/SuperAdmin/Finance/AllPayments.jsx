@@ -9,6 +9,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import api from '../../../tokenUpdater/updater';
 import toast from 'react-hot-toast';
 import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
+import ThemeToggle from '../../ThemeToggle';
 
 const AllPayments = () => {
   const navigate = useNavigate();
@@ -221,6 +222,7 @@ const AllPayments = () => {
             {isDownloading ? <Loader2 size={14} className="animate-spin shrink-0" /> : <Download size={14} className="shrink-0 sm:w-4 sm:h-4" />}
             <span className="max-[380px]:hidden sm:inline">Yuklash</span>
           </button>
+          <ThemeToggle />
         </div>
       </div>
 

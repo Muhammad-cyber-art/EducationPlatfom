@@ -32,7 +32,7 @@ export const useStaffProfileForm = (isOpen, branch, onClose, onSuccess) => {
 
     const fetchExistingProfiles = useCallback(async () => {
         try {
-            const response = await api.get('/finance/staff-profiles/');
+            const response = await api.get('/finance/staff-profiles/?page_size=200');
             const data = response.data.results || response.data;
             dispatch(setProfileExisting(Array.isArray(data) ? data : []));
         } catch (err) {
@@ -44,7 +44,7 @@ export const useStaffProfileForm = (isOpen, branch, onClose, onSuccess) => {
         dispatch(setProfileUsersLoading(true));
         dispatch(setProfileError(''));
         try {
-            const response = await api.get(`/register/users/?branch=${branch}&role=${selectedRole}`);
+            const response = await api.get(`/register/users/?branch=${branch}&role=${selectedRole}&page_size=200`);
             const data = response.data.results || response.data;
             dispatch(setProfileUsers(Array.isArray(data) ? data : []));
         } catch (err) {

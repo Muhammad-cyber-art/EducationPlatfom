@@ -40,7 +40,7 @@ export const useStaffPaymentsMain = () => {
         if (!activeBranch) return;
         dispatch(setStaffLoading(true));
         try {
-            let url = `/finance/staff-profiles/?user__role=${activeTab}&user__branch=${Number(activeBranch)}`;
+            let url = `/finance/staff-profiles/?user__role=${activeTab}&user__branch=${Number(activeBranch)}&page_size=200`;
             const res = await api.get(url);
             const data = res.data.results || res.data;
             dispatch(setStaffData(data));

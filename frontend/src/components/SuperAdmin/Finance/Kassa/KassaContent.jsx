@@ -62,7 +62,7 @@ const getMethodMeta = (method, display) => {
 const IncomeTable = ({ payments, loading, isSuperAdmin, onVerify, onDetail, onReceipt }) => (
     <table className="w-full text-left border-collapse">
         <thead>
-            <tr className="bg-[#0a0a0a] border-b border-[#333]">
+            <tr className="bg-[var(--bg-panel)] border-b border-[#333]">
                 <th className="px-8 py-4 text-[10px] font-black text-[var(--gold)] uppercase tracking-[0.3em]">O'quvchi / Guruh</th>
                 <th className="px-8 py-4 text-[10px] font-black text-[var(--gold)] uppercase tracking-[0.3em]">To'lov Usuli</th>
                 <th className="px-8 py-4 text-[10px] font-black text-[var(--gold)] uppercase tracking-[0.3em]">Summa</th>
@@ -85,7 +85,7 @@ const IncomeTable = ({ payments, loading, isSuperAdmin, onVerify, onDetail, onRe
                         key={p.id}
                         className={`transition-all duration-300 group/row ${isCancelled
                             ? 'opacity-50 bg-red-500/[0.04] border-l-2 border-red-500'
-                            : 'hover:bg-white/[0.04]'
+                            : 'hover:bg-[var(--gold-dim)]'
                             }`}
                     >
                         <td className="px-8 py-4">
@@ -157,7 +157,7 @@ const IncomeTable = ({ payments, loading, isSuperAdmin, onVerify, onDetail, onRe
 const ExpenseTable = ({ withdrawals, loading }) => (
     <table className="w-full text-left border-collapse">
         <thead>
-            <tr className="bg-[#0a0a0a] border-b border-[#333]">
+            <tr className="bg-[var(--bg-panel)] border-b border-[#333]">
                 <th className="px-8 py-4 text-[10px] font-black text-[var(--gold)] uppercase tracking-[0.3em]">Operatsiya</th>
                 <th className="px-8 py-4 text-[10px] font-black text-[var(--gold)] uppercase tracking-[0.3em]">Toifa</th>
                 <th className="px-8 py-4 text-[10px] font-black text-[var(--gold)] uppercase tracking-[0.3em]">Summa</th>
@@ -172,7 +172,7 @@ const ExpenseTable = ({ withdrawals, loading }) => (
             ) : withdrawals.length === 0 ? (
                 <tr><td colSpan="6" className="p-16 text-center text-[var(--text-muted)] font-black uppercase tracking-widest">Hozircha hech qanday chiqim topilmadi</td></tr>
             ) : withdrawals.map((w) => (
-                <tr key={w.id} className="hover:bg-white/[0.04] transition-all duration-300 group/row">
+                <tr key={w.id} className="hover:bg-[var(--gold-dim)] transition-all duration-300 group/row">
                     <td className="px-8 py-4">
                         <div className="flex items-center gap-4">
                             <div className="w-10 h-10 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500 group-hover/row:bg-red-500 group-hover/row:text-white transition-all">

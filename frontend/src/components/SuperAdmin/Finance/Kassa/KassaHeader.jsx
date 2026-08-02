@@ -1,6 +1,7 @@
 import React from "react";
 import { ArrowLeft, Wallet, PlusCircle, TrendingDown, Verified, MinusCircle, Circle } from "lucide-react";
 import { formatCurrency } from "./useKassa";
+import ThemeToggle from "../../../ThemeToggle";
 
 const KassaHeader = ({ navigate, totalToday, totalVerified, totalWithdrawn, onWithdraw, isSuperAdmin }) => (
     <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 p-5 bg-[var(--bg-panel)]/40 border border-[#333] rounded-2xl shadow-xl backdrop-blur-xl relative overflow-hidden group">
@@ -53,15 +54,18 @@ const KassaHeader = ({ navigate, totalToday, totalVerified, totalWithdrawn, onWi
             </div>
         </div>
 
-        {isSuperAdmin && (
-            <button
-                onClick={onWithdraw}
-                className="relative z-10 px-6 xl:px-8 h-12 bg-red-600 hover:bg-red-500 text-white font-black text-[10px] uppercase tracking-widest rounded-xl transition-all shadow-lg active:scale-95 flex items-center justify-center gap-3 shrink-0"
-            >
-                <MinusCircle size={16} />
-                Pul Olish
-            </button>
-        )}
+        <div className="relative z-10 flex items-center gap-3 shrink-0">
+            {isSuperAdmin && (
+                <button
+                    onClick={onWithdraw}
+                    className="px-6 xl:px-8 h-12 bg-red-600 hover:bg-red-500 text-white font-black text-[10px] uppercase tracking-widest rounded-xl transition-all shadow-lg active:scale-95 flex items-center justify-center gap-3 shrink-0"
+                >
+                    <MinusCircle size={16} />
+                    Pul Olish
+                </button>
+            )}
+            <ThemeToggle />
+        </div>
     </div>
 );
 

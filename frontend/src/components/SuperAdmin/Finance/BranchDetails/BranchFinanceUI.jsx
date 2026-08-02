@@ -6,6 +6,7 @@ import {
  Layers, Activity 
 } from'lucide-react';
 import GoBackButton from'../../../sendback';
+import ThemeToggle from '../../../ThemeToggle';
 
 export const BranchHeader = ({ branchName, periodControls }) => (
  <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-6 border-b border-[#2a2a2a] mt-3">
@@ -26,6 +27,7 @@ export const BranchHeader = ({ branchName, periodControls }) => (
    Jonli Tahlil
  </span>
  </div>
+ <ThemeToggle />
  </div>
  </div>
 );

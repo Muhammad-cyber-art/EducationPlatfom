@@ -116,12 +116,14 @@ const founders = [
   {
     img: founder1,
     name: "Muhammad Komilov",
+    contact: '@ko_milov_off , tel : +998(93)697-09-26',
     role: "CEO & Founder & Backent developer",
     bio: "Texnologik strategiyalar va arxitektura bo'yicha murakkab moliyaviy algoritmlari yaratuvchisi.",
   },
   {
     img: founder2,
     name: "Aslbek Yusupov",
+    contact: '@aslbekyusupov , tel : +998(20)001-58-88',
     role: "CTO & UI/UX designer & Frontent developer",
     bio: "Zamonaviy UI/UX interfeyslari va marketing bo'yicha mutaxassis.",
   },
@@ -488,10 +490,13 @@ export function LandingPage() {
                       className="relative h-36 w-36 rounded-full object-cover border-[5px] border-white"
                     />
                   </div>
-                  <div>
+                  <div className="mt-6 text-center">
                     <h3 className="text-2xl font-bold">{f.name}</h3>
                     <p className="mt-1.5 text-sm font-semibold tracking-wide text-gold uppercase">{f.role}</p>
                     <p className="mt-4 text-sm leading-relaxed text-[#827161]">{f.bio}</p>
+                    <p className="mt-4 text-sm text-gray-500">
+                      <b> {f.contact.split(',')[0].trim()} • {f.contact.split(',')[1].trim()}</b>
+                    </p>
                   </div>
                 </motion.article>
               ))}

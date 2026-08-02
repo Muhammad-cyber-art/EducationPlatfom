@@ -322,6 +322,10 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             if not obj.month:
                 logger.warning(f"groups_income: month missing for obj {obj.id}")
                 return 0
+                
+            if hasattr(obj.employee, 'staff_profile') and obj.employee.staff_profile.salary_type == 'fixed':
+                return 0
+                
             if obj.employee.role == "admin":
                 # Admin uchun real tushum: to'liq student-by-student hisoblash (calculate_monthly_income logic)
                 if not obj.employee.branch:
@@ -493,6 +497,10 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                     f"groups_income_expected: month missing for obj {obj.id}"
                 )
                 return 0
+                
+            if hasattr(obj.employee, 'staff_profile') and obj.employee.staff_profile.salary_type == 'fixed':
+                return 0
+                
             if obj.employee.role == "admin":
                 if not obj.employee.branch:
                     logger.warning(
@@ -642,6 +650,8 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             if not obj.month or not hasattr(obj.employee, "staff_profile"):
                 return None
             profile = obj.employee.staff_profile
+            if profile.salary_type == 'fixed':
+                return None
             salary, details = profile.calculate_attendance_based_salary(obj.month)
             return {"salary": int(salary), "details": details}
         except:
@@ -668,6 +678,9 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                 return []
 
             profile = obj.employee.staff_profile
+            
+            if profile.salary_type == 'fixed':
+                return []
 
             # === OPTIMIZATSIYA: Prefetch context'dan foydalanish ===
             pf = self._get_prefetch()
@@ -972,6 +985,10 @@ class StaffProfileSerializer(serializers.ModelSerializer):
 
     def get_current_payment_id(self, obj) -> int:
         try:
+            if hasattr(obj.user, 'current_payments'):
+                payments = obj.user.current_payments
+                return payments[0].id if payments else None
+                
             from django.utils import timezone
 
             current_month = timezone.localdate().replace(day=1)
@@ -984,7 +1001,10 @@ class StaffProfileSerializer(serializers.ModelSerializer):
 
     def get_group_configs(self, obj):
         if obj.user.role == "mentor":
-            configs = MentorGroupSalaryConfig.objects.filter(mentor=obj.user)
+            if hasattr(obj.user, 'prefetched_group_configs'):
+                configs = obj.user.prefetched_group_configs
+            else:
+                configs = MentorGroupSalaryConfig.objects.filter(mentor=obj.user)
             return MentorGroupSalaryConfigSerializer(configs, many=True).data
         return []
 

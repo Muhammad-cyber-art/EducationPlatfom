@@ -37,7 +37,7 @@ class RegisterViewSet(ModelViewSet):
             return UserModel.objects.none()
         user = self.request.user
         if user.role == 'super_admin': 
-            return UserModel.objects.all()
+            return UserModel.objects.select_related('branch').all()
         
         # Admin ko'ra oladigan filiallar
         allowed = list(user.branch_accesses.values_list('branch_id', flat=True))
@@ -48,8 +48,8 @@ class RegisterViewSet(ModelViewSet):
             # BranchAccess orqali ko'chirilgan mentorlarni ham ko'rish
             return UserModel.objects.filter(
                 Q(branch_id__in=allowed) | Q(branch_accesses__branch_id__in=allowed)
-            ).exclude(role='super_admin').distinct()
-        return UserModel.objects.filter(id=user.id)
+            ).exclude(role='super_admin').select_related('branch').distinct()
+        return UserModel.objects.filter(id=user.id).select_related('branch')
 
     def create(self, request, *args, **kwargs):
         """Ruxsatlarni tekshirish logikasi"""
@@ -112,7 +112,7 @@ class RegisterViewSet(ModelViewSet):
         branch_id = request.query_params.get('branch_id')
         
         if request.user.role == 'super_admin':
-            admins = UserModel.objects.filter(role='admin')
+            admins = UserModel.objects.filter(role='admin').select_related('branch')
             if branch_id:
                 admins = admins.filter(Q(branch_id=branch_id) | Q(branch_accesses__branch_id=branch_id)).distinct()
         elif request.user.role == 'admin':
@@ -126,7 +126,7 @@ class RegisterViewSet(ModelViewSet):
             admins = UserModel.objects.filter(
                 Q(role='admin') & 
                 (Q(branch_id__in=allowed_branches) | Q(branch_accesses__branch_id__in=allowed_branches))
-            ).distinct()
+            ).select_related('branch').distinct()
             if branch_id:
                 admins = admins.filter(Q(branch_id=branch_id) | Q(branch_accesses__branch_id=branch_id)).distinct()
         else:
@@ -237,7 +237,7 @@ class UsersListView(ListAPIView):
         user = self.request.user
         
         if user.role == 'super_admin':
-            return UserModel.objects.all()
+            return UserModel.objects.select_related('branch').all()
 
         allowed_branches = []
         if user.branch_id: allowed_branches.append(user.branch_id)
@@ -248,7 +248,7 @@ class UsersListView(ListAPIView):
             role='mentor',
         ).filter(
             Q(branch_id__in=allowed_branches) | Q(branch_accesses__branch_id__in=allowed_branches)
-        ).distinct()
+        ).select_related('branch').distinct()
 
 class CurrentUserView(RetrieveAPIView):
     permission_classes = [IsAuthenticated]

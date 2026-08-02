@@ -13,6 +13,7 @@ import { useInView } from 'react-intersection-observer';
 import api from '../../../tokenUpdater/updater';
 import { get_user_info } from '../../Authorized/getRole';
 import toast from 'react-hot-toast';
+import ThemeToggle from '../../ThemeToggle';
 
 const PaymentsStory = () => {
     const navigate = useNavigate();
@@ -169,6 +170,7 @@ const PaymentsStory = () => {
                     >
                         <RefreshCw size={20} />
                     </button>
+                    <ThemeToggle />
                 </div>
             </div>
 

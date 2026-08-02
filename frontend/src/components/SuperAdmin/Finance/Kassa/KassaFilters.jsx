@@ -67,24 +67,24 @@ const KassaFilters = ({ filters, setFilters, branches, clearFilters, setToday, a
 
                 <button
                     onClick={setToday}
-                    className={`px-4 h-12 flex items-center justify-center border rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${filters.date === new Date().toISOString().split('T')[0] ? 'bg-[var(--gold)] text-black border-[var(--gold)]' : 'bg-[#0a0a0a] text-[var(--gold)] border-[#333] hover:border-[var(--gold)]/50'}`}
+                    className={`px-4 h-12 flex items-center justify-center border rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${filters.date === new Date().toISOString().split('T')[0] ? 'bg-[var(--gold)] text-black border-[var(--gold)]' : 'bg-[var(--bg-panel)] text-[var(--gold)] border-[#333] hover:border-[var(--gold)]/50'}`}
                 >
                     Bugun
                 </button>
             </div>
         </div>
 
-        <div className="flex items-center gap-2 p-1.5 bg-[#0a0a0a] border border-[#333] rounded-xl w-full sm:w-fit overflow-x-auto no-scrollbar">
+        <div className="flex items-center gap-2 p-1.5 bg-[var(--bg-panel)] border border-[#333] rounded-xl w-full sm:w-fit overflow-x-auto no-scrollbar">
             <button
                 onClick={() => setActiveTab("incomes")}
-                className={`flex-1 sm:flex-none whitespace-nowrap px-6 xl:px-10 py-3 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 ${activeTab === 'incomes' ? 'bg-[var(--gold)] text-black shadow-lg scale-100 z-10' : 'text-[var(--text-muted)] hover:text-white hover:bg-white/5'}`}
+                className={`flex-1 sm:flex-none whitespace-nowrap px-6 xl:px-10 py-3 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 ${activeTab === 'incomes' ? 'bg-[var(--gold)] text-black shadow-lg scale-100 z-10' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--gold-dim)]'}`}
             >
                 <PlusCircle size={14} />
                 Tushumlar <span className="opacity-50 text-[8px]">({paymentsCount})</span>
             </button>
             <button
                 onClick={() => setActiveTab("expenses")}
-                className={`flex-1 sm:flex-none whitespace-nowrap px-6 xl:px-10 py-3 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 ${activeTab === 'expenses' ? 'bg-red-600 text-white shadow-lg scale-100 z-10' : 'text-[var(--text-muted)] hover:text-white hover:bg-white/5'}`}
+                className={`flex-1 sm:flex-none whitespace-nowrap px-6 xl:px-10 py-3 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 ${activeTab === 'expenses' ? 'bg-red-600 text-white shadow-lg scale-100 z-10' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--gold-dim)]'}`}
             >
                 <TrendingDown size={14} />
                 Chiqimlar <span className="opacity-50 text-[8px]">({withdrawalsCount})</span>

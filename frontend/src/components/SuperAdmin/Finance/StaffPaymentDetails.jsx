@@ -70,8 +70,8 @@ const StaffPaymentDetails = () => {
 
   // Fetch group configs when data is available
   const fetchGroupConfigs = async () => {
-    if (!data?.employee_id) return;
-    
+    if (!data?.employee_id || data?.salary_type === 'fixed') return;
+
     dispatch(setGroupConfigsLoading(true));
     try {
       const response = await api.get(`/finance/mentor-group-salary-configs/`, {
@@ -93,7 +93,7 @@ const StaffPaymentDetails = () => {
     }
   };
   console.log(data);
-  
+
   const studentCountSummary = useMemo(() => {
     if (!data) return {};
     const groups = data?.mentor_groups || [];
@@ -186,16 +186,18 @@ const StaffPaymentDetails = () => {
           <div className="lg:col-span-9 space-y-4">
             {/* 1. Stats Cards - Asosiy statistika */}
             <PaymentStats {...{ data, isPercentageType, isStudentCountType, formatCurrency, studentCountSummary, finalTotalAmount, isSuperAdmin }} />
-            
+
             {/* 2. Payment History - To'lov tarixi */}
             <PaymentHistory {...{ data, staff_id, formatCurrency, isSuperAdmin, handleDeleteHistory, dispatch, setPayModal, setSelectedHistoryItem }} />
-            
+
             {/* 3. KPI Table - Guruhlar va o'quvchilar */}
-            <KpiTable {...{ data, isPercentageType, isStudentCountType, formatCurrency, setSelectedGroupForDebtors, groupConfigs }} />
-            
+            {data?.salary_type !== 'fixed' && (
+              <KpiTable {...{ data, isPercentageType, isStudentCountType, formatCurrency, setSelectedGroupForDebtors, groupConfigs }} />
+            )}
+
             {/* 4. Advance History - Avanslar */}
             <AdvanceHistory {...{ data, formatCurrency, isSuperAdmin, handleDeleteAdvance }} />
-            
+
           </div>
         </div>
       </div>

@@ -617,12 +617,19 @@ class EmployeePaymentViewSet(viewsets.ModelViewSet):
             # 2. Har bir xodim uchun guruhlar (mentor/admin)
             from django.contrib.auth import get_user_model
             User = get_user_model()
-            employees = {u.id: u for u in User.objects.filter(id__in=employee_ids).select_related('branch')}
+            employees = {u.id: u for u in User.objects.filter(id__in=employee_ids).select_related('branch', 'staff_profile')}
 
-            mentor_ids = [uid for uid, u in employees.items() if u.role == 'mentor']
+            mentor_ids = [
+                uid for uid, u in employees.items() 
+                if u.role == 'mentor' and (
+                    not hasattr(u, 'staff_profile') or u.staff_profile.salary_type != 'fixed'
+                )
+            ]
             admin_branch_ids = list(set(
                 u.branch_id for uid, u in employees.items()
-                if u.role == 'admin' and u.branch_id
+                if u.role == 'admin' and u.branch_id and (
+                    not hasattr(u, 'staff_profile') or u.staff_profile.salary_type != 'fixed'
+                )
             ))
 
             # Guruhlarni yig'ish
@@ -912,7 +919,23 @@ class StaffProfileViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         # Moliya bo'limiga faqat super_admin kira oladi, shuning uchun barcha filiallarni ko'radi
-        return self.queryset
+        from django.db.models import Prefetch
+        from django.utils import timezone
+        from .models import EmployeePayment, MentorGroupSalaryConfig
+        
+        current_month = timezone.localdate().replace(day=1)
+        qs = self.queryset.select_related('user__branch').prefetch_related(
+            Prefetch(
+                'user__salary_payments',
+                queryset=EmployeePayment.objects.filter(month=current_month),
+                to_attr='current_payments'
+            ),
+            Prefetch(
+                'user__group_salary_configs',
+                to_attr='prefetched_group_configs'
+            )
+        )
+        return qs
 
     @action(detail=False, methods=['get', 'patch', 'delete'], url_path='by-user/(?P<user_id>[^/.]+)')
     def by_user(self, request, user_id=None):
