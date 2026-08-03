@@ -593,9 +593,11 @@ class EmployeePaymentViewSet(viewsets.ModelViewSet):
     def get_serializer_context(self):
         """OPTIMIZATSIYA: Serializer uchun batch-prefetched ma'lumotlarni tayyorlash"""
         context = super().get_serializer_context()
-        # Faqat list va retrieve uchun prefetch qilish
-        if self.action not in ('list', 'retrieve'):
+        # Faqat list, retrieve va kpi uchun prefetch qilish
+        if self.action not in ('list', 'retrieve', 'kpi'):
             return context
+        # Lite mode flagini context ga qo'shamiz
+        context['lite'] = getattr(self, '_lite_mode', False)
         try:
             queryset = self.filter_queryset(self.get_queryset())
             if self.action == 'list':
@@ -799,6 +801,30 @@ class EmployeePaymentViewSet(viewsets.ModelViewSet):
             logger.error(f"EmployeePayment prefetch error: {e}")
         return context
 
+    def retrieve(self, request, *args, **kwargs):
+        """Lite mode support: ?lite=true bo'lsa og'ir hisob-kitoblar o'tkazib yuboriladi"""
+        self._lite_mode = request.query_params.get('lite', 'false').lower() == 'true'
+        return super().retrieve(request, *args, **kwargs)
+
+    @action(detail=True, methods=['get'], url_path='kpi')
+    def kpi(self, request, pk=None):
+        """Og'ir KPI ma'lumotlarini alohida qaytaradi (progressive loading uchun)"""
+        payment = self.get_object()
+        self._lite_mode = False  # KPI uchun to'liq hisob
+        context = self.get_serializer_context()
+        context['lite'] = False
+        temp_s = EmployeePaymentSerializer(payment, context=context)
+        return Response({
+            'id': payment.id,
+            'salary_base': float(payment.salary_base or 0),
+            'groups_income': temp_s.get_groups_income(payment),
+            'groups_income_expected': temp_s.get_groups_income_expected(payment),
+            'calculated_commission': temp_s.get_calculated_commission(payment),
+            'calculated_commission_expected': temp_s.get_calculated_commission_expected(payment),
+            'calculated_per_student': temp_s.get_calculated_per_student(payment),
+            'mentor_groups': temp_s.get_mentor_groups(payment),
+        })
+
     @action(detail=False, methods=['get'], url_path='current')
     def current(self, request):
         """Get the current month's employee payment for the logged-in user."""
@@ -843,18 +869,20 @@ class EmployeePaymentViewSet(viewsets.ModelViewSet):
             payment.marked_by = request.user
             payment.save()
             
-            # Centralized Finance Ledger yaratish
+            # ✅ Centralized Finance Ledger — duplicate yaratmaslik uchun get_or_create
             from .models import FinanceTransaction
-            FinanceTransaction.objects.create(
-                transaction_type='expense',
-                category='salary',
-                amount=payment.total_amount,
-                date=timezone.localdate(),
-                marked_by=request.user,
-                branch=payment.employee.branch,
-                title=f"Maosh: {payment.employee.get_full_name() or payment.employee.username}",
-                description=f"{payment.month.strftime('%Y-%m')} oyi uchun xizmat haqi",
-                related_id=f"EMP-{payment.id}"
+            FinanceTransaction.objects.get_or_create(
+                related_id=f"EMP-{payment.id}",
+                defaults={
+                    'transaction_type': 'expense',
+                    'category': 'salary',
+                    'amount': payment.total_amount,
+                    'date': timezone.localdate(),
+                    'marked_by': request.user,
+                    'branch': payment.employee.branch,
+                    'title': f"Maosh: {payment.employee.get_full_name() or payment.employee.username}",
+                    'description': f"{payment.month.strftime('%Y-%m')} oyi uchun xizmat haqi",
+                }
             )
             
         return Response({"status": "success", "data": EmployeePaymentSerializer(payment).data})

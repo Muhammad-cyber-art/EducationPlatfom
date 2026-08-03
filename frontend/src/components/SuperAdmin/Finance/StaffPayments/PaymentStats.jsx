@@ -8,18 +8,26 @@ const PaymentStats = ({
     formatCurrency,
     studentCountSummary,
     finalTotalAmount,
-    isSuperAdmin
+    isSuperAdmin,
+    kpiLoading
 }) => {
-    
+
+    // KPI kartalar uchun skeleton
+    const KpiSkeleton = () => (
+        <div className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-[#2a2a2a] shadow-lg animate-pulse">
+            <div className="h-3 w-20 bg-[#2a2a2a] rounded mb-3" />
+            <div className="h-7 w-32 bg-[#2a2a2a] rounded mb-2" />
+            <div className="h-2 w-24 bg-[#2a2a2a] rounded" />
+        </div>
+    );
+
     return (
         <div className={`grid gap-4 ${isPercentageType || isStudentCountType ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-1 md:grid-cols-3'}`}>
-            {/* 1. ASOSIY MAOSH KARTASI */}
             {isPercentageType ? (
                 <>
                     {/* Asl Tushum va Komissiya */}
-                    <div
-                        className="p-4 rounded-2xl bg-[var(--bg-panel)] border shadow-lg border-emerald-500/20 shadow-emerald-500/5"
-                    >
+                    {kpiLoading ? <KpiSkeleton /> : (
+                    <div className="p-4 rounded-2xl bg-[var(--bg-panel)] border shadow-lg border-emerald-500/20 shadow-emerald-500/5">
                         <div className="flex items-center justify-between mb-1.5">
                             <p className="text-[10px] font-black text-emerald-500 capitalize tracking-widest flex items-center gap-2">
                                 <Receipt size={12} /> Asl KPI
@@ -36,7 +44,9 @@ const PaymentStats = ({
                             To'lov − refund + qo'shimcha; o'quvchi qoldirishlari hisobga olinmaydi
                         </p>
                     </div>
+                    )}
 
+                    {kpiLoading ? <KpiSkeleton /> : (
                     <div className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-amber-500/20 shadow-lg shadow-amber-500/5">
                         <div className="flex items-center justify-between mb-1.5">
                             <p className="text-[10px] font-black text-amber-400 capitalize tracking-widest flex items-center gap-2">
@@ -54,10 +64,10 @@ const PaymentStats = ({
                             Barcha o'quvchilarning shartnoma summasidan hisoblangan taxminiy komissiya
                         </p>
                     </div>
-
-
+                    )}
                 </>
             ) : isStudentCountType ? (
+                kpiLoading ? <KpiSkeleton /> : (
                 <div className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-blue-500/20 shadow-lg shadow-blue-500/5">
                     <p className="text-[10px] font-black text-blue-400 capitalize tracking-widest mb-1.5 flex items-center gap-2">
                         <Users size={12} /> KPI Maosh
@@ -70,6 +80,7 @@ const PaymentStats = ({
                         <p className="text-[8px] font-black text-blue-500 capitalize tabular-nums">-{formatCurrency(studentCountSummary.mentorShareExpected)} max</p>
                     </div>
                 </div>
+                )
             ) : (
                 <div className="p-4 rounded-2xl bg-[var(--bg-panel)] border border-[#2a2a2a] shadow-lg">
                     <p className="text-[10px] font-black text-[var(--text-muted)] capitalize tracking-widest mb-1.5">
@@ -144,9 +155,13 @@ const PaymentStats = ({
                     <div className="w-1.5 h-1.5 rounded-full bg-[var(--gold)] animate-pulse shadow-[0_0_8px_var(--gold)]" />
                     Yakuniy To'lov
                 </div>
-                <h3 className="text-2xl font-black text-[var(--text-primary)] tabular-nums tracking-tighter">
-                    {formatCurrency(finalTotalAmount)}
-                </h3>
+                {kpiLoading && (isPercentageType || isStudentCountType) ? (
+                    <div className="h-8 w-36 bg-[var(--gold)]/20 rounded animate-pulse" />
+                ) : (
+                    <h3 className="text-2xl font-black text-[var(--text-primary)] tabular-nums tracking-tighter">
+                        {formatCurrency(finalTotalAmount)}
+                    </h3>
+                )}
             </div>
         </div>
     );

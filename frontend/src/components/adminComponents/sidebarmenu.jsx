@@ -79,12 +79,9 @@ export default function SideBar({ isOpen, onClose }) {
             <div className="w-12 h-12 flex items-center justify-center transition-all">
               <img src="/YNlogo_without_word.png" alt="Logo" className="w-full h-full object-contain drop-shadow-[0_0_10px_rgba(255,215,0,0.3)]" />
             </div>
-            <div>
-              <h1 className="text-[18px] font-black text-[var(--text-primary)] leading-none tracking-tighter capitalize">
-                Y N
-              </h1>
-              <p className="text-[8px] text-[var(--text-muted)] font-black capitalize tracking-[0.3em] mt-1.5 opacity-60">admin</p>
-            </div>
+            <h1 className="text-xl font-black text-[var(--text-primary)] leading-none tracking-tighter capitalize">
+              Yaxshi Niyat
+            </h1>
           </div>
 
 

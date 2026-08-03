@@ -7,7 +7,8 @@ const KpiTable = ({
   isStudentCountType,
   formatCurrency,
   setSelectedGroupForDebtors,
-  groupConfigs = []
+  groupConfigs = [],
+  kpiLoading
 }) => {
   // Find group config for a group
   const getGroupConfig = (groupId) => {
@@ -18,6 +19,36 @@ const KpiTable = ({
       return configGroupId === groupId;
     });
   };
+
+  // KPI yuklanayotganda skeleton jadval ko'rsatish
+  if (kpiLoading) {
+    return (
+      <div className="bg-[var(--bg-panel)] border border-emerald-500/10 rounded-2xl overflow-hidden shadow-xl mt-4 animate-pulse">
+        <div className="px-5 py-4 border-b border-[#2a2a2a] flex items-center justify-between bg-emerald-500/5">
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-[#2a2a2a] rounded" />
+            <div className="h-3 w-28 bg-[#2a2a2a] rounded" />
+          </div>
+          <div className="h-5 w-32 bg-[#2a2a2a] rounded-full" />
+        </div>
+        <div className="p-4 space-y-3">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="flex items-center justify-between py-2">
+              <div className="space-y-1.5">
+                <div className="h-3 w-28 bg-[#2a2a2a] rounded" />
+                <div className="h-2 w-16 bg-[#2a2a2a] rounded" />
+              </div>
+              <div className="h-3 w-12 bg-[#2a2a2a] rounded" />
+              <div className="h-3 w-20 bg-[#2a2a2a] rounded" />
+              <div className="h-3 w-16 bg-[#2a2a2a] rounded" />
+              <div className="h-6 w-20 bg-[#2a2a2a] rounded-lg" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
 
   // Agar guruhlar bo'lsa, jadvalni ko'rsatamiz (salary_type dan qat'i nazar)
   if (data.mentor_groups && data.mentor_groups.length > 0) {

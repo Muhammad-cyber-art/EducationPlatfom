@@ -248,6 +248,10 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
         pf = self._get_prefetch()
         return pf.get('extras_map', {}) if pf else None
 
+    def _is_lite(self) -> bool:
+        """Lite mode: og'ir hisob-kitoblarni o'tkazib yuborish (tez yuklash uchun)"""
+        return bool(self.context.get('lite', False))
+
     def get_marked_by_name(self, obj) -> str:
         try:
             if obj.marked_by:
@@ -307,6 +311,8 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             return None
 
     def get_groups_income(self, obj) -> int:
+        if self._is_lite():
+            return 0
         import logging
 
         logger = logging.getLogger(__name__)
@@ -463,6 +469,8 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             return 0
 
     def get_calculated_commission(self, obj) -> float:
+        if self._is_lite():
+            return None
         try:
             from finance.utils import floor_amount
 
@@ -478,6 +486,8 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             return None
 
     def get_groups_income_expected(self, obj) -> int:
+        if self._is_lite():
+            return 0
         import logging
 
         logger = logging.getLogger(__name__)
@@ -617,6 +627,8 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             return 0
 
     def get_calculated_commission_expected(self, obj) -> float:
+        if self._is_lite():
+            return None
         import logging
 
         logger = logging.getLogger(__name__)
@@ -649,6 +661,8 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.DictField())
     def get_attendance_based_salary(self, obj) -> dict:
+        if self._is_lite():
+            return None
         try:
             if not obj.month or not hasattr(obj.employee, "staff_profile"):
                 return None
@@ -661,6 +675,8 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             return None
 
     def get_calculated_per_student(self, obj) -> float:
+        if self._is_lite():
+            return None
         try:
             if not obj.month or not hasattr(obj.employee, "staff_profile"):
                 return None
@@ -675,6 +691,8 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_mentor_groups(self, obj) -> list:
+        if self._is_lite():
+            return []
         try:
             from finance.utils import calculate_group_revenue_and_mentor_share
 
@@ -818,6 +836,60 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             .order_by("-month", "-id")
         )
 
+        # === LITE MODE: Og'ir hisob-kitobsiz, batch advances query ===
+        if self._is_lite():
+            from .models import EmployeeAdvance
+            history_list = list(history)
+            # Barcha avanslarni BITTA queryda olamiz
+            all_adv = list(EmployeeAdvance.objects.filter(
+                employee=obj.employee
+            ).values('month', 'amount', 'created_at'))
+            adv_by_month = {}
+            for a in all_adv:
+                adv_by_month.setdefault(a['month'], []).append(a)
+
+            result = []
+            for p in history_list:
+                profile = getattr(p.employee, 'staff_profile', None)
+                month_adv = adv_by_month.get(p.month, [])
+                if p.is_paid and p.paid_at:
+                    total_adv = sum(
+                        float(a['amount']) for a in month_adv
+                        if a['created_at'] <= p.paid_at
+                    )
+                else:
+                    total_adv = sum(float(a['amount']) for a in month_adv)
+
+                salary = float(p.salary_base or 0)
+                bonus_v = float(p.bonus or 0)
+                ded = float(p.deductions or 0)
+                raw = salary + bonus_v - ded - total_adv
+                total = float(floor_amount(Decimal(str(raw)), precision=None))
+
+                marked_by_name = None
+                if p.marked_by:
+                    marked_by_name = p.marked_by.get_full_name() or p.marked_by.username
+
+                result.append({
+                    'id': p.id,
+                    'month': p.month,
+                    'salary_base': salary,
+                    'bonus': bonus_v,
+                    'deductions': ded,
+                    'total_advances': total_adv,
+                    'total_amount': total,
+                    'is_paid': p.is_paid,
+                    'paid_at': p.paid_at,
+                    'salary_type': profile.salary_type if profile else None,
+                    'commission_percentage': float(profile.commission_percentage) if profile else None,
+                    'per_student_amount': float(profile.per_student_amount) if profile else None,
+                    'calculated_commission': None,
+                    'calculated_commission_expected': None,
+                    'calculated_per_student': None,
+                    'marked_by_name': marked_by_name,
+                })
+            return result
+        # === FULL MODE: Hisob-kitoblar bilan ===
         pf = self._get_prefetch()
         result = []
         for p in history:

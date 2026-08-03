@@ -51,7 +51,10 @@ const initialState = {
  staffData: [],
  staffSearchQuery:"",
  staffRefreshing: false,
- staffLoading: false
+ staffLoading: false,
+ // Progressive KPI loading
+ kpiLoading: false,
+ kpiData: null,
 };
 
 const financeSlice = createSlice({
@@ -152,6 +155,12 @@ const financeSlice = createSlice({
  setStaffLoading: (state, action) => {
  state.staffLoading = action.payload;
  },
+ setKpiLoading: (state, action) => {
+ state.kpiLoading = action.payload;
+ },
+ setKpiData: (state, action) => {
+ state.kpiData = action.payload;
+ },
     resetFinanceState: (state) => {
         const preservedState = {
             activeBranch: state.activeBranch,
@@ -199,6 +208,8 @@ export const {
  setStaffSearchQuery,
  setStaffRefreshing,
  setStaffLoading,
+ setKpiLoading,
+ setKpiData,
  resetFinanceState
 } = financeSlice.actions;
 
