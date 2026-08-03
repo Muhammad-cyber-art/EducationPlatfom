@@ -91,11 +91,9 @@ class RegisterSerializer(serializers.ModelSerializer):
             if requested_branch is not None:
                 instance.branch = requested_branch
         elif current_user.role == 'admin':
-            allowed_ids = self.get_allowed_branch_ids(current_user)
-            # Admin faqat ruxsati bor filialga o'tkaza oladi
-            if requested_branch and requested_branch.id in allowed_ids:
-                instance.branch = requested_branch
-            # Agar branch yuborilmasa, mavjud filialiga tegmaymiz
+            # Admin xodimlarni boshqa filialga ko'chira olmaydi
+            if requested_branch is not None and getattr(instance.branch, 'id', None) != requested_branch.id:
+                raise serializers.ValidationError({"branch_id": "Sizda xodimlarni boshqa filialga ko'chirish huquqi yo'q."})
 
         # 2. Parolni yangilash
         if password and password.strip():

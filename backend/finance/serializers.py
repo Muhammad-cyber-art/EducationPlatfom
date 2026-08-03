@@ -471,7 +471,8 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             profile = obj.employee.staff_profile
             if profile.salary_type not in ["percentage", "student_count"]:
                 return None
-            sal = profile.calculate_salary_for_month(obj.month, commission_basis="paid")
+            pf = self._get_prefetch()
+            sal = profile.calculate_salary_for_month(obj.month, commission_basis="paid", prefetch_cache=pf)
             return int(floor_amount(sal, precision=None))
         except:
             return None
@@ -604,7 +605,8 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                 )
                 return 0
             profile = obj.employee.staff_profile
-            inc = profile.calculate_expected_monthly_income(obj.month)
+            pf = self._get_prefetch()
+            inc = profile.calculate_expected_monthly_income(obj.month, prefetch_cache=pf)
             result = int(floor_amount(inc))
             logger.info(
                 f"groups_income_expected (mentor): calculated {result} for obj {obj.id}"
@@ -632,8 +634,9 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                     f"calculated_commission_expected: salary_type is {profile.salary_type} for obj {obj.id}"
                 )
                 return None
+            pf = self._get_prefetch()
             sal = profile.calculate_salary_for_month(
-                obj.month, commission_basis="expected"
+                obj.month, commission_basis="expected", prefetch_cache=pf
             )
             result = int(floor_amount(sal))
             logger.info(
@@ -664,7 +667,8 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
             profile = obj.employee.staff_profile
             if profile.salary_type != "student_count":
                 return None
-            sal = profile.calculate_salary_for_month(obj.month, commission_basis="paid")
+            pf = self._get_prefetch()
+            sal = profile.calculate_salary_for_month(obj.month, commission_basis="paid", prefetch_cache=pf)
             return int(floor_amount(sal))
         except:
             return None
@@ -787,6 +791,9 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_advances_history(self, obj) -> list:
+        if self.context.get('view') and self.context['view'].action == 'list':
+            return []
+        
         # === OPTIMIZATSIYA: Prefetch advance map'dan foydalanish ===
         pf = self._get_prefetch()
         if pf is not None:
@@ -802,12 +809,16 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_payment_history(self, obj) -> list:
+        if self.context.get('view') and self.context['view'].action == 'list':
+            return []
+
         history = (
             EmployeePayment.objects.filter(employee=obj.employee)
             .select_related("employee__staff_profile", "marked_by")
             .order_by("-month", "-id")
         )
 
+        pf = self._get_prefetch()
         result = []
         for p in history:
             profile = getattr(p.employee, "staff_profile", None)
@@ -826,7 +837,7 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                             int(
                                 floor_amount(
                                     profile.calculate_salary_for_month(
-                                        p.month, commission_basis="paid"
+                                        p.month, commission_basis="paid", prefetch_cache=pf
                                     )
                                 )
                             )
@@ -837,7 +848,7 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                             int(
                                 floor_amount(
                                     profile.calculate_salary_for_month(
-                                        p.month, commission_basis="expected"
+                                        p.month, commission_basis="expected", prefetch_cache=pf
                                     )
                                 )
                             )
@@ -848,7 +859,9 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                         calculated_per_student = (
                             int(
                                 floor_amount(
-                                    profile.calculate_salary_for_month(p.month, commission_basis="paid")
+                                    profile.calculate_salary_for_month(
+                                        p.month, commission_basis="paid", prefetch_cache=pf
+                                    )
                                 )
                             )
                             if not p.is_paid
@@ -857,7 +870,9 @@ class EmployeePaymentSerializer(serializers.ModelSerializer):
                         calculated_commission_expected = (
                             int(
                                 floor_amount(
-                                    profile.calculate_salary_for_month(p.month, commission_basis="expected")
+                                    profile.calculate_salary_for_month(
+                                        p.month, commission_basis="expected", prefetch_cache=pf
+                                    )
                                 )
                             )
                             if not p.is_paid

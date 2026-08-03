@@ -73,18 +73,16 @@ export default function Login() {
  <div className="flex flex-col items-center space-y-6">
  <div className="relative group">
  <div className="absolute -inset-4 bg-[var(--gold)]/20 rounded-full blur-2xl group-hover:bg-[var(--gold)]/30 transition-all duration-700"></div>
- <div className="relative w-20 h-20 bg-[var(--bg-panel)] flex items-center justify-center rounded-[24px] shadow-2xl border border-[var(--border-glass)] group-hover:border-[var(--gold)]/50 transition-all duration-500">
- <div className="w-8 h-8 border-2 border-[var(--gold)] rotate-45 rounded-sm flex items-center justify-center">
- <div className="w-2 h-2 bg-[var(--gold)] rounded-full animate-pulse"></div>
- </div>
+ <div className="relative w-24 h-24 flex items-center justify-center rounded-[24px] transition-all duration-500">
+ <img src="/YNlogo_without_word.png" alt="Logo" className="w-full h-full object-contain drop-shadow-[0_0_15px_rgba(184,134,11,0.5)]" />
  </div>
  </div>
  <div className="text-center space-y-1">
- <h1 className="text-5xl font-serif tracking-[0.05em] text-[var(--text-primary)] capitalize">
- BOSS
+ <h1 className="text-4xl font-serif tracking-[0.05em] text-[var(--text-primary)] capitalize">
+ Yaxshi Niyat
  </h1>
  <p className="text-[10px] text-[var(--gold)] font-bold capitalize tracking-[0.5em] opacity-80">
- ESTATE MANAGEMENT
+ PLATFORM
  </p>
  </div>
  </div>

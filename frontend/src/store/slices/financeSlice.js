@@ -45,7 +45,7 @@ const initialState = {
  },
  // StaffPayments states
  activeBranch: localStorage.getItem("activeBID") || null,
- activeTab:"admin",
+ activeTab: localStorage.getItem("staffPaymentsActiveTab") || "admin",
  addStaffModal: false,
  branches: [],
  staffData: [],
@@ -132,6 +132,7 @@ const financeSlice = createSlice({
  },
  setActiveTab: (state, action) => {
  state.activeTab = action.payload;
+ localStorage.setItem("staffPaymentsActiveTab", action.payload);
  },
  setAddStaffModal: (state, action) => {
  state.addStaffModal = action.payload;
@@ -151,7 +152,14 @@ const financeSlice = createSlice({
  setStaffLoading: (state, action) => {
  state.staffLoading = action.payload;
  },
- resetFinanceState: () => initialState
+    resetFinanceState: (state) => {
+        const preservedState = {
+            activeBranch: state.activeBranch,
+            activeTab: state.activeTab,
+            branches: state.branches,
+        };
+        return { ...initialState, ...preservedState };
+    }
  }
 });
 

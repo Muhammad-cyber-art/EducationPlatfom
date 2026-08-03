@@ -135,6 +135,8 @@ class RegisterViewSet(ModelViewSet):
         return Response(serializer.data)
 
     def perform_destroy(self, instance):
+        if self.request.user.role != 'super_admin':
+            raise PermissionDenied("Faqat Super Admin foydalanuvchilarni o'chira oladi.")
         reason = self.request.query_params.get('reason', "Admin tomonidan o'chirildi")
         from archivebase.services import send_to_archive
         send_to_archive(instance, request_user=self.request.user, reason=reason)

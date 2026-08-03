@@ -73,7 +73,7 @@ const AdminProfile = () => {
             </div>
 
             {/* Header (Back, Name, Date, Delete) */}
-            <div className="sticky top-0 z-40 bg-[var(--bg-void)]/80 backdrop-blur-md px-4 py-3 md:px-8 border-b border-[var(--border-glass)] flex items-center justify-between">
+            <div className="px-4 py-3 md:px-8 border-b border-[var(--border-glass)] flex items-center justify-between">
                 <div className="flex items-center gap-4">
                     <button onClick={() => navigate(-1)} className="p-2 rounded-full hover:bg-[var(--bg-panel)] transition-colors border border-[var(--border-glass)]">
                         <ChevronRight size={18} className="rotate-180" />
@@ -112,12 +112,12 @@ const AdminProfile = () => {
                         {/* Profile Image Section */}
                         <div className="space-y-4">
                             <h3 className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest">Profile Image</h3>
-                            <div className="w-full aspect-square max-w-[280px] mx-auto lg:mx-0 rounded-3xl overflow-hidden bg-[var(--bg-panel)] border border-[var(--border-glass)] shadow-xl relative group">
+                            <div className="w-[140px] md:w-[200px] lg:w-full aspect-square lg:max-w-[240px] mx-auto lg:mx-0 rounded-3xl overflow-hidden bg-[var(--bg-panel)] border border-[var(--border-glass)] shadow-xl relative group">
                                 {admin.image ? (
                                     <img src={admin.image} className="w-full h-full object-cover" alt="" />
                                 ) : (
                                     <div className="w-full h-full flex items-center justify-center">
-                                        <span className="text-7xl font-black uppercase" style={{ color: adminColor }}>
+                                        <span className="text-4xl md:text-6xl lg:text-7xl font-black uppercase" style={{ color: adminColor }}>
                                             {admin.first_name?.[0]}{admin.last_name?.[0]}
                                         </span>
                                     </div>
@@ -133,7 +133,7 @@ const AdminProfile = () => {
                             {!isEditModalOpen && user_info?.role === 'super_admin' && (
                                 <button 
                                     onClick={handleEditOpen} 
-                                    className="w-full max-w-[280px] mx-auto lg:mx-0 py-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500 hover:text-white flex items-center justify-center gap-2 transition-all uppercase text-[10px] font-black tracking-widest shadow-lg shadow-blue-500/10 active:scale-95"
+                                    className="w-[140px] md:w-[200px] lg:w-full lg:max-w-[240px] mx-auto lg:mx-0 py-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500 hover:text-white flex items-center justify-center gap-2 transition-all uppercase text-[10px] font-black tracking-widest shadow-lg shadow-blue-500/10 active:scale-95"
                                 >
                                     <Camera size={14} /> Tahrirlash rejimi
                                 </button>

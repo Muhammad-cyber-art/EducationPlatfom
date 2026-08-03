@@ -8,27 +8,38 @@ export const formatCurrency = (val) => {
     return Number(val).toLocaleString() + " UZS";
 };
 
-const getDateRange = (dateFilter) => {
-    if (dateFilter) {
-        return { date_gte: dateFilter, date_lte: dateFilter };
-    }
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-    return { date_gte: start, date_lte: end };
-};
-const getTodayDate = () => {
+const getCurrentMonth = () => {
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return `${year}-${month}`;
+};
+
+const getDateRange = (monthFilter) => {
+    let year, month;
+    if (monthFilter) {
+        const parts = monthFilter.split('-');
+        year = parseInt(parts[0]);
+        month = parseInt(parts[1]);
+    } else {
+        const now = new Date();
+        year = now.getFullYear();
+        month = now.getMonth() + 1;
+    }
+    const start = new Date(year, month - 1, 1).toISOString().split('T')[0];
+    const end = new Date(year, month, 0).toISOString().split('T')[0];
+    return { date_gte: start, date_lte: end };
 };
 
 const initialState = {
     payments: [],
     withdrawals: [],
+    paymentsPage: 1,
+    withdrawalsPage: 1,
+    hasMorePayments: true,
+    hasMoreWithdrawals: true,
     loading: true,
+    loadingMore: false,
     branches: [],
     selectedPayment: null,
     showDetailModal: false,
@@ -40,18 +51,35 @@ const initialState = {
         branch: "",
         method: "",
         search: "",
-        date: getTodayDate()
+        month: getCurrentMonth()
+    },
+    todayStats: {
+        totalToday: 0,
+        totalVerified: 0,
+        totalWithdrawn: 0
     }
 };
 
 function kassaReducer(state, action) {
     switch (action.type) {
         case 'SET_PAYMENTS':
-            return { ...state, payments: typeof action.payload === 'function' ? action.payload(state.payments) : action.payload };
+            return { 
+                ...state, 
+                payments: action.payload.page === 1 ? action.payload.data : [...state.payments, ...action.payload.data],
+                hasMorePayments: action.payload.hasMore
+            };
         case 'SET_WITHDRAWALS':
-            return { ...state, withdrawals: action.payload };
+            return { 
+                ...state, 
+                withdrawals: action.payload.page === 1 ? action.payload.data : [...state.withdrawals, ...action.payload.data],
+                hasMoreWithdrawals: action.payload.hasMore
+            };
+        case 'SET_PAGES':
+            return { ...state, ...action.payload };
         case 'SET_LOADING':
             return { ...state, loading: action.payload };
+        case 'SET_LOADING_MORE':
+            return { ...state, loadingMore: action.payload };
         case 'SET_BRANCHES':
             return { ...state, branches: action.payload };
         case 'SET_SELECTED_PAYMENT':
@@ -70,6 +98,8 @@ function kassaReducer(state, action) {
             return { ...state, filters: typeof action.payload === 'function' ? action.payload(state.filters) : action.payload };
         case 'RESET_WITHDRAW_DATA':
             return { ...state, withdrawData: { amount: "", description: "" } };
+        case 'SET_TODAY_STATS':
+            return { ...state, todayStats: action.payload };
         case 'VERIFY_PAYMENT_SUCCESS':
             return {
                 ...state,
@@ -87,7 +117,12 @@ export const useKassa = () => {
     const {
         payments,
         withdrawals,
+        paymentsPage,
+        withdrawalsPage,
+        hasMorePayments,
+        hasMoreWithdrawals,
         loading,
+        loadingMore,
         branches,
         selectedPayment,
         showDetailModal,
@@ -95,58 +130,120 @@ export const useKassa = () => {
         withdrawData,
         isSubmitting,
         activeTab,
-        filters
+        filters,
+        todayStats
     } = state;
 
     const userInfo = useMemo(() => get_user_info(), []);
 
-    const fetchKassaData = useCallback(async () => {
+    const fetchTodayStats = useCallback(async () => {
         try {
-            dispatch({ type: 'SET_LOADING', payload: true });
-            const { date_gte, date_lte } = getDateRange(filters.date);
+            const today = new Date().toISOString().split('T')[0];
+            const baseParams = { date: today, branch: filters.branch || undefined };
+            
+            // Fetch all incomes for today
+            const incRes = await api.get("/finance/transactions/", { params: { ...baseParams, transaction_type: 'income', category: 'student_fee', exclude_reversals: 'true', page_size: 1000 } });
+            const todayIncomes = incRes.data.results || incRes.data;
+            
+            const expRes = await api.get("/finance/transactions/", { params: { ...baseParams, transaction_type: 'expense', page_size: 1000 } });
+            const todayExpenses = (expRes.data.results || expRes.data).filter(t => t.category === 'owner_withdrawal' || t.category === 'other');
 
+            const totalToday = todayIncomes.reduce((sum, p) => p.status === 'cancelled' ? sum : sum + Number(p.amount), 0);
+            const totalVerified = todayIncomes.filter(p => p.payment_details?.is_verified && p.status !== 'cancelled').reduce((sum, p) => sum + Number(p.amount), 0);
+            const totalWithdrawn = todayExpenses.reduce((sum, w) => sum + Number(w.amount), 0);
+
+            dispatch({ type: 'SET_TODAY_STATS', payload: { totalToday, totalVerified, totalWithdrawn } });
+        } catch (err) {
+            console.error("Error fetching today stats:", err);
+        }
+    }, [filters.branch]);
+
+    const fetchPayments = useCallback(async (page = 1, isLoadMore = false) => {
+        try {
+            if (isLoadMore) dispatch({ type: 'SET_LOADING_MORE', payload: true });
+            else dispatch({ type: 'SET_LOADING', payload: true });
+
+            const { date_gte, date_lte } = getDateRange(filters.month);
             const params = {
                 transaction_type: 'income',
                 category: 'student_fee',
                 exclude_reversals: 'true',
                 search: filters.search || undefined,
-                branch: filters.branch || undefined
+                branch: filters.branch || undefined,
+                date__gte: date_gte,
+                date__lte: date_lte,
+                page: page
             };
 
-            if (filters.date) {
-                params.date = filters.date;
-            } else {
-                params.date__gte = date_gte;
-                params.date__lte = date_lte;
-            }
+            const res = await api.get("/finance/transactions/", { params });
+            const data = res.data.results || res.data;
+            const hasMore = res.data.next !== null && res.data.next !== undefined;
 
-            const payRes = await api.get("/finance/transactions/", { params });
-            dispatch({ type: 'SET_PAYMENTS', payload: payRes.data.results || payRes.data });
-
-            const transParams = {
-                transaction_type: 'expense',
-                branch: filters.branch || undefined
-            };
-
-            if (filters.date) {
-                transParams.date = filters.date;
-            } else {
-                transParams.date__gte = date_gte;
-                transParams.date__lte = date_lte;
-            }
-
-            const transRes = await api.get("/finance/transactions/", { params: transParams });
-            dispatch({
-                type: 'SET_WITHDRAWALS',
-                payload: (transRes.data.results || transRes.data).filter(t => t.category === 'owner_withdrawal' || t.category === 'other')
+            dispatch({ 
+                type: 'SET_PAYMENTS', 
+                payload: { data, page, hasMore } 
             });
+            if (!isLoadMore) dispatch({ type: 'SET_PAGES', payload: { paymentsPage: 1 } });
         } catch (error) {
-            console.error("Error fetching kassa data:", error);
-            toast.error("Ma'lumotlarni yuklashda xatolik.");
+            console.error(error);
         } finally {
             dispatch({ type: 'SET_LOADING', payload: false });
+            dispatch({ type: 'SET_LOADING_MORE', payload: false });
         }
-    }, [filters.branch, filters.date, filters.method, filters.search]);
+    }, [filters.month, filters.search, filters.branch]);
+
+    const fetchWithdrawals = useCallback(async (page = 1, isLoadMore = false) => {
+        try {
+            if (isLoadMore) dispatch({ type: 'SET_LOADING_MORE', payload: true });
+            else dispatch({ type: 'SET_LOADING', payload: true });
+
+            const { date_gte, date_lte } = getDateRange(filters.month);
+            const params = {
+                transaction_type: 'expense',
+                branch: filters.branch || undefined,
+                date__gte: date_gte,
+                date__lte: date_lte,
+                page: page
+            };
+
+            const res = await api.get("/finance/transactions/", { params });
+            const rawData = res.data.results || res.data;
+            const data = rawData.filter(t => t.category === 'owner_withdrawal' || t.category === 'other');
+            const hasMore = res.data.next !== null && res.data.next !== undefined;
+
+            dispatch({ 
+                type: 'SET_WITHDRAWALS', 
+                payload: { data, page, hasMore } 
+            });
+            if (!isLoadMore) dispatch({ type: 'SET_PAGES', payload: { withdrawalsPage: 1 } });
+        } catch (error) {
+            console.error(error);
+        } finally {
+            dispatch({ type: 'SET_LOADING', payload: false });
+            dispatch({ type: 'SET_LOADING_MORE', payload: false });
+        }
+    }, [filters.month, filters.branch]);
+
+    const fetchKassaData = useCallback(async () => {
+        fetchTodayStats();
+        if (activeTab === 'incomes') {
+            fetchPayments(1, false);
+        } else {
+            fetchWithdrawals(1, false);
+        }
+    }, [fetchTodayStats, fetchPayments, fetchWithdrawals, activeTab]);
+
+    const loadMore = useCallback(() => {
+        if (activeTab === 'incomes' && hasMorePayments && !loading && !loadingMore) {
+            const nextPage = paymentsPage + 1;
+            dispatch({ type: 'SET_PAGES', payload: { paymentsPage: nextPage } });
+            fetchPayments(nextPage, true);
+        } else if (activeTab === 'expenses' && hasMoreWithdrawals && !loading && !loadingMore) {
+            const nextPage = withdrawalsPage + 1;
+            dispatch({ type: 'SET_PAGES', payload: { withdrawalsPage: nextPage } });
+            fetchWithdrawals(nextPage, true);
+        }
+    }, [activeTab, hasMorePayments, hasMoreWithdrawals, loading, loadingMore, paymentsPage, withdrawalsPage, fetchPayments, fetchWithdrawals]);
 
     useEffect(() => {
         const fetchBranches = async () => {
@@ -188,7 +285,7 @@ export const useKassa = () => {
                 title: "Super Admin pul oldi",
                 description: withdrawData.description,
                 branch: filters.branch || get_user_info()?.branch || 1,
-                date: filters.date || new Date().toISOString().split('T')[0]
+                date: new Date().toISOString().split('T')[0]
             });
             toast.success("Pul olish muvaffaqiyatli qayd etildi!");
             dispatch({ type: 'SET_SHOW_WITHDRAW_MODAL', payload: false });
@@ -199,35 +296,29 @@ export const useKassa = () => {
         } finally {
             dispatch({ type: 'SET_IS_SUBMITTING', payload: false });
         }
-    }, [withdrawData.amount, withdrawData.description, filters.branch, filters.date, fetchKassaData]);
+    }, [withdrawData.amount, withdrawData.description, filters.branch, fetchKassaData]);
 
     const handleVerify = useCallback(async (paymentId) => {
         try {
             const res = await api.post(`/finance/student-payments/${paymentId}/verify/`);
             if (res.data.status === 'success') {
                 toast.success("To'lov muvaffaqiyatli tasdiqlandi!");
-                // BUG #2 FIX: VERIFY_PAYMENT_SUCCESS reducer FinanceTransaction.id va
-                // Payment.id ni noto'g'ri taqqoslab, UI ni yangilamasdi.
-                // To'g'ri yechim: fresh ma'lumotlarni qayta yuklash.
-                fetchKassaData();
+                dispatch({ type: 'VERIFY_PAYMENT_SUCCESS', payload: paymentId });
+                fetchTodayStats();
             }
         } catch (error) {
             toast.error(error.response?.data?.detail || "Tasdiqlashda xatolik");
         }
-    }, [fetchKassaData]);
-
-    const totalToday = useMemo(() => payments.reduce((sum, p) => p.status === 'cancelled' ? sum : sum + Number(p.amount), 0), [payments]);
-    const totalVerified = useMemo(() => payments.filter(p => p.payment_details?.is_verified && p.status !== 'cancelled').reduce((sum, p) => sum + Number(p.amount), 0), [payments]);
-    const totalWithdrawn = useMemo(() => withdrawals.reduce((sum, w) => sum + Number(w.amount), 0), [withdrawals]);
+    }, [fetchTodayStats]);
 
     const clearFilters = useCallback(() => {
-        dispatch({ type: 'SET_FILTERS', payload: { branch: "", method: "", search: "", date: "" } });
+        dispatch({ type: 'SET_FILTERS', payload: { branch: "", method: "", search: "", month: getCurrentMonth() } });
     }, []);
 
     const setToday = useCallback(() => {
         dispatch({
             type: 'SET_FILTERS',
-            payload: prev => ({ ...prev, date: new Date().toISOString().split('T')[0] })
+            payload: prev => ({ ...prev, month: getCurrentMonth() })
         });
     }, []);
 
@@ -244,6 +335,10 @@ export const useKassa = () => {
         payments,
         withdrawals,
         loading,
+        loadingMore,
+        hasMorePayments,
+        hasMoreWithdrawals,
+        loadMore,
         branches,
         selectedPayment,
         setSelectedPayment,
@@ -262,12 +357,11 @@ export const useKassa = () => {
         handleAmountChange,
         handleWithdraw,
         handleVerify,
-        totalToday,
-        totalVerified,
-        totalWithdrawn,
+        totalToday: todayStats.totalToday,
+        totalVerified: todayStats.totalVerified,
+        totalWithdrawn: todayStats.totalWithdrawn,
         clearFilters,
         setToday,
         fetchKassaData
     };
 };
-

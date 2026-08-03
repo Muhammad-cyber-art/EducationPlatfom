@@ -5,24 +5,24 @@ const KassaFilters = ({ filters, setFilters, branches, clearFilters, setToday, a
     <>
         <div className="flex flex-col lg:flex-row gap-4 p-4 bg-[var(--bg-panel)]/30 border border-[#333] rounded-2xl backdrop-blur-md">
             <div className="flex-1 relative group">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)] group-focus-within:text-[var(--gold)] transition-colors" size={16} />
+                <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)] group-focus-within:text-[var(--gold)] transition-colors pointer-events-none" size={16} />
                 <input
                     type="text"
                     placeholder="Qidiruv (Ism, tel, guruh)..."
                     value={filters.search}
                     onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-                    className="w-full h-12 bg-[#0a0a0a] border border-[#333] rounded-xl pl-12 pr-4 text-[13px] font-bold text-white placeholder:text-gray-600 outline-none focus:border-[var(--gold)]/50 transition-all"
+                    className="w-full h-12 bg-[#0a0a0a] border border-[#333] rounded-xl pl-4 pr-12 text-[13px] font-bold text-white placeholder:text-gray-600 outline-none focus:border-[var(--gold)]/50 transition-all"
                 />
             </div>
 
             <div className="flex flex-wrap md:flex-nowrap items-center gap-3">
                 <div className="relative min-w-[140px] flex-1 md:flex-none">
-                    <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--gold)] opacity-50 pointer-events-none" size={14} />
+                    <Calendar className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--gold)] opacity-50 pointer-events-none" size={14} />
                     <input
-                        type="date"
-                        value={filters.date}
-                        onChange={(e) => setFilters(prev => ({ ...prev, date: e.target.value }))}
-                        className="w-full h-12 bg-[#0a0a0a] border border-[#333] rounded-xl pl-10 pr-3 text-[12px] font-black text-[var(--gold)] outline-none focus:border-[var(--gold)]/50 transition-all"
+                        type="month"
+                        value={filters.month}
+                        onChange={(e) => setFilters(prev => ({ ...prev, month: e.target.value }))}
+                        className="w-full h-12 bg-[#0a0a0a] border border-[#333] rounded-xl pl-4 pr-10 text-[12px] font-black text-[var(--gold)] outline-none focus:border-[var(--gold)]/50 transition-all [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-0 [&::-webkit-calendar-picker-indicator]:w-10 [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
                     />
                 </div>
 
@@ -67,9 +67,9 @@ const KassaFilters = ({ filters, setFilters, branches, clearFilters, setToday, a
 
                 <button
                     onClick={setToday}
-                    className={`px-4 h-12 flex items-center justify-center border rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${filters.date === new Date().toISOString().split('T')[0] ? 'bg-[var(--gold)] text-black border-[var(--gold)]' : 'bg-[var(--bg-panel)] text-[var(--gold)] border-[#333] hover:border-[var(--gold)]/50'}`}
+                    className={`px-4 h-12 flex items-center justify-center border rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${filters.month === new Date().toISOString().slice(0, 7) ? 'bg-[var(--gold)] text-black border-[var(--gold)]' : 'bg-[var(--bg-panel)] text-[var(--gold)] border-[#333] hover:border-[var(--gold)]/50'}`}
                 >
-                    Bugun
+                    Joriy Oy
                 </button>
             </div>
         </div>

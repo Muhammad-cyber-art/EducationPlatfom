@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { useCurrentBranch } from "../Authorized/useBranchId";
 
-export default function MentorsGroupCards({ mentorsGroups, navig, horizontal = false }) {
+export default function MentorsGroupCards({ mentorsGroups, navig, horizontal = false, layout = 'grid' }) {
     const user_info = get_user_info();
     const { branchId } = useOutletContext() || {};
     const realBRanch = useCurrentBranch();
@@ -41,7 +41,10 @@ export default function MentorsGroupCards({ mentorsGroups, navig, horizontal = f
     }
 
     return (
-        <div className={`w-full pb-6 ${horizontal ? 'flex flex-nowrap overflow-x-auto gap-4 snap-x snap-mandatory lux-scrollbar' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6'}`}>
+        <div className={`w-full pb-6 ${horizontal ? 'flex flex-nowrap overflow-x-auto gap-4 snap-x snap-mandatory lux-scrollbar'
+                : layout === 'sidebar' ? 'grid grid-cols-1 gap-4'
+                    : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6'
+            }`}>
             {mentorsGroups.map((card) => {
                 const path = getGroupPath(card.id);
                 const groupColor = card.color || "var(--gold)";

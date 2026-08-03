@@ -40,7 +40,7 @@ export const useStaffPaymentsMain = () => {
         if (!activeBranch) return;
         dispatch(setStaffLoading(true));
         try {
-            let url = `/finance/staff-profiles/?user__role=${activeTab}&user__branch=${Number(activeBranch)}&page_size=200`;
+            let url = `/finance/staff-profiles/?user__branch=${Number(activeBranch)}&page_size=200`;
             const res = await api.get(url);
             const data = res.data.results || res.data;
             dispatch(setStaffData(data));
@@ -78,6 +78,8 @@ export const useStaffPaymentsMain = () => {
 
 
     const filteredStaffData = staffData.filter((person) => {
+        if (person.role !== activeTab) return false;
+
         const searchLower = staffSearchQuery.toLowerCase().trim();
         if (!searchLower) return true;
         const fullName = (person.full_name || person.username || '').toLowerCase();

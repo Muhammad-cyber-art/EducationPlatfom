@@ -613,6 +613,17 @@ class EmployeePaymentViewSet(viewsets.ModelViewSet):
             for ep in items:
                 employee_months.add((ep.employee_id, str(ep.month)))
                 employee_ids.add(ep.employee_id)
+            
+            # --- START BATCH PREFETCH UNPAID HISTORY ---
+            if self.action == 'retrieve':
+                # Faqat bitta employee uchun o'tgan to'lanmagan oylarni ham qo'shamiz
+                unpaid_qs = EmployeePayment.objects.filter(
+                    employee_id=items[0].employee_id, 
+                    is_paid=False
+                )
+                for up in unpaid_qs:
+                    employee_months.add((up.employee_id, str(up.month)))
+            # --- END BATCH PREFETCH UNPAID HISTORY ---
 
             # 2. Har bir xodim uchun guruhlar (mentor/admin)
             from django.contrib.auth import get_user_model
@@ -724,12 +735,14 @@ class EmployeePaymentViewSet(viewsets.ModelViewSet):
             enrollment_cache = {}
             _join_dates = {}
             if all_group_ids:
+                # --- N+1 FIX: Dastlab barcha guruhlar uchun bo'sh dictionary ochamiz ---
+                for gid in all_group_ids:
+                    enrollment_cache[gid] = {}
+                
                 for enr in GroupEnrollment.objects.filter(
                     group_id__in=all_group_ids,
                     is_active=True
                 ).select_related('student'):
-                    if enr.group_id not in enrollment_cache:
-                        enrollment_cache[enr.group_id] = {}
                     if enr.student:
                         enrollment_cache[enr.group_id][enr.student.id] = enr.student
                     if enr.joined_at:
@@ -752,8 +765,6 @@ class EmployeePaymentViewSet(viewsets.ModelViewSet):
                 gid = st.group_id
                 if (st.id, gid) in _inactive_student_group_pairs:
                     continue
-                if gid not in enrollment_cache:
-                    enrollment_cache[gid] = {}
                 enrollment_cache[gid][st.id] = st
 
             # 8. Salary configs

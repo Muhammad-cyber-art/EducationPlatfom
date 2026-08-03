@@ -673,7 +673,7 @@ class StaffProfile(models.Model):
 
         return floor_amount(total_income)
 
-    def calculate_expected_monthly_income(self, month):
+    def calculate_expected_monthly_income(self, month, prefetch_cache=None):
         """
         Mentorning taxminiy oylik ulushi:
         - Barcha o'quvchilar (to'lagan va to'lamagan) hisobga olinadi
@@ -697,80 +697,78 @@ class StaffProfile(models.Model):
         # Barcha to'lovlarni bitta queryda olamiz (optimizatsiya)
         mentor_group_ids = [g.id for g in mentor_groups]
         payment_map = {}
-        payment_qs = Payment.objects.filter(
-            group_id__in=mentor_group_ids,
-            month__year=month.year,
-            month__month=month.month,
-        ).select_related("student")
-        for p in payment_qs:
-            key = (p.student_id, p.group_id)
-            payment_map[key] = p
+        if prefetch_cache and 'payment_map' in prefetch_cache:
+            payment_map = prefetch_cache['payment_map']
+        else:
+            payment_qs = Payment.objects.filter(
+                group_id__in=mentor_group_ids,
+                month__year=month.year,
+                month__month=month.month,
+            ).select_related("student")
+            for p in payment_qs:
+                key = (p.student_id, p.group_id)
+                payment_map[key] = p
 
         # Student extra tranzaksiyalarini olamiz (optimizatsiya)
         extra_map = {}
-        extra_qs = FinanceTransaction.objects.filter(
-            category="student_extra",
-            date__year=month.year,
-            date__month=month.month,
-            group_id__in=mentor_group_ids,
-        ).values("student_id", "group_id", "transaction_type", "amount")
-        for tx in extra_qs:
-            key = (tx["student_id"], tx["group_id"])
-            amt = Decimal(str(tx["amount"] or 0))
-            if tx["transaction_type"] == "income":
-                extra_map[key] = extra_map.get(key, Decimal("0")) + amt
-            else:
-                extra_map[key] = extra_map.get(key, Decimal("0")) - amt
 
         # === OPTIMIZATSIYA: cache'larni bir marta qurish ===
-        lesson_dates_cache = {}
-        for g in mentor_groups:
-            lesson_dates_cache[g.id] = g.get_lesson_dates(month.year, month.month)
+        if prefetch_cache and 'lesson_dates_cache' in prefetch_cache:
+            lesson_dates_cache = prefetch_cache['lesson_dates_cache']
+        else:
+            lesson_dates_cache = {}
+            for g in mentor_groups:
+                lesson_dates_cache[g.id] = g.get_lesson_dates(month.year, month.month)
 
-        from homework_attends.models import Attendance
-        _all_att = Attendance.objects.filter(
-            group_id__in=mentor_group_ids,
-            date__year=month.year,
-            date__month=month.month,
-            is_present=True,
-            marked_by__isnull=False,
-        ).values("group_id", "student_id")
-        attendance_cache = {}
-        for row in _all_att:
-            k = (row["group_id"], row["student_id"])
-            attendance_cache[k] = attendance_cache.get(k, 0) + 1
+        if prefetch_cache and 'attendance_cache' in prefetch_cache:
+            attendance_cache = prefetch_cache['attendance_cache']
+        else:
+            from homework_attends.models import Attendance
+            _all_att = Attendance.objects.filter(
+                group_id__in=mentor_group_ids,
+                date__year=month.year,
+                date__month=month.month,
+                is_present=True,
+                marked_by__isnull=False,
+            ).values("group_id", "student_id")
+            attendance_cache = {}
+            for row in _all_att:
+                k = (row["group_id"], row["student_id"])
+                attendance_cache[k] = attendance_cache.get(k, 0) + 1
 
-        from groups.models import GroupEnrollment
-        _all_enrollments = GroupEnrollment.objects.filter(
-            group_id__in=mentor_group_ids
-        ).select_related("student")
-        enrollment_cache = {}
-        _join_dates = {}
-        for enr in _all_enrollments:
-            if enr.group_id not in enrollment_cache:
-                enrollment_cache[enr.group_id] = {}
-            if enr.student:
-                enrollment_cache[enr.group_id][enr.student.id] = enr.student
-            if enr.joined_at:
-                _join_dates[(enr.student_id, enr.group_id)] = enr.joined_at.date()
-        enrollment_cache['_join_dates'] = _join_dates
-
-        # Legacy old_students_fk (eski tizimdan qolgan o'quvchilar)
-        from groups.models import Student
-        for st in Student.objects.filter(group_id__in=mentor_group_ids).only(
-            'id', 'custom_fee', 'status', 'full_name', 'joined_at', 'group_id'
-        ):
-            gid = st.group_id
-            if gid not in enrollment_cache:
+        if prefetch_cache and 'enrollment_cache' in prefetch_cache:
+            enrollment_cache = prefetch_cache['enrollment_cache']
+        else:
+            from groups.models import GroupEnrollment
+            _all_enrollments = GroupEnrollment.objects.filter(
+                group_id__in=mentor_group_ids
+            ).select_related("student")
+            enrollment_cache = {}
+            _join_dates = {}
+            for gid in mentor_group_ids:
                 enrollment_cache[gid] = {}
-            enrollment_cache[gid][st.id] = st
+                
+            for enr in _all_enrollments:
+                if enr.student:
+                    enrollment_cache[enr.group_id][enr.student.id] = enr.student
+                if enr.joined_at:
+                    _join_dates[(enr.student_id, enr.group_id)] = enr.joined_at.date()
+            enrollment_cache['_join_dates'] = _join_dates
 
-        _salary_configs = {}
-        for sc in MentorGroupSalaryConfig.objects.filter(
-            mentor=self.user, group_id__in=mentor_group_ids
-        ):
-            _salary_configs[(self.user.id, sc.group_id)] = sc
-        enrollment_cache['_salary_configs'] = _salary_configs
+            # Legacy old_students_fk (eski tizimdan qolgan o'quvchilar)
+            from groups.models import Student
+            for st in Student.objects.filter(group_id__in=mentor_group_ids).only(
+                'id', 'custom_fee', 'status', 'full_name', 'joined_at', 'group_id'
+            ):
+                gid = st.group_id
+                enrollment_cache[gid][st.id] = st
+
+            _salary_configs = {}
+            for sc in MentorGroupSalaryConfig.objects.filter(
+                mentor=self.user, group_id__in=mentor_group_ids
+            ):
+                _salary_configs[(self.user.id, sc.group_id)] = sc
+            enrollment_cache['_salary_configs'] = _salary_configs
 
         total_expected_share = Decimal("0")
 
@@ -812,7 +810,7 @@ class StaffProfile(models.Model):
 
         return floor_amount(total_expected_share, precision=None)
 
-    def calculate_salary_for_month(self, month, commission_basis="paid"):
+    def calculate_salary_for_month(self, month, commission_basis="paid", prefetch_cache=None):
         """Berilgan oy uchun maoshni hisoblash (natija floor qilinadi)"""
         from finance.utils import calculate_group_revenue_and_mentor_share, floor_amount
 
@@ -842,85 +840,97 @@ class StaffProfile(models.Model):
         mentor_group_ids = [g.id for g in mentor_groups]
         payment_map = {}
         # Bo'lib to'lgan to'lovlarni ham hisoblash uchun, hammasini olamiz!
-        payment_qs = Payment.objects.filter(
-            group_id__in=mentor_group_ids,
-            month__year=month.year,
-            month__month=month.month,
-        ).select_related("student")
-        for p in payment_qs:
-            key = (p.student_id, p.group_id)
-            payment_map[key] = p
+        if prefetch_cache and 'payment_map' in prefetch_cache:
+            payment_map = prefetch_cache['payment_map']
+        else:
+            payment_qs = Payment.objects.filter(
+                group_id__in=mentor_group_ids,
+                month__year=month.year,
+                month__month=month.month,
+            ).select_related("student")
+            for p in payment_qs:
+                key = (p.student_id, p.group_id)
+                payment_map[key] = p
 
         # Student extra tranzaksiyalarini endi mentor salary yoki guruh daromadi uchun 
         # hisobga olmaymiz. Qo'shimcha to'lov (student_extra) faqat o'quvchi balansiga ta'sir qiladi.
         extra_map = {}
 
         # === OPTIMIZATSIYA: lesson_dates, attendance, enrollment cache'larni bir marta qurish ===
-        lesson_dates_cache = {}
-        for g in mentor_groups:
-            lesson_dates_cache[g.id] = g.get_lesson_dates(month.year, month.month)
+        if prefetch_cache and 'lesson_dates_cache' in prefetch_cache:
+            lesson_dates_cache = prefetch_cache['lesson_dates_cache']
+        else:
+            lesson_dates_cache = {}
+            for g in mentor_groups:
+                lesson_dates_cache[g.id] = g.get_lesson_dates(month.year, month.month)
 
-        # Attendance cache: bitta query bilan barcha guruhlar uchun davomatni olish
-        from homework_attends.models import Attendance
-        _all_att = Attendance.objects.filter(
-            group_id__in=mentor_group_ids,
-            date__year=month.year,
-            date__month=month.month,
-            is_present=True,
-            marked_by__isnull=False,
-        ).values("group_id", "student_id")
-        attendance_cache = {}
-        for row in _all_att:
-            k = (row["group_id"], row["student_id"])
-            attendance_cache[k] = attendance_cache.get(k, 0) + 1
-
-        # Enrollment cache: barcha guruhlar uchun enrollment + salary config + join dates
-        from groups.models import GroupEnrollment
-        _all_enrollments = GroupEnrollment.objects.filter(
-            group_id__in=mentor_group_ids,
-            is_active=True
-        ).select_related("student")
-        enrollment_cache = {}
-        _join_dates = {}
-        for enr in _all_enrollments:
-            if enr.group_id not in enrollment_cache:
-                enrollment_cache[enr.group_id] = {}
-            if enr.student:
-                enrollment_cache[enr.group_id][enr.student.id] = enr.student
-            if enr.joined_at:
-                _join_dates[(enr.student_id, enr.group_id)] = enr.joined_at.date()
-        enrollment_cache['_join_dates'] = _join_dates
-
-        # Legacy old_students_fk (eski tizimdan qolgan o'quvchilar)
-        from groups.models import Student
-        _inactive_enrollments = set(
-            GroupEnrollment.objects.filter(
+        if prefetch_cache and 'attendance_cache' in prefetch_cache:
+            attendance_cache = prefetch_cache['attendance_cache']
+        else:
+            # Attendance cache: bitta query bilan barcha guruhlar uchun davomatni olish
+            from homework_attends.models import Attendance
+            _all_att = Attendance.objects.filter(
                 group_id__in=mentor_group_ids,
-                is_active=False
-            ).values_list("student_id", "group_id")
-        )
+                date__year=month.year,
+                date__month=month.month,
+                is_present=True,
+                marked_by__isnull=False,
+            ).values("group_id", "student_id")
+            attendance_cache = {}
+            for row in _all_att:
+                k = (row["group_id"], row["student_id"])
+                attendance_cache[k] = attendance_cache.get(k, 0) + 1
 
-        for st in Student.objects.filter(
-            group_id__in=mentor_group_ids,
-            is_active=True,
-            is_archived=False
-        ).only(
-            'id', 'custom_fee', 'status', 'full_name', 'joined_at', 'group_id'
-        ):
-            gid = st.group_id
-            if (st.id, gid) in _inactive_enrollments:
-                continue
-            if gid not in enrollment_cache:
+        if prefetch_cache and 'enrollment_cache' in prefetch_cache:
+            enrollment_cache = prefetch_cache['enrollment_cache']
+        else:
+            # Enrollment cache: barcha guruhlar uchun enrollment + salary config + join dates
+            from groups.models import GroupEnrollment
+            _all_enrollments = GroupEnrollment.objects.filter(
+                group_id__in=mentor_group_ids,
+                is_active=True
+            ).select_related("student")
+            enrollment_cache = {}
+            _join_dates = {}
+            # N+1 FIX: barcha guruhlar uchun boshlang'ich bo'sh dict ochamiz
+            for gid in mentor_group_ids:
                 enrollment_cache[gid] = {}
-            enrollment_cache[gid][st.id] = st
+                
+            for enr in _all_enrollments:
+                if enr.student:
+                    enrollment_cache[enr.group_id][enr.student.id] = enr.student
+                if enr.joined_at:
+                    _join_dates[(enr.student_id, enr.group_id)] = enr.joined_at.date()
+            enrollment_cache['_join_dates'] = _join_dates
 
-        # Salary config cache
-        _salary_configs = {}
-        for sc in MentorGroupSalaryConfig.objects.filter(
-            mentor=self.user, group_id__in=mentor_group_ids
-        ):
-            _salary_configs[(self.user.id, sc.group_id)] = sc
-        enrollment_cache['_salary_configs'] = _salary_configs
+            # Legacy old_students_fk (eski tizimdan qolgan o'quvchilar)
+            from groups.models import Student
+            _inactive_enrollments = set(
+                GroupEnrollment.objects.filter(
+                    group_id__in=mentor_group_ids,
+                    is_active=False
+                ).values_list("student_id", "group_id")
+            )
+
+            for st in Student.objects.filter(
+                group_id__in=mentor_group_ids,
+                is_active=True,
+                is_archived=False
+            ).only(
+                'id', 'custom_fee', 'status', 'full_name', 'joined_at', 'group_id'
+            ):
+                gid = st.group_id
+                if (st.id, gid) in _inactive_enrollments:
+                    continue
+                enrollment_cache[gid][st.id] = st
+
+            # Salary config cache
+            _salary_configs = {}
+            for sc in MentorGroupSalaryConfig.objects.filter(
+                mentor=self.user, group_id__in=mentor_group_ids
+            ):
+                _salary_configs[(self.user.id, sc.group_id)] = sc
+            enrollment_cache['_salary_configs'] = _salary_configs
 
         total_salary = Decimal("0")
 

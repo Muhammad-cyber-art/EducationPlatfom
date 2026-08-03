@@ -12,6 +12,10 @@ const Kassa = () => {
         payments,
         withdrawals,
         loading,
+        loadingMore,
+        hasMorePayments,
+        hasMoreWithdrawals,
+        loadMore,
         branches,
         selectedPayment,
         setSelectedPayment,
@@ -89,6 +93,10 @@ const Kassa = () => {
                     payments={payments}
                     withdrawals={withdrawals}
                     loading={loading}
+                    loadingMore={loadingMore}
+                    hasMorePayments={hasMorePayments}
+                    hasMoreWithdrawals={hasMoreWithdrawals}
+                    loadMore={loadMore}
                     isSuperAdmin={isSuperAdmin}
                     onVerify={handleVerifyAndClose}
                     onDetail={openDetail}

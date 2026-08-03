@@ -6,40 +6,41 @@ const AdminBranches = ({
  staffBranches,
  removeBranchMutation
 }) => {
- if (staffBranches.length === 0) return null;
+    return (
+        <div className="space-y-4">
+            {/* Main Branch */}
+            <div className="w-full bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-2xl p-5 flex flex-col gap-4">
+                <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center">
+                        <Building2 size={24} />
+                    </div>
+                    <div className="flex-1">
+                        <h4 className="text-sm font-black text-[var(--text-primary)] capitalize tracking-tight">{admin.branch?.name || "Asosiy filial"}</h4>
+                        <p className="text-[9px] text-[var(--text-muted)] font-bold capitalize tracking-widest mt-1">{admin.branch?.address || "Manzil ko'rsatilmadi"}</p>
+                    </div>
+                </div>
+            </div>
 
- return (
- <div className="space-y-4 pt-4 border-t border-[var(--border-glass)]">
- <div className="flex items-center justify-between px-1">
- <h3 className="text-[10px] md:text-[11px] font-black text-[var(--text-muted)] capitalize tracking-[0.2em] flex items-center gap-2">
- <MapPin size={14} className="text-[var(--gold)]" /> Qo'shimcha Filiallar
- </h3>
- </div>
- <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
- {staffBranches.filter(b => b.branch).map(branchAccess => {
- const isMain = admin.branch?.id === branchAccess.branch.id;
- return (
- <div key={branchAccess.id} className={`flex items-center justify-between p-3.5 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-glass)] group hover:border-[var(--gold)]/30 transition-all ${isMain ?'bg-[var(--gold)]/5 border-[var(--gold)]/20' :''}`}>
- <div className="flex items-center gap-3">
- <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${isMain ?'bg-[var(--gold)]/20 text-[var(--gold)]' :'bg-[var(--bg-void)] text-[var(--text-secondary)]'}`}>
- <Building2 size={16} />
- </div>
- <div>
- <h4 className="text-[10px] font-black text-[var(--text-primary)] capitalize tracking-wide">{branchAccess.branch.name}</h4>
- <p className="text-[8px] text-[var(--text-muted)] capitalize tracking-wider font-bold">{branchAccess.access_level ||'Kirish'}</p>
- </div>
- </div>
- {!isMain && (
- <button onClick={() => removeBranchMutation.mutate(branchAccess.id)} className="p-2 text-red-500/40 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all" title="O'chirish">
- <X size={16} />
- </button>
- )}
- </div>
- );
- })}
- </div>
- </div>
- );
+            {/* Additional Branches */}
+            {staffBranches.length > 0 && (
+                <div className="grid gap-3 pt-2">
+                    {staffBranches.filter(b => b.branch && b.branch.id !== admin.branch?.id).map(branchAccess => (
+                        <div key={branchAccess.id} className="w-full bg-[var(--bg-panel)] border border-[var(--border-glass)] rounded-2xl p-4 flex items-center justify-between group">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-[var(--bg-void)] text-blue-400 flex items-center justify-center border border-[var(--border-glass)]">
+                                    <MapPin size={14} />
+                                </div>
+                                <span className="text-xs font-bold text-[var(--text-primary)] capitalize">{branchAccess.branch.name}</span>
+                            </div>
+                            <button onClick={() => removeBranchMutation.mutate(branchAccess.id)} className="p-2 text-red-500/40 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100" title="O'chirish">
+                                <X size={14} />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
 };
 
 export default AdminBranches;

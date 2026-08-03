@@ -144,10 +144,7 @@ export function LandingPage() {
       <header className="sticky top-0 z-50 px-4 pt-4">
         <nav className="mx-auto flex max-w-6xl items-center justify-between rounded-3xl px-5 py-3 backdrop-blur-3xl bg-white/80 border border-black/5 shadow-sm">
           <a href="#hero" className="flex items-center gap-2.5">
-            <span className="bg-cta-gradient flex h-9 w-9 items-center justify-center rounded-xl text-white">
-              <GraduationCap className="h-5 w-5" />
-            </span>
-            <span className="font-display text-base font-semibold tracking-tight">Yaxshi Niyat</span>
+            <img src="/yaxshi_niyat_logo.png" alt="Yaxshi Niyat" className="h-12 w-auto object-contain" />
           </a>
           <div className="hidden items-center gap-7 text-sm text-[#827161] md:flex">
             <a className="transition-colors hover:text-[#120f0d]" href="#routerlar">
@@ -509,10 +506,7 @@ export function LandingPage() {
       <footer className="px-4 pb-10">
         <div className="bg-white/90 backdrop-blur-2xl border border-[#967b4f]/15 shadow-md mx-auto flex max-w-6xl flex-col items-center gap-4 rounded-4xl px-8 py-10 text-center">
           <div className="flex items-center gap-2.5">
-            <span className="bg-cta-gradient flex h-9 w-9 items-center justify-center rounded-xl text-white">
-              <GraduationCap className="h-5 w-5" />
-            </span>
-            <span className="font-display text-base font-semibold">Yaxshi Niyat</span>
+            <img src="/yaxshi_niyat_logo.png" alt="Yaxshi Niyat" className="h-10 w-auto object-contain" />
           </div>
           <p className="text-sm text-[#827161]">
             © {new Date().getFullYear()} Yaxshi Niyat Educational Platform. Barcha huquqlar

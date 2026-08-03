@@ -26,8 +26,8 @@ const CategoryBtn = ({ active, onClick, icon, label, shortLabel, count }) => (
 );
 
 const StaffSidebar = ({ activeTab, setActiveTab, staffData, onAddStaff }) => {
- const adminCount = staffData.filter(s => s.employee_role ==='admin').length || 0;
- const mentorCount = staffData.filter(s => s.employee_role ==='mentor').length || 0;
+ const adminCount = staffData.filter(s => s.role === 'admin').length || 0;
+ const mentorCount = staffData.filter(s => s.role === 'mentor').length || 0;
 
  return (
  <div className="lg:col-span-3 space-y-6">
