@@ -142,7 +142,7 @@ export function LandingPage() {
 
       {/* Nav */}
       <header className="sticky top-0 z-50 px-4 pt-4">
-        <nav className="mx-auto flex max-w-6xl items-center justify-between rounded-3xl px-5 py-3 backdrop-blur-3xl bg-white/80 border border-black/5 shadow-sm">
+        <nav className="mx-auto flex max-w-6xl items-center justify-between rounded-3xl px-5 py-3 bg-gradient-to-br from-white/95 to-[#fdfaf5]/85 !backdrop-blur-xl border border-[#967b4f]/15 shadow-[0_12px_40px_-10px_rgba(150,123,79,0.2)]">
           <a href="#hero" className="flex items-center gap-2.5">
             <img src="/yaxshi_niyat_logo.png" alt="Yaxshi Niyat" className="h-12 w-auto object-contain" />
           </a>

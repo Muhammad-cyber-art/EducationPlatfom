@@ -202,6 +202,13 @@ export const useMentorProfile = () => {
   const isOwnProfile = userRole === "mentor" && Number(realMentorId) === Number(user_info?.user_id);
   const canEditMentor = (isSuperAdmin || isAdmin || perms.teachers === true) && !isOwnProfile;
 
+  const LogOut = () => {
+    if (window.confirm("Tizimdan chiqmoqchimisiz?")) {
+      localStorage.clear();
+      window.location.href = "/";
+    }
+  };
+
   return {
     state,
     dispatch,
@@ -211,6 +218,8 @@ export const useMentorProfile = () => {
     staffBranches,
     isSuperAdmin,
     canEditMentor,
+    isOwnProfile,
+    LogOut,
     handleUpdate,
     handleDelete,
     handleRemoveFromBranch,

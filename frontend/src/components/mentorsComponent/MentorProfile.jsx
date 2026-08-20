@@ -1,5 +1,5 @@
 import React from "react";
-import { Loader2, ChevronRight, Camera, Copy, Phone, Eye, EyeOff, Save, Trash2, Building2, Activity, UserMinus, ShieldCheck } from "lucide-react";
+import { Loader2, ChevronRight, Camera, Copy, Phone, Eye, EyeOff, Save, Trash2, Building2, Activity, UserMinus, ShieldCheck, LogOut as LogOutIcon } from "lucide-react";
 import toast from "react-hot-toast";
 
 // Hooks
@@ -19,6 +19,8 @@ export default function MentorProfilePage({ viewMode = "all" }) {
         staffBranches,
         isSuperAdmin,
         canEditMentor,
+        isOwnProfile,
+        LogOut,
         handleUpdate,
         handleDelete,
         handleRemoveFromBranch,
@@ -70,7 +72,15 @@ export default function MentorProfilePage({ viewMode = "all" }) {
                     <span className="hidden md:block text-[10px] text-[var(--text-muted)] font-black tracking-widest">
                         ID Raqami: #{mentor.id?.toString().padStart(4, '0')}
                     </span>
-                    {isSuperAdmin && (
+                    {isOwnProfile && (
+                        <button
+                            onClick={LogOut}
+                            className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-lg text-[10px] font-black uppercase tracking-widest border border-red-500/20 transition-all"
+                        >
+                            <LogOutIcon size={14} /> Chiqish
+                        </button>
+                    )}
+                    {isSuperAdmin && !isOwnProfile && (
                         <button
                             onClick={handleDelete}
                             className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-lg text-[10px] font-black uppercase tracking-widest border border-red-500/20 transition-all"

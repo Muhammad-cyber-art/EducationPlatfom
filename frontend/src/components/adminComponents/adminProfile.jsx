@@ -2,7 +2,7 @@ import React, { useReducer, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { Loader2, ShieldCheck, ChevronRight, CreditCard, User, Camera, Copy, Calendar, Building2, Phone, Eye, EyeOff, Save, Trash2 } from "lucide-react";
+import { Loader2, ShieldCheck, ChevronRight, CreditCard, User, Camera, Copy, Calendar, Building2, Phone, Eye, EyeOff, Save, Trash2, LogOut as LogOutIcon } from "lucide-react";
 
 // Hooks
 import { useAdminProfile, PERMISSION_LABELS } from "./AdminProfile/useAdminProfile";
@@ -90,7 +90,15 @@ const AdminProfile = () => {
                     <span className="hidden md:block text-[10px] text-[var(--text-muted)] font-black tracking-widest">
                         Qo'shilgan: {admin.date_joined ? new Date(admin.date_joined).toLocaleDateString() : '---'}
                     </span>
-                    {user_info?.role === 'super_admin' && (
+                    {!admin_id && (
+                        <button
+                            onClick={LogOut}
+                            className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-lg text-[10px] font-black uppercase tracking-widest border border-red-500/20 transition-all"
+                        >
+                            <LogOutIcon size={14} /> Chiqish
+                        </button>
+                    )}
+                    {user_info?.role === 'super_admin' && !!admin_id && (
                         <button 
                             onClick={() => archiveMutation.mutate()} 
                             disabled={archiveMutation.isPending}
