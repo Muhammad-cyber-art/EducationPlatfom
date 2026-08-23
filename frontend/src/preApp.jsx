@@ -9,7 +9,7 @@ import { SuperAdminRoutes } from"./routes/SuperAdminRoutes";
 import { MentorRoutes } from"./routes/MentorRoutes";
 
 const ROLES = {
- ADMIN_ACCESS: ["admin","super_admin"],
+ ADMIN_ACCESS: ["admin"],
  SUPER_ONLY: ["super_admin"],
  ADMIN_ONLY: ["admin"],
  ALL_ACCESS: ["admin","mentor","super_admin"],

@@ -218,11 +218,11 @@ class StudentSerializer(serializers.ModelSerializer):
     def get_groups(self, obj) -> list:
         """Faqat is_active=True bo'lgan enrollmentlardagi guruhlarni qaytaradi.
         Bu o'quvchi ko'chirilgandan keyin eski guruhini ko'rsatib qolmasligini ta'minlaydi."""
-        from .models import GroupEnrollment
-        active_group_ids = GroupEnrollment.objects.filter(
-            student=obj, is_active=True
-        ).values_list('group_id', flat=True)
-        active_groups = Group.objects.filter(id__in=active_group_ids)
+        # N+1 oldini olish uchun prefetched enrollments dan foydalanamiz
+        active_groups = [
+            e.group for e in obj.enrollments.all()
+            if e.is_active and e.group
+        ]
         return GroupSimpleSerializer(active_groups, many=True, context=self.context).data
 
     def get_current_payment_status(self, obj) -> bool:
@@ -238,8 +238,9 @@ class StudentSerializer(serializers.ModelSerializer):
         today = timezone.now().date()
         first_day_of_month = today.replace(day=1)
 
-        # Payment modelidan shu o'quvchi va shu oyga tegishlisini qidiramiz
-        payment = Payment.objects.filter(student=obj, month=first_day_of_month).first()
+        # N+1 oldini olish uchun prefetched payments dan foydalanamiz
+        payments = obj.payments.all()
+        payment = next((p for p in payments if p.month == first_day_of_month), None)
 
         if payment and payment.amount == Decimal('0'):
             return True
@@ -252,7 +253,9 @@ class StudentSerializer(serializers.ModelSerializer):
         today = timezone.now().date()
         first_day_of_month = today.replace(day=1)
 
-        payment = Payment.objects.filter(student=obj, month=first_day_of_month).first()
+        # N+1 oldini olish uchun prefetched payments dan foydalanamiz
+        payments = obj.payments.all()
+        payment = next((p for p in payments if p.month == first_day_of_month), None)
 
         return payment.id if payment else None
 

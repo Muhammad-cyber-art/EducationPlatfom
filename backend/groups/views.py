@@ -591,7 +591,11 @@ class StudentViewSet(viewsets.ModelViewSet):
     # BUG #2 FIX: is_active=True va is_archived=False filtrlari qo'shildi.
     # Avval .all() ishlatilgani uchun arxivlangan va o'chirilgan o'quvchilar ham
     # qidiruvda va ro'yxatda chiqar edi.
-    queryset = Student.objects.select_related('group', 'branch').filter(
+    queryset = Student.objects.select_related(
+        'group', 'branch', 'finance_profile'
+    ).prefetch_related(
+        'enrollments__group', 'payments'
+    ).filter(
         is_active=True, is_archived=False
     )
     serializer_class = StudentSerializer

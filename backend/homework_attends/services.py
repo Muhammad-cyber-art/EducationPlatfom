@@ -284,15 +284,22 @@ def get_monthly_attendance_data(group, month, year):
     )
 
     att_data = {}
+    historical_dates = set()
     for att in attendances:
         sid = att['student_id']
+        att_date = att['date']
+        historical_dates.add(att_date)
         if sid not in att_data:
             att_data[sid] = {}
         # is_present dan tashqari, mentor tasdiqlaganligini (marked_by) ham saqlaymiz
-        att_data[sid][str(att['date'])] = {
+        att_data[sid][str(att_date)] = {
             'is_present': att['is_present'],
             'is_confirmed': att['marked_by_id'] is not None
         }
+
+    # BUG FIX: Agar guruh dars kunlari o'zgargan bo'lsa (masalan, toqdan juftga),
+    # eski olingan davomat sanalari date_list da yo'qolib qolmasligi uchun qo'shamiz.
+    date_list = sorted(list(set(date_list).union(historical_dates)))
 
     return date_list, students, att_data
 

@@ -201,6 +201,12 @@ class StudentPaymentViewSet(viewsets.ModelViewSet):
             status='completed'
         )
 
+        # Agar to'lov umuman amalga oshirilmagan bo'lsa (sof kvitansiya), 
+        # Ledger yozuvlariga ehtiyoj yo'q, bazadan butunlay o'chirib yuboramiz.
+        if not transactions.exists() and (payment.paid_amount is None or payment.paid_amount <= 0):
+            payment.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
         with db_transaction.atomic():
             for tx in transactions:
                 # 1. Original tranzaksiyani 'cancelled' qilish
