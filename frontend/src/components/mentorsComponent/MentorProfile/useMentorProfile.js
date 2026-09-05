@@ -29,7 +29,7 @@ function reducer(state, action) {
         editData: action.payload,
         mentorsGroup: action.payload.mentor_groups || [],
       };
-    case "UPDATE_EDIT_DATA": return { ...state, editData: { ...state.editData, ...action.payload } };
+    case "UPDATE_EDIT_FIELD": return { ...state, editData: { ...state.editData, ...action.payload } };
     case "START_EDITING": return { ...state, isEditing: true, editData: { ...state.mentor } };
     case "TOGGLE_SHOW_PASSWORD": return { ...state, showPassword: !state.showPassword };
     case 'TOGGLE_PERM_MODAL': return { ...state, isPermModalOpen: action.payload };
