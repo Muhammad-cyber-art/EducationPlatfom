@@ -299,8 +299,6 @@ body {
   position: relative;
 }
 
-<<<<<<< HEAD
-=======
 .glass {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(253, 250, 245, 0.85) 100%);
   backdrop-filter: blur(24px) !important;
@@ -322,7 +320,6 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.05);
   box-shadow: 0 8px 30px -10px rgba(0, 0, 0, 0.5);
 }
->>>>>>> 287466b90ab36425849749250b1d50f5882f5c2a
 .lux-card-for-grps {
   background: var(--card-bg-for-grps);
   border-radius: 20px;

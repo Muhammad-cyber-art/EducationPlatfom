@@ -99,6 +99,12 @@ class RegisterSerializer(serializers.ModelSerializer):
         if password and password.strip():
             instance.set_password(password)
 
+        # 3. Nullable string fieldlar uchun "" → None konversiyasi
+        nullable_str_fields = ['phone_number', 'subject']
+        for field in nullable_str_fields:
+            if field in validated_data and validated_data[field] == '':
+                validated_data[field] = None
+
         old_phone = instance.phone_number
         
         for attr, value in validated_data.items():

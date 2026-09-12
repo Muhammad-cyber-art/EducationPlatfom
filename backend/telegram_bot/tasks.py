@@ -1,7 +1,14 @@
 from celery import shared_task
 import time
 import logging
-from .utils import _send_message_sync, get_student_telegram_ids
+import os
+import tempfile
+import pandas as pd
+from django.db import connection
+from .utils import _send_message_sync, get_student_telegram_ids, get_isolated_queryset, send_document_sync
+from .models import BotProfile
+from homework_attends.models import Attendance
+from finance.models.transaction import FinanceTransaction
 
 logger = logging.getLogger(__name__)
 
@@ -42,22 +49,14 @@ def send_broadcast_message_task(chat_ids, message):
         except Exception as e:
             logger.error(f"Error in send_broadcast_message_task for chat {chat_id}: {e}")
 
-import os
-import pandas as pd
-from django.db import connection
-from celery import shared_task
-from .utils import get_isolated_queryset, send_document_sync
-from .models import BotProfile
-from homework_attends.models import Attendance
-from finance.models.transaction import FinanceTransaction
-
 @shared_task(bind=True, max_retries=5, default_retry_delay=60)
 def generate_and_send_report(self, report_type, bot_profile_id):
+    filepath = None
     try:
         profile = BotProfile.objects.select_related('user').get(id=bot_profile_id)
         chat_id = profile.telegram_id
         
-        filepath = f"/tmp/{report_type}_{chat_id}.xlsx"
+        filepath = os.path.join(tempfile.gettempdir(), f"{report_type}_{chat_id}.xlsx")
         
         if report_type == "daily_branch" or report_type == "monthly_attendance":
             base_query = Attendance.objects.all()
@@ -88,7 +87,7 @@ def generate_and_send_report(self, report_type, bot_profile_id):
         retry_delay = (2 ** self.request.retries) * 60
         raise self.retry(exc=exc, countdown=retry_delay)
     finally:
-        if os.path.exists(filepath):
+        if filepath and os.path.exists(filepath):
             os.remove(filepath)
 
 @shared_task
@@ -109,5 +108,10 @@ def trigger_monthly_finance_reports():
     for sa in super_admins:
         generate_and_send_report.delay("monthly_finance", sa.id)
 
-from .reports_bot_logic import *
-
+# Explicit import to prevent namespace collision with utils.py
+from .reports_bot_logic import (
+    generate_and_send_report_pandas,
+    trigger_daily_branch_reports_pandas,
+    trigger_monthly_attendance_reports_pandas,
+    trigger_monthly_finance_reports_pandas,
+)

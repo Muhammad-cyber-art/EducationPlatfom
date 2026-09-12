@@ -64,7 +64,7 @@ def send_document_sync(chat_id, filepath, caption="", filename=None):
             
     return None
 
-from reports.services_new import DailyAttendanceReport, MonthlyFinanceReport, GroupAttendanceReport
+from reports.services_new import DailyAttendanceReport, MonthlyFinanceReport, GroupAttendanceReport, MonthlyAttendanceReport
 
 @shared_task(bind=True, max_retries=5, default_retry_delay=60)
 def generate_and_send_report_pandas(self, report_type, user_id, is_manual=False, group_id=None):
@@ -119,6 +119,14 @@ def generate_and_send_report_pandas(self, report_type, user_id, is_manual=False,
             )
             period_str = f"{target_date.strftime('%Y-%m')}"
             filename = f"{period_str} moliyaviy hisobot.xlsx"
+
+        elif report_type == "monthly_attendance":
+            target_date = now if is_manual else (now.replace(day=1) - timezone.timedelta(days=1))
+            service = MonthlyAttendanceReport(
+                user=user, target_year=target_date.year, target_month=target_date.month, is_manual=is_manual
+            )
+            period_str = f"{target_date.strftime('%Y-%m')}"
+            filename = f"{period_str} oylik davomat hisoboti.xlsx"
             
         elif report_type == "group_attendance" and group_id:
             service = GroupAttendanceReport(
@@ -171,6 +179,16 @@ def trigger_daily_branch_reports_pandas():
     ).distinct()
     for admin in admins:
         generate_and_send_report_pandas.delay("daily_branch", admin.id)
+
+@shared_task
+def trigger_monthly_attendance_reports_pandas():
+    admins = UserModel.objects.filter(
+        Q(bot_profile__is_active=True) | Q(telegram_chat_id__isnull=False),
+        role='admin', 
+        is_active=True
+    ).distinct()
+    for admin in admins:
+        generate_and_send_report_pandas.delay("monthly_attendance", admin.id)
 
 @shared_task
 def trigger_monthly_finance_reports_pandas():

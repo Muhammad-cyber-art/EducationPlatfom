@@ -1,3 +1,4 @@
+import os
 import logging
 import re
 from django.core.management.base import BaseCommand
@@ -40,7 +41,8 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR('XATO: TELEGRAM_BOT_TOKEN settings.py da topilmadi!'))
             return
 
-        persistence = PicklePersistence(filepath="bot_persistence.pickle")
+        persistence_path = os.path.join(str(settings.BASE_DIR), "bot_persistence.pickle")
+        persistence = PicklePersistence(filepath=persistence_path)
         app = ApplicationBuilder().token(TOKEN).persistence(persistence).build()
 
         # TypeHandler barcha update'lardan oldin ishlashi uchun group=-1
@@ -48,7 +50,12 @@ class Command(BaseCommand):
 
         # Conversation handler for authentication
         conv_handler = ConversationHandler(
-            entry_points=[CommandHandler("start", start)],
+            entry_points=[
+                CommandHandler("start", start),
+                # Agar foydalanuvchi ConversationHandler END bo'lganda ham kontakt
+                # yuborsa, uni qayta qabul qilish uchun entry_point sifatida ham qo'shamiz
+                MessageHandler(filters.CONTACT, contact_handler),
+            ],
             states={
                 PHONE: [MessageHandler(filters.CONTACT, contact_handler)],
                 CONFIRM: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_handler)],
@@ -108,24 +115,38 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def process_contact_and_create_profile(clean_phone, chat_id):
     """
     Telefon raqami bo'yicha UserModel va Student qidirish va BotProfile yaratish.
+    Bazada raqam har qanday formatda ('93-69709-26', '+998 93 697 09 26', '936970926' va h.k.)
+    saqlangan bo'lsa ham, normalize qilinib moslik aniqlanadi.
     """
-    possible_numbers = {clean_phone}
-    if clean_phone.startswith('998'):
-        possible_numbers.add(clean_phone[3:])
-    else:
-        possible_numbers.add('998' + clean_phone)
+    def normalize_digits(p):
+        return re.sub(r'\D', '', str(p or ''))
 
-    # 1. Admin/Super Admin qidirish
-    for phone in possible_numbers:
-        user = UserModel.objects.select_related('branch').filter(
-            Q(phone_number=phone) | Q(phone_number__endswith=phone[-9:]),
-            role__in=['admin', 'super_admin', 'teacher'],
-            is_active=True
-        ).first()
-        if user:
-            # Eski profillarni tozalash (xuddi shu chat_id bo'lsa o'chiramiz, boshqa odamniki bo'lishi mumkin)
+    norm_incoming = normalize_digits(clean_phone)
+    local_9 = norm_incoming[-9:] if len(norm_incoming) >= 9 else norm_incoming
+    with_998 = '998' + local_9 if len(local_9) == 9 else norm_incoming
+    possible_numbers = {norm_incoming, local_9, with_998}
+
+    def is_phone_match(raw_db_phone):
+        if not raw_db_phone:
+            return False
+        norm_db = normalize_digits(raw_db_phone)
+        if not norm_db:
+            return False
+        if norm_db in possible_numbers:
+            return True
+        if len(norm_db) >= 9 and len(local_9) >= 9:
+            return norm_db[-9:] == local_9
+        return norm_db.endswith(local_9) or local_9.endswith(norm_db)
+
+    # 1. Admin/Super Admin/Teacher qidirish
+    all_users = UserModel.objects.select_related('branch').filter(
+        role__in=['admin', 'super_admin', 'teacher'],
+        is_active=True,
+        phone_number__isnull=False
+    )
+    for user in all_users:
+        if is_phone_match(user.phone_number):
             BotProfile.objects.filter(telegram_id=chat_id).exclude(user=user).delete()
-            
             profile, created = BotProfile.objects.update_or_create(
                 user=user,
                 defaults={
@@ -138,63 +159,58 @@ def process_contact_and_create_profile(clean_phone, chat_id):
             return profile, 'admin_confirm_needed'
 
     # 2. Student qidirish
+    # Barcha faol o'quvchilarni olib, ularning telefon va ota-ona raqamlarini normalize qilib solishtiramiz
+    all_students = Student.objects.filter(is_active=True).prefetch_related('groups')
+
     found_student_names = []
     student_profile_created = False
     profile = None
-    
-    for phone in possible_numbers:
-        students = Student.objects.filter(
-            Q(phone=phone) | Q(phone__endswith=phone[-9:]) | Q(parent_phone=phone) | Q(parent_phone__endswith=phone[-9:]),
-            is_active=True
-        )
-        for student in students:
-            # ✅ SENIOR FIX: Student modelini o'ziga ham telegram_id larni yozib qo'yish
-            update_fields = []
-            
-            # Agar o'zining raqami mos kelsa
-            if student.phone and (student.phone == phone or student.phone.endswith(phone[-9:])):
-                if student.telegram_id != chat_id:
-                    student.telegram_id = chat_id
-                    update_fields.append('telegram_id')
-            
-            # Agar ota-onaning raqami mos kelsa
-            if student.parent_phone and (student.parent_phone == phone or student.parent_phone.endswith(phone[-9:])):
-                if student.parent_telegram_id != chat_id:
-                    student.parent_telegram_id = chat_id
-                    update_fields.append('parent_telegram_id')
-                    
-            if update_fields:
-                student.save(update_fields=update_fields)
 
-            if not student_profile_created:
-                # Eski profillarni tozalash
-                BotProfile.objects.filter(telegram_id=chat_id).exclude(student=student).delete()
-                
-                profile, created = BotProfile.objects.update_or_create(
-                    student=student,
-                    defaults={
-                        'telegram_id': chat_id,
-                        'phone_number': student.phone or student.parent_phone or phone,
-                        'role': 'student',
-                        'is_active': True
-                    }
-                )
-                student_profile_created = True
-            
-            # Guruhlarni yig'ish
-            active_groups = student.groups.filter(enrollments__is_active=True).distinct()
-            if not active_groups and student.group:
-                active_groups = [student.group]
-            
-            if not active_groups:
-                found_student_names.append(f"{student.full_name.strip()} (Guruhsiz)")
-            else:
-                for group in active_groups:
-                    found_student_names.append(f"{student.full_name.strip()} ({group.name})")
+    for student in all_students:
+        phone_match = is_phone_match(student.phone)
+        parent_match = is_phone_match(student.parent_phone)
+
+        if not phone_match and not parent_match:
+            continue
+
+        # Student modeliga telegram_id yozib qo'yish
+        update_fields = []
+        if phone_match and student.telegram_id != chat_id:
+            student.telegram_id = chat_id
+            update_fields.append('telegram_id')
+        if parent_match and student.parent_telegram_id != chat_id:
+            student.parent_telegram_id = chat_id
+            update_fields.append('parent_telegram_id')
+        if update_fields:
+            student.save(update_fields=update_fields)
+
+        if not student_profile_created:
+            BotProfile.objects.filter(telegram_id=chat_id).exclude(student=student).delete()
+            profile, created = BotProfile.objects.update_or_create(
+                student=student,
+                defaults={
+                    'telegram_id': chat_id,
+                    'phone_number': student.phone or student.parent_phone or clean_phone,
+                    'role': 'student',
+                    'is_active': True
+                }
+            )
+            student_profile_created = True
+
+        # Guruhlarni yig'ish
+        active_groups = student.groups.filter(enrollments__is_active=True).distinct()
+        if not active_groups and student.group:
+            active_groups = [student.group]
+
+        if not active_groups:
+            found_student_names.append(f"{student.full_name.strip()} (Guruhsiz)")
+        else:
+            for group in active_groups:
+                found_student_names.append(f"{student.full_name.strip()} ({group.name})")
 
     if student_profile_created:
         return profile, found_student_names
-    
+
     return None, None
 
 async def contact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -232,12 +248,17 @@ async def contact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return ConversationHandler.END
     else:
+        keyboard = [[KeyboardButton("📞 Telefon raqamni yuborish", request_contact=True)]]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
         await update.message.reply_html(
             f"❌ <b>Kechirasiz!</b>\n\n"
             f"Tizimda <code>{phone}</code> raqami topilmadi.\n"
-            f"Iltimos, markazga murojaat qilib, raqamingizni to'g'irlatib oling."
+            f"Iltimos, markazga murojaat qilib, raqamingizni to'g'irlatib oling.\n\n"
+            f"Yoki <b>boshqa raqam</b> bilan qaytadan urinib ko'ring:",
+            reply_markup=reply_markup
         )
-        return ConversationHandler.END
+        # PHONE state da qolamiz — foydalanuvchi /start bosmasdan qaytadan urinib ko'rishi mumkin
+        return PHONE
 
 async def confirm_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin tasdiqlash jarayoni"""
