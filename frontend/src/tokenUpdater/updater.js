@@ -8,17 +8,8 @@ import { jwtDecode } from"jwt-decode";
  * - REFRESH_ENDPOINT backenddagi refresh endpointga moslashtiring
  */
 // Dinamik BASE_URL sozlash
-// Dinamik BASE_URL sozlash
- const getBaseUrl = () => {
-  const hostname = window.location.hostname;
-  
-  // Production
-  if (hostname === "yaxshi-niyat.uz" || hostname === "www.yaxshi-niyat.uz") {
-    return "https://yaxshi-niyat.uz/api/";
-  }
-  
-  // Development - ALWAYS use HTTP, no SSL
-  return "http://127.0.0.1:8000/api/";
+const getBaseUrl = () => {
+  return import.meta.env.VITE_API_URL || "/api/";
 };
 
  const BASE_URL = getBaseUrl();

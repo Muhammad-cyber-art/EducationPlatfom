@@ -82,7 +82,7 @@ services:
     build:
       context: ./frontend
       args:
-        - VITE_API_URL=https://yaxshi-niyat.uz/api/
+        - VITE_API_URL=/api/
     restart: always
 
   nginx:
@@ -93,7 +93,7 @@ services:
       - "443:443"
     volumes:
       - ./backend/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ${LETSENCRYPT_DIR:-./backend/nginx/empty_certs}:/etc/letsencrypt:ro
       - static_volume:/app/static
       - media_volume:/app/media
     depends_on:
