@@ -182,12 +182,20 @@ const StudentGroupsSection = ({
                     e.stopPropagation();
                     dispatch({ type: 'TOGGLE_JOIN_GROUP_MODAL', payload: true });
                 }}
-                className="lux-card !p-5 flex flex-col items-center justify-center border-dashed border-2 border-[var(--border-glass)] hover:border-[var(--gold)]/40 hover:bg-[var(--gold)]/5 transition-all cursor-pointer group/add min-h-[140px] active:scale-95"
+                className={`lux-card !p-4 flex items-center justify-center border-dashed border-2 border-[var(--border-glass)] hover:border-[var(--gold)]/40 hover:bg-[var(--gold)]/5 transition-all cursor-pointer group/add active:scale-95 ${
+                    groups?.length % 2 === 0
+                        ? 'md:col-span-2 flex-row gap-3 py-3.5 min-h-[60px]'
+                        : 'flex-col h-full min-h-[160px]'
+                }`}
             >
-                <div className="w-10 h-10 rounded-xl bg-[var(--bg-void)] border border-[var(--border-glass)] flex items-center justify-center text-[var(--text-muted)] group-hover/add:text-[var(--gold)] group-hover/add:border-[var(--gold)]/30 transition-all mb-3">
-                    <GraduationCap size={20} />
+                <div className={`rounded-xl bg-[var(--bg-void)] border border-[var(--border-glass)] flex items-center justify-center text-[var(--text-muted)] group-hover/add:text-[var(--gold)] group-hover/add:border-[var(--gold)]/30 transition-all ${
+                    groups?.length % 2 === 0 ? 'w-8 h-8' : 'w-10 h-10 mb-3'
+                }`}>
+                    <GraduationCap size={groups?.length % 2 === 0 ? 16 : 20} />
                 </div>
-                <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em] group-hover/add:text-[var(--text-primary)] transition-colors">Yangi Guruhga Qo'shish</p>
+                <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em] group-hover/add:text-[var(--text-primary)] transition-colors">
+                    Yangi Guruhga Qo'shish
+                </p>
             </div>
         </div>
     );

@@ -19,7 +19,7 @@ const StudentProfileHeader = ({
   const ringColor = payStatus.key === 'paid' ? 'ring-emerald-500/50' : payStatus.key === 'partial' ? 'ring-amber-500/50' : 'ring-rose-500/50';
 
   return (
-    <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 sm:gap-6 pb-6 border-b border-[var(--border-glass)] relative">
+    <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-5 pb-4 border-b border-[var(--border-glass)] relative">
       
       {/* Avatar Container */}
       <div className="relative group/avatar shrink-0 mt-2 sm:mt-0">
