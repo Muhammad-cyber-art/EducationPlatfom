@@ -117,6 +117,8 @@ export default function StudentProfilePage() {
     branchGroups,
     transfers,
     studentLoading,
+    paymentLoading,
+    historyLoading,
     permissions,
     userRole,
   } = useStudentProfile(student_id, branchID.currentBranchId, dispatch);
@@ -372,6 +374,8 @@ export default function StudentProfilePage() {
                 handlePaymentConfirm,
                 handleDeleteHistory,
                 dispatch,
+                historyLoading,
+                paymentLoading,
               }}
               canConfirmPayment={permissions.canConfirmPayment}
               studentStatus={studentData?.status}
