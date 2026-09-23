@@ -57,3 +57,7 @@ Thumbs.db
 
 # Admin credentials
 admin.json
+
+# Bot persistence
+*.pickle
+bot_persistence.pickle

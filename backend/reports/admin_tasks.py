@@ -15,6 +15,7 @@ from celery import shared_task
 from django.utils import timezone
 from django.conf import settings
 
+from django.db.models import Q
 from authenticatsiya.models import UserModel
 from reports.report_generator import ReportDistributor, ReportGenerationError
 
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 @shared_task(name='reports.send_daily_reports_to_admins')
 def send_daily_reports_to_admins():
     """
-    Send daily Excel reports to all admins with telegram_chat_id.
+    Send daily Excel reports to all admins with telegram_chat_id or bot_profile.
     Scheduled to run daily at a specified time (e.g., 8:00 PM).
     """
     logger.info("Starting daily report distribution to admins")
@@ -32,13 +33,12 @@ def send_daily_reports_to_admins():
     distributor = ReportDistributor()
     target_date = timezone.now().date()
     
-    # Get all admins with telegram_chat_id and branch
+    # Get all admins with telegram_chat_id or bot_profile and branch
     admins = UserModel.objects.filter(
+        Q(bot_profile__is_active=True) | Q(telegram_chat_id__isnull=False, telegram_chat_id__gt=''),
         role='admin',
-        telegram_chat_id__isnull=False,
-        telegram_chat_id__gt='',
         branch__isnull=False
-    )
+    ).distinct()
     
     success_count = 0
     failure_count = 0
@@ -88,13 +88,12 @@ def send_monthly_attendance_to_admins():
         logger.info(f"Today {today} is not the last day of the month. Skipping monthly attendance reports.")
         return {'status': 'skipped', 'reason': 'Not last day of month'}
     
-    # Get all admins with telegram_chat_id and branch
+    # Get all admins with telegram_chat_id or bot_profile and branch
     admins = UserModel.objects.filter(
+        Q(bot_profile__is_active=True) | Q(telegram_chat_id__isnull=False, telegram_chat_id__gt=''),
         role='admin',
-        telegram_chat_id__isnull=False,
-        telegram_chat_id__gt='',
         branch__isnull=False
-    )
+    ).distinct()
     
     success_count = 0
     failure_count = 0
@@ -146,12 +145,11 @@ def send_monthly_financial_to_super_admins():
         logger.info(f"Today {today} is not the last day of the month. Skipping monthly financial reports.")
         return {'status': 'skipped', 'reason': 'Not last day of month'}
     
-    # Get all super_admins with telegram_chat_id
+    # Get all super_admins with telegram_chat_id or bot_profile
     super_admins = UserModel.objects.filter(
-        role='super_admin',
-        telegram_chat_id__isnull=False,
-        telegram_chat_id__gt=''
-    )
+        Q(bot_profile__is_active=True) | Q(telegram_chat_id__isnull=False, telegram_chat_id__gt=''),
+        role='super_admin'
+    ).distinct()
     
     success_count = 0
     failure_count = 0

@@ -314,11 +314,15 @@ CELERY_BEAT_SCHEDULE = {
     },
     'send-daily-reports-to-admins': {
         'task': 'reports.send_daily_reports_to_admins',
-        'schedule': crontab(hour=23, minute=50), # Har kuni 23:50 da jo'natiladi
+        'schedule': crontab(hour=20, minute=0), # Har kuni 20:00 da jo'natiladi
+    },
+    'send-monthly-attendance-to-admins': {
+        'task': 'reports.send_monthly_attendance_to_admins',
+        'schedule': crontab(hour=21, minute=0, day_of_month='28-31'), # Oy oxirida 21:00 da
     },
     'send-monthly-financial-to-super-admins': {
         'task': 'reports.send_monthly_financial_to_super_admins',
-        'schedule': crontab(hour=23, minute=55), # Har kuni tekshiriladi, lekin faqat oyning oxirida ishlaydi
+        'schedule': crontab(hour=21, minute=30, day_of_month='28-31'), # Oy oxirida 21:30 da
     },
 }
 

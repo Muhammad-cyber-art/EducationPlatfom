@@ -13,3 +13,5 @@ deep_debug*.py
 scratch_*.py
 test_*.py
 list_urls.py
+*.pickle
+bot_persistence.pickle
